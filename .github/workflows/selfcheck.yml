@@ -1,5 +1,9 @@
 name: 自检
 
+# 运行标题带上被检的分支名。否则 Actions 列表里一排都叫「自检」，
+# 事后分不清哪次跑的是哪个分支。
+run-name: 自检 ${{ inputs.ref || github.ref_name }}
+
 # 这个文件只存在于 fork（a2664955622/samp-mobile）的 main 分支，用于在云端
 # 复现本地自检，不进入任何向上游提交的 PR 分支。
 #
