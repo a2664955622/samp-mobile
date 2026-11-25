@@ -79,6 +79,7 @@ public:
 	void PutDirectlyInVehicle(uint32_t dwVehicleGTAId, uint8_t byteSeatID);
 	void EnterVehicle(uint32_t dwVehicleGtaId, bool bPassenger);
 	void ExitCurrentVehicle();
+	void ClearPrimaryTask();
 	int GetCurrentVehicleID();
 	void SetSkillLevel(int iSkillID, int iLevel);
 	void SetAmmo(uint8_t byteWeapon, uint16_t wAmmo);

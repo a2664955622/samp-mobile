@@ -112,7 +112,7 @@ public:
 	bool IsSurfing();
 	bool SurfingOnVehicle();
 	bool SurfingOnObject();
-	void ProcessSurfing();
+	bool ProcessSurfing();
 
 public:
 	bool m_bShowNameTag;
@@ -150,6 +150,8 @@ private:
 	uint32_t m_dwLastRecvTick;
 	uint32_t m_dwLastStoredSyncDataTime;
 	uint32_t m_dwLastHeadUpdate;
+	uint32_t m_dwEnterVehicleTick = 0;
+	bool m_bEnteredVehicleSpecialActionSeen = false;
 
 	CPlayerPed* m_pPlayerPed;
 	uint32_t m_dwMarker;

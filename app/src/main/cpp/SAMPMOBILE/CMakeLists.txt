@@ -43,9 +43,18 @@ file(GLOB SOURCE_FILES
         Voice/**/**/*.cpp
 )
 
+# omp-cef protocol client (Android port): transport, crypto, session glue and
+# vendored third-party C sources (tweetnacl, kcp, tiny-AES-c, BLAKE2 ref).
+# CONFIGURE_DEPENDS: new Cef/*.cpp files must be picked up without a clean build.
+file(GLOB CEF_SOURCES CONFIGURE_DEPENDS
+        Cef/*.cpp
+        Cef/thirdparty/*.c
+)
+
 add_library(${PROJECT_NAME} SHARED
         ${INCLUDE_FILES}
-        ${SOURCE_FILES})
+        ${SOURCE_FILES}
+        ${CEF_SOURCES})
 
 add_subdirectory(Memory)
 add_subdirectory(Deps)

@@ -1,4 +1,5 @@
 #include "../Game/Game.h"
+#include "../Game/RadarColors.h"
 #include "NetGame.h"
 
 extern NetGame* pNetGame;
@@ -59,6 +60,8 @@ bool CPlayerPool::New(PLAYERID playerId, const char* szPlayerName, bool bIsNPC)
 		Delete(playerId, 0);
 	}
 
+	ResetRadarColorSlot(playerId);
+
 	CPlayer* pPlayer = new CPlayer(szPlayerName, bIsNPC);
 	if (!pPlayer) {
 		return false;
@@ -100,6 +103,7 @@ bool CPlayerPool::Delete(PLAYERID playerId, uint8_t byteReason)
 		delete m_pPlayers[playerId];
 	}
 	m_pPlayers[playerId] = nullptr;
+	ResetRadarColorSlot(playerId);
 	FindLastPlayerID();
 
 	return true;

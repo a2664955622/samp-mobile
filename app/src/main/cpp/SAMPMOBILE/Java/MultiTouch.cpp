@@ -67,6 +67,9 @@ static void dispatchMultiTouchEvent(const NVEvent& event)
 	if (type == NV_MULTITOUCH_CANCEL) {
 		if (pUI != nullptr) {
 			pUI->enqueueTouchEvent(ImVec2(0.0f, 0.0f), TouchType::pop, true);
+			if (pUI->buttonpanel() != nullptr) {
+				pUI->buttonpanel()->clearHeldKeys();
+			}
 		}
 		for (int i = 0; i < 4; ++i) {
 			if (s_pointerDown[i]) {

@@ -69,6 +69,30 @@ CLocalPlayer::~CLocalPlayer()
 	// ~
 }
 
+static void ApplyEffectiveLocalOnFootKeys(CPlayerPed* pPlayerPed, uint16_t& wKeys, uint16_t& lrAnalog, uint16_t& udAnalog)
+{
+	if (!pPlayerPed || !pPlayerPed->m_ped || pPlayerPed->IsDead() || pPlayerPed->IsInVehicle()) {
+		return;
+	}
+	ApplyLocalCombatSyncKeys(wKeys, lrAnalog, udAnalog);
+
+	sa::CCamera* pTheCam = &sa::getTheCamera();
+	const bool bAimingNow =
+		(pPlayerPed->m_ped->m_pPlayerData && pPlayerPed->m_ped->m_pPlayerData->m_bFreeAiming)
+		|| eng::fn::CCamera_Using1stPersonWeaponMode(pTheCam)
+		|| eng::fn::CCamera_IsTargetingActive(pTheCam);
+	if (bAimingNow) {
+		wKeys |= 128u; // KEY_HANDBRAKE
+	}
+	// Match PC playerped.cpp:1577-1582: suppress KEY_FIRE when total ammo == 0 (weapons > 15, except parachute 46)
+	if ((wKeys & 4u) != 0) {
+		sa::CWeapon* pSlot = pPlayerPed->GetCurrentWeaponSlot();
+		if (pSlot && pSlot->dwType > 15 && pSlot->dwType != 46 && pSlot->dwAmmo == 0) {
+			wKeys &= static_cast<uint16_t>(~4u);
+		}
+	}
+}
+
 bool CLocalPlayer::Process()
 {
 	uint32_t dwThisTick;
@@ -149,6 +173,7 @@ bool CLocalPlayer::Process()
 		uint16_t wKeys, lrAnalog, udAnalog;
 		uint8_t extKeys;
 		wKeys = m_pPlayerPed->GetKeys(&lrAnalog, &udAnalog, &extKeys, false);
+		ApplyEffectiveLocalOnFootKeys(m_pPlayerPed, wKeys, lrAnalog, udAnalog);
 
 		// HANDLE DANCING LOCAL PED
 		if (m_pPlayerPed->IsDancing()) {
@@ -254,6 +279,8 @@ bool CLocalPlayer::Process()
 		if (m_pPlayerPed->IsAdded() && Settings::headMove()
 				&& !m_bIsSpectating && !EditObject::m_visible
 				&& m_pPlayerPed->GetStuff() == STUFF_TYPE_NONE
+				&& (wKeys & 0x84) == 0
+				&& m_pPlayerPed->IsEnteringVehicle() == 0 && !m_pPlayerPed->IsExitingVehicle()
 				&& (dwThisTick - m_dwLastHeadUpdate) > 500) {
 			CAMERA_AIM* Aim = GameGetInternalAim();
 			if (Aim && m_pPlayerPed->m_ped) {
@@ -345,17 +372,21 @@ bool CLocalPlayer::Process()
 				SendOnFootFullSyncData();
 			}
 
-			bool bWannaSync = false;
-			if (wKeys & 0x84) {
-				if (pNetGame->session().lagCompensationMode == 2) {
-					bWannaSync = (dwThisTick - m_dwLastSendAimSyncTick) > pNetGame->session().firingSendRate;
+			// Broadcast camera mode transitions (4 <-> 53/7/8/51/46) immediately in lockstep
+			// with OnFootSync KEY_HANDBRAKE so PC & Mobile observers never see un-aimed sliding.
+			bool bWannaSync = (m_pPlayerPed->GetCameraMode() != m_aimSync.byteCamMode);
+			if (!bWannaSync) {
+				if (wKeys & 0x84) {
+					if (pNetGame->session().lagCompensationMode == 2) {
+						bWannaSync = (dwThisTick - m_dwLastSendAimSyncTick) > pNetGame->session().firingSendRate;
+					}
+					else {
+						bWannaSync = (dwThisTick - m_dwLastSendAimSyncTick) > 100;
+					}
 				}
 				else {
-					bWannaSync = (dwThisTick - m_dwLastSendAimSyncTick) > 100;
+					bWannaSync = (dwThisTick - m_dwLastSendAimSyncTick) > 1000;
 				}
-			}
-			else {
-				bWannaSync = (dwThisTick - m_dwLastSendAimSyncTick) > 1000;
 			}
 
 			if (bWannaSync) {
@@ -463,6 +494,7 @@ void CLocalPlayer::ProcessClassSelection()
 void CLocalPlayer::ResetAllSyncAttributes()
 {
 	m_bHasSpawnInfo = false;
+	m_iCustomSpawnSkin = 0;
 	m_bWantsAnotherClass = false;
 	m_bWaitingForSpawnRequestReply = false;
 	m_bSpawnDialogShowed = false;
@@ -645,6 +677,10 @@ bool CLocalPlayer::Spawn()
 	m_pPlayerPed->TogglePlayerControllable(true);
 
 	if (!bFirstSpawn) {
+		if (m_pPlayerPed->IsInVehicle()) {
+			m_pPlayerPed->RemoveFromVehicleAndPutAt(
+				m_SpawnInfo.vecPos.x, m_SpawnInfo.vecPos.y, m_SpawnInfo.vecPos.z + 0.5f);
+		}
 		m_pPlayerPed->SetInitialState();
 	}
 	else {
@@ -658,7 +694,7 @@ bool CLocalPlayer::Spawn()
 	}
 
 	m_pPlayerPed->RestartIfWastedAt(&m_SpawnInfo.vecPos, m_SpawnInfo.fRotation);
-	m_pPlayerPed->SetModelIndex(m_SpawnInfo.iSkin);
+	m_pPlayerPed->SetModelIndex(static_cast<uint>(ResolveEffectivePedSkin(m_SpawnInfo.iSkin, m_iCustomSpawnSkin)));
 	m_pPlayerPed->ClearWeapons();
 	m_pPlayerPed->ResetDamageEntity();
 
@@ -733,24 +769,7 @@ void CLocalPlayer::SendOnFootFullSyncData()
 	uint16_t lrAnalog, udAnalog;
 	uint8_t exKeys;
 	uint16_t wKeys = m_pPlayerPed->GetKeys(&lrAnalog, &udAnalog, &exKeys);
-
-	// Guard against Render2dStuff/CGame::Process clear-key race dropping KEY_HANDBRAKE
-	// for a single frame while the local ped is actively aiming on foot.
-	if (!m_pPlayerPed->IsDead() && !m_pPlayerPed->IsInVehicle()) {
-		const bool bAimingNow =
-			(m_pPlayerPed->m_ped->m_pPlayerData && m_pPlayerPed->m_ped->m_pPlayerData->m_bFreeAiming)
-			|| eng::fn::CCamera_Using1stPersonWeaponMode(&sa::getTheCamera());
-		if (bAimingNow) {
-			wKeys |= 128; // KEY_HANDBRAKE
-		}
-		// Match PC playerped.cpp:1577-1582: suppress KEY_FIRE when total ammo == 0 (weapons > 15, except parachute 46)
-		if ((wKeys & 4) != 0) {
-			sa::CWeapon* pSlot = m_pPlayerPed->GetCurrentWeaponSlot();
-			if (pSlot && pSlot->dwType > 15 && pSlot->dwType != 46 && pSlot->dwAmmo == 0) {
-				wKeys &= static_cast<uint16_t>(~4u);
-			}
-		}
-	}
+	ApplyEffectiveLocalOnFootKeys(m_pPlayerPed, wKeys, lrAnalog, udAnalog);
 
 	ONFOOT_SYNC_DATA ofSync{};
 
@@ -1699,7 +1718,24 @@ bool CLocalPlayer::EnterVehicleAsPassenger()
 		VEHICLEID ClosetVehicleID = pVehiclePool->FindNearestToLocalPlayerPed();
 		if (ClosetVehicleID < MAX_VEHICLES && pVehiclePool->GetSlotState(ClosetVehicleID)) {
 			CVehicle* pVehicle = pVehiclePool->GetAt(ClosetVehicleID);
-			if (pVehicle && !pVehicle->GetDoorState() && pVehicle->GetDistanceFromLocalPlayerPed() < 8.0f) {
+			if (pVehicle && pVehicle->m_pVehicle && !pVehicle->GetDoorState() && pVehicle->GetDistanceFromLocalPlayerPed() < 8.0f) {
+				// Prevent 0x05CA (seat = -1) from falling back to checkSeatFree = false and
+				// slow-dragging an existing passenger out when all passenger seats are occupied.
+				const uint16_t modelId = pVehicle->m_pVehicle->m_nModelIndex;
+				if (modelId != TRAIN_PASSENGER) {
+					const int maxSeats = std::min<int>(static_cast<int>(pVehicle->m_pVehicle->m_nMaxPassengers), 8);
+					bool bHasFreeSeat = false;
+					for (int s = 0; s < maxSeats; ++s) {
+						if (pVehicle->m_pVehicle->m_apPassengers[s] == nullptr) {
+							bHasFreeSeat = true;
+							break;
+						}
+					}
+					if (!bHasFreeSeat) {
+						return false;
+					}
+				}
+
 				if (m_pPlayerPed->GetCurrentWeapon() == WEAPON_PARACHUTE) {
 					m_pPlayerPed->SetArmedWeapon(0);
 				}
@@ -1990,9 +2026,10 @@ void CLocalPlayer::ApplySpecialAction(uint8_t byteSpecialAction)
 	}
 }
 
-void CLocalPlayer::SetSpawnInfo(PLAYER_SPAWN_INFO* pSpawnInfo)
+void CLocalPlayer::SetSpawnInfo(PLAYER_SPAWN_INFO* pSpawnInfo, int iCustomSkin)
 {
 	memcpy(&m_SpawnInfo, pSpawnInfo, sizeof(PLAYER_SPAWN_INFO));
+	m_iCustomSpawnSkin = iCustomSkin;
 	m_bHasSpawnInfo = true;
 }
 
@@ -2001,7 +2038,7 @@ void CLocalPlayer::HandleClassSelectionOutcome(bool bOutcome)
 	if (bOutcome) {
 		if (m_pPlayerPed) {
 			m_pPlayerPed->ClearWeapons();
-			m_pPlayerPed->SetModelIndex(m_SpawnInfo.iSkin);
+			m_pPlayerPed->SetModelIndex(static_cast<uint>(ResolveEffectivePedSkin(m_SpawnInfo.iSkin, m_iCustomSpawnSkin)));
 		}
 
 		m_bClearedToSpawn = true;
@@ -2039,6 +2076,15 @@ bool CLocalPlayer::IsNeedSyncDataSend(const void* data1, const void* data2, size
 
 void CLocalPlayer::SendEnterVehicleNotification(VEHICLEID VehicleID, bool bPassenger)
 {
+	// open.mp drops RPC_EnterVehicle unless peer.getState() == PlayerState_OnFoot.
+	// When re-entering immediately after exiting a vehicle before CLocalPlayer::Process()
+	// has emitted an OnFootSync packet, flush one OnFootSync first so the server transitions state.
+	if (m_CurrentVehicle != 0xFFFF && m_pPlayerPed && !m_pPlayerPed->IsInVehicle()) {
+		m_LastVehicle = m_CurrentVehicle;
+		m_CurrentVehicle = 0xFFFF;
+		SendOnFootFullSyncData();
+	}
+
 	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
 	if (pVehiclePool) {
 		CVehicle* pVehicle = pVehiclePool->GetAt(VehicleID);
@@ -2319,6 +2365,7 @@ void CLocalPlayer::UpdateSurfing()
 					ProjectMatrix(&surfPedMatrix.pos, &surfInstMatrix, &m_surfSync.vecOffsetPos);
 
 					m_pPlayerPed->m_ped->SetMatrix(surfPedMatrix);
+					m_pPlayerPed->UpdateRwMatrixAndFrame();
 					sa::CVector vecMoveSpeed;
 					vecMoveSpeed = m_pPlayerPed->m_ped->GetMoveSpeed();
 					m_pPlayerPed->m_ped->SetVelocity(sa::CVector{surfInstMoveSpeed.x, surfInstMoveSpeed.y, vecMoveSpeed.z});
@@ -2357,6 +2404,7 @@ void CLocalPlayer::UpdateSurfing()
 						ProjectMatrix(&surfPedMatrix.pos, &surfInstMatrix, &m_surfSync.vecOffsetPos);
 
 						m_pPlayerPed->m_ped->SetMatrix(surfPedMatrix);
+						m_pPlayerPed->UpdateRwMatrixAndFrame();
 						sa::CVector vecMoveSpeed = m_pPlayerPed->m_ped->GetMoveSpeed();
 						m_pPlayerPed->m_ped->SetVelocity(sa::CVector{surfInstMoveSpeed.x, surfInstMoveSpeed.y, vecMoveSpeed.z});
 

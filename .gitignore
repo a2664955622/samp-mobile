@@ -29,6 +29,7 @@ app/src/main/jniLibs/*/libGTASA.so
 app/src/main/jniLibs/*/libImmEmulatorJ.so
 app/src/main/assets/*
 !app/src/main/assets/monetloader_lib.zip
+tools/_so/
 
 # OS & Temp files
 .DS_Store

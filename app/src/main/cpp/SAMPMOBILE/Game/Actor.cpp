@@ -18,6 +18,7 @@ CActor::CActor(int iSkin, float fX, float fY, float fZ, float fAngle)
 		spdlog::error("CActor::CActor: Invalid skin model: {}", iSkin);
 		iSkin = 29;
 	}
+	iSkin = static_cast<int>(EnsureValidPedModelPrototype(static_cast<uint>(iSkin)));
 
 	if (!pGame || !pGame->IsModelLoaded(iSkin)) {
 		if (!pGame) return;
@@ -47,6 +48,17 @@ CActor::CActor(int iSkin, float fX, float fY, float fZ, float fAngle)
 	ScriptCommand(&set_actor_z_angle, m_gtaId, fAngle);
 	ScriptCommand(&set_actor_can_be_decapitated, m_gtaId, 0);
 	ScriptCommand(&set_actor_decision_marker, m_gtaId, 0x10006);
+
+	// Match PC actor.cpp: place at exact server coordinates, clear waiting-for-collision
+	// freeze flag (0x40000), and set bInfiniteMass (0x40) so CPhysical::ProcessShift skips
+	// ProcessShiftSectorList capsule-penetration pushing across all clients.
+	TeleportTo(fX, fY, fZ);
+	SetFacingAngle(fAngle);
+	m_actor->m_bIsStaticWaitingForCollision = false;
+	m_actor->physicalFlags.bInfiniteMass = 1;
+	m_actor->physicalFlags.bDisableTurnForce = 1;
+	m_actor->ResetMoveSpeed();
+	m_actor->ResetTurnSpeed();
 }
 
 CActor::~CActor()
@@ -75,7 +87,13 @@ void CActor::SetInvulnerable(bool bInvulnerable)
 	if (!m_actor || GamePool_Ped_GetAt(m_gtaId) != m_actor) return;
 	m_invulnerable = bInvulnerable;
 
+	m_actor->physicalFlags.bInfiniteMass = 1;
+	m_actor->physicalFlags.bDisableTurnForce = 1;
+	m_actor->physicalFlags.bDisableMoveForce = bInvulnerable ? 1 : 0;
+
 	if (bInvulnerable) {
+		m_actor->ResetMoveSpeed();
+		m_actor->ResetTurnSpeed();
 		ScriptCommand(&set_actor_immunities, m_gtaId, 1, 1, 1, 1, 1);
 	}
 	else {
@@ -89,17 +107,15 @@ void CActor::ApplyAnimation(const char* szAnimName, const char* szAnimLib, float
 		return;
 	}
 
-	if (!szAnimLib || !strlen(szAnimLib)) {
+	if (!szAnimLib || !szAnimLib[0] || !szAnimName || !szAnimName[0]) {
 		return;
 	}
 
 	if (!strcasecmp(szAnimLib, "SEX")) {
 		return;
 	}
-	if (!strcasecmp(szAnimLib, "SAMP")) {
-		if (!eng::fn::CAnimManager_GetAnimationBlock<void*>(szAnimLib)) {
-			return;
-		}
+	if (!eng::fn::CAnimManager_GetAnimationBlock<void*>(szAnimLib)) {
+		return;
 	}
 
 	int iWaitAnimLoad = 0;

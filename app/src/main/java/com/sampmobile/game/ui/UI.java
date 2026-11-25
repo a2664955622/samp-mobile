@@ -16,6 +16,7 @@ import java.util.Arrays;
 import java.util.Objects;
 
 import com.sampmobile.game.SAMP;
+import com.sampmobile.game.ui.cef.CefManager;
 import com.sampmobile.game.ui.widgets.ButtonPanel;
 import com.sampmobile.game.ui.widgets.Chat;
 import com.sampmobile.game.ui.widgets.Dialog;
@@ -138,6 +139,9 @@ public class UI implements ButtonPanel.Listener, Voice.Listener, Dialog.Listener
         if (visible && samp != null) {
             samp.cancelAllNativeTouches();
         }
+        // 游戏聊天输入开/关 -> omp-cef：本地事件发给每个页面，同时上行
+        // ClientEmitEvent(ChatInputState)，对应 PC ChatHook::SetChatInputState。
+        CefManager.onGameChatStateChanged(visible);
     }
 
     public boolean isInputFocused() {
@@ -163,12 +167,16 @@ public class UI implements ButtonPanel.Listener, Voice.Listener, Dialog.Listener
         } catch (Throwable ignored) {
             // FirebaseInitProvider only runs in the main launcher process, not :game.
         }
-        samp.runOnUiThread(() -> {
-            samp.finish();
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(
-                    () -> android.os.Process.killProcess(android.os.Process.myPid()),
-                    150);
-        });
+        Thread exitWatchdog = new Thread(() -> {
+            try {
+                Thread.sleep(150);
+            } catch (InterruptedException ignored) {
+            }
+            android.os.Process.killProcess(android.os.Process.myPid());
+        }, "samp-exit-watchdog");
+        exitWatchdog.setDaemon(true);
+        exitWatchdog.start();
+        samp.runOnUiThread(samp::finish);
     }
 
     public void onResumeEvent() {
@@ -251,6 +259,12 @@ public class UI implements ButtonPanel.Listener, Voice.Listener, Dialog.Listener
 
     public void showKeyboard(boolean z) {
         Log.i(TAG, "**** showKeyboard " + z);
+        // 页面输入框正拿着键盘且该浏览器 controlsChat=true 时，游戏聊天框让位
+        // （PC ChatHook::Hook_OpenChatInput -> FocusManager::ShouldBlockChat）。
+        if (z && CefManager.shouldBlockChat()) {
+            Log.i(TAG, "**** showKeyboard blocked - focused CEF page owns chat input");
+            return;
+        }
         samp.runOnUiThread(() -> keyboard.show(z));
     }
 

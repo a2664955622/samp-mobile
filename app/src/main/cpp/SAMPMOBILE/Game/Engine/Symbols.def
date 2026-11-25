@@ -67,6 +67,7 @@ SYM_DATA(CVisibilityPlugins_m_alphaUnderwaterEntityList, "_ZN18CVisibilityPlugin
 SYM_DATA(CWeather_ForcedWeatherType, "_ZN8CWeather17ForcedWeatherTypeE", void, Required) // CWeather::ForcedWeatherType
 SYM_DATA(CWeather_NewWeatherType, "_ZN8CWeather14NewWeatherTypeE", void, Required) // CWeather::NewWeatherType
 SYM_DATA(CWeather_OldWeatherType, "_ZN8CWeather14OldWeatherTypeE", void, Required) // CWeather::OldWeatherType
+SYM_DATA(CWidget_m_pInitialTouchWidget, "_ZN7CWidget21m_pInitialTouchWidgetE", void, Required) // CWidget::m_pInitialTouchWidget
 SYM_DATA(CWorld_ms_aRepeatSectors, "_ZN6CWorld17ms_aRepeatSectorsE", void, Required) // CWorld::ms_aRepeatSectors
 SYM_DATA(CWorld_PlayerInFocus, "_ZN6CWorld13PlayerInFocusE", void, Required) // CWorld::PlayerInFocus
 SYM_DATA(CWorld_Players, "_ZN6CWorld7PlayersE", void, Required) // CWorld::Players
@@ -526,3 +527,28 @@ SYM_FN(CPedToPlayerConversations_Update, "_ZN25CPedToPlayerConversations6UpdateE
 SYM_FN(CAutomobile_ProcessFlyingCarStuff, "_ZN11CAutomobile21ProcessFlyingCarStuffEv", void, Required)
 SYM_FN(CCarCtrl_RemoveDistantCars, "_ZN8CCarCtrl17RemoveDistantCarsEv", void, Required)
 SYM_FN(CCarCtrl_RemoveCarsIfThePoolGetsFull, "_ZN8CCarCtrl27RemoveCarsIfThePoolGetsFullEv", void, Required)
+
+// Multiplayer physics, 2P co-op suppression, surfing, vertical-line & Actor/task parity
+SYM_FN(CPhysical_ProcessCollision, "_ZN9CPhysical16ProcessCollisionEv", void, Required)
+SYM_FN(CWorld_ProcessAttachedEntities, "_ZN6CWorld23ProcessAttachedEntitiesEv", void, Required)
+SYM_FN(CWorld_ProcessVerticalLine, "_ZN6CWorld19ProcessVerticalLineERK7CVectorfR9CColPointRP7CEntitybbbbbbP15CStoredCollPoly", bool, Required)
+SYM_FN(CGameLogic_IsCoopGameGoingOn, "_ZN10CGameLogic17IsCoopGameGoingOnEv", bool, Required)
+SYM_FN(CGameLogic_IsPlayerUse2PlayerControls, "_ZN10CGameLogic26IsPlayerUse2PlayerControlsEP10CPlayerPed", bool, Required)
+SYM_FN(CGameLogic_IsPlayerAllowedToGoInThisDirection, "_ZN10CGameLogic34IsPlayerAllowedToGoInThisDirectionEP10CPlayerPed7CVectorf", bool, Required)
+SYM_FN(CCivilianPed_ProcessControl, "_ZN12CCivilianPed14ProcessControlEv", void, Required)
+SYM_FN(CWeapon_GenerateDamageEvent, "_ZN7CWeapon19GenerateDamageEventEP4CPedP7CEntity11eWeaponTypei14ePedPieceTypesi", void, Required)
+SYM_FN(CTaskManager_SetTask, "_ZN12CTaskManager7SetTaskEP5CTaskib", void, Required)
+SYM_FN(CTaskManager_SetTaskSecondary, "_ZN12CTaskManager16SetTaskSecondaryEP5CTaski", void, Required)
+
+// Scoped weapon movement & native pause-menu / process shutdown lifecycle hooks
+SYM_FN(CTaskSimplePlayerOnFoot_PlayerControlZeldaWeapon, "_ZN23CTaskSimplePlayerOnFoot24PlayerControlZeldaWeaponEP10CPlayerPed", void, Required)
+SYM_FN(CTaskSimpleUseGun_ControlGunMove, "_ZN17CTaskSimpleUseGun14ControlGunMoveEP9CVector2D", int, Required)
+SYM_FN(CTaskSimpleUseGun_StartAnim, "_ZN17CTaskSimpleUseGun9StartAnimEP4CPed", void, Required)
+SYM_FN(CWidget_SetInitialTouchWidget, "_ZN7CWidget21SetInitialTouchWidgetEiPS_", void, Required)
+SYM_FN(MainMenuScreen_OnExit, "_ZN14MainMenuScreen6OnExitEv", void, Required)
+SYM_FN(MainMenuScreen_OnStartGame, "_ZN14MainMenuScreen11OnStartGameEv", void, Required)
+SYM_FN(QuitApp, "_Z7QuitAppv", void, Required)
+SYM_FN(DoGameRestart, "_Z13DoGameRestartv", bool, Required)
+SYM_FN(Menu_NewGame, "_Z12Menu_NewGamev", void, Required)
+SYM_FN(StartGameScreen_OnLoadGame, "_ZN15StartGameScreen10OnLoadGameEv", void, Required)
+SYM_FN(StartGameScreen_OnDeleteGame, "_ZN15StartGameScreen12OnDeleteGameEv", void, Required)

@@ -199,10 +199,13 @@ ButtonPanel::ButtonPanel()
 	 * selection read these via OnPlayerKeyStateChange. SendPrev/NextClass
 	 * stays on tap for servers using the standard << Spawn >> flow. */
 	m_left->setHoldCallback(
-			[this]() { m_heldLR = (uint16_t) -128; },
 			[this]() {
-				m_heldLR = 0;
-				LocalPlayerKeys.wKeyLR = 0;
+				m_uiLeft = true;
+				recomputeHeldAxes();
+			},
+			[this]() {
+				m_uiLeft = false;
+				recomputeHeldAxes();
 			});
 	m_left->setCallback([]() {
 		if (pNetGame) {
@@ -211,17 +214,23 @@ ButtonPanel::ButtonPanel()
 	});
 
 	m_up->setHoldCallback(
-			[this]() { m_heldUD = (uint16_t) -128; },
 			[this]() {
-				m_heldUD = 0;
-				LocalPlayerKeys.wKeyUD = 0;
+				m_uiUp = true;
+				recomputeHeldAxes();
+			},
+			[this]() {
+				m_uiUp = false;
+				recomputeHeldAxes();
 			});
 
 	m_right->setHoldCallback(
-			[this]() { m_heldLR = 128; },
 			[this]() {
-				m_heldLR = 0;
-				LocalPlayerKeys.wKeyLR = 0;
+				m_uiRight = true;
+				recomputeHeldAxes();
+			},
+			[this]() {
+				m_uiRight = false;
+				recomputeHeldAxes();
 			});
 	m_right->setCallback([]() {
 		if (pNetGame) {
@@ -230,10 +239,13 @@ ButtonPanel::ButtonPanel()
 	});
 
 	m_down->setHoldCallback(
-			[this]() { m_heldUD = 128; },
 			[this]() {
-				m_heldUD = 0;
-				LocalPlayerKeys.wKeyUD = 0;
+				m_uiDown = true;
+				recomputeHeldAxes();
+			},
+			[this]() {
+				m_uiDown = false;
+				recomputeHeldAxes();
 			});
 
 	/* numpad 8/4/6/2 - KEY_ANALOG_* bits, also held semantics */
@@ -363,6 +375,50 @@ void ButtonPanel::performLayout()
 	m_extend->performLayout();
 }
 
+void ButtonPanel::recomputeHeldAxes()
+{
+	const bool left = m_uiLeft || m_hwA || m_hwDpadLeft;
+	const bool right = m_uiRight || m_hwD || m_hwDpadRight;
+	const bool up = m_uiUp || m_hwW || m_hwDpadUp;
+	const bool down = m_uiDown || m_hwS || m_hwDpadDown;
+
+	const uint16_t prevLR = m_heldLR;
+	const uint16_t prevUD = m_heldUD;
+
+	m_heldLR = (left == right) ? 0 : (left ? static_cast<uint16_t>(-128) : static_cast<uint16_t>(128));
+	m_heldUD = (up == down) ? 0 : (up ? static_cast<uint16_t>(-128) : static_cast<uint16_t>(128));
+
+	if (prevLR != 0 && m_heldLR == 0) {
+		LocalPlayerKeys.wKeyLR = 0;
+	}
+	if (prevUD != 0 && m_heldUD == 0) {
+		LocalPlayerKeys.wKeyUD = 0;
+	}
+}
+
+void ButtonPanel::clearHeldKeys()
+{
+	for (int i = 0; i < 32; ++i) {
+		if (m_heldBKeys[i]) {
+			m_heldBKeys[i] = false;
+			if (i < ePadKeys::SIZE) {
+				LocalPlayerKeys.bKeys[i] = false;
+			}
+		}
+	}
+	m_uiLeft = m_uiRight = m_uiUp = m_uiDown = false;
+	m_hwW = m_hwS = m_hwA = m_hwD = false;
+	m_hwDpadUp = m_hwDpadDown = m_hwDpadLeft = m_hwDpadRight = false;
+	if (m_heldLR != 0) {
+		m_heldLR = 0;
+		LocalPlayerKeys.wKeyLR = 0;
+	}
+	if (m_heldUD != 0) {
+		m_heldUD = 0;
+		LocalPlayerKeys.wKeyUD = 0;
+	}
+}
+
 void ButtonPanel::applyHeldKeys()
 {
 	/* re-pin held keys every frame: GetKeys memsets bKeys on each read
@@ -421,36 +477,40 @@ void ButtonPanel::dismissTopModal()
 
 void ButtonPanel::handleHardwareKey(int androidKeyCode, bool isDown)
 {
-	if (!Settings::kmEnabled()) return;
+	if (!Settings::kmEnabled()) {
+		if (!isDown) {
+			clearHeldKeys();
+		}
+		return;
+	}
 	if (!pUI || !pGame) return;
 
-	// If in-game ImGui keyboard is open, only allow ESC
-	if (pUI->keyboard() && pUI->keyboard()->visible()) {
-		if (androidKeyCode == 111 /* KEYCODE_ESCAPE */ && isDown) {
+	// If in-game ImGui keyboard is open, still process key-up releases so held WASD/fire
+	// never latches across modal focus transitions; block new key-down actions except ESC.
+	if (isDown && pUI->keyboard() && pUI->keyboard()->visible()) {
+		if (androidKeyCode == 111 /* KEYCODE_ESCAPE */) {
 			pUI->keyboard()->hide();
 		}
 		return;
 	}
 
 	// If a SA-MP Menu is open, allow keyboard navigation (Up/Down/Enter/Space/F/ESC)
-	if (pNetGame && pNetGame->GetMenuPool() && pNetGame->GetMenuPool()->IsVisible()) {
-		if (isDown) {
-			if (androidKeyCode == 19 || androidKeyCode == 51) { // DPAD_UP / W
-				pNetGame->GetMenuPool()->MoveSelection(-1);
-				return;
-			}
-			if (androidKeyCode == 20 || androidKeyCode == 47) { // DPAD_DOWN / S
-				pNetGame->GetMenuPool()->MoveSelection(1);
-				return;
-			}
-			if (androidKeyCode == 66 || androidKeyCode == 62) { // ENTER / SPACE
-				pNetGame->GetMenuPool()->SelectCurrentRow();
-				return;
-			}
-			if (androidKeyCode == 34 || androidKeyCode == 111) { // F / ESC
-				pNetGame->GetMenuPool()->ExitMenu();
-				return;
-			}
+	if (isDown && pNetGame && pNetGame->GetMenuPool() && pNetGame->GetMenuPool()->IsVisible()) {
+		if (androidKeyCode == 19 || androidKeyCode == 51) { // DPAD_UP / W
+			pNetGame->GetMenuPool()->MoveSelection(-1);
+			return;
+		}
+		if (androidKeyCode == 20 || androidKeyCode == 47) { // DPAD_DOWN / S
+			pNetGame->GetMenuPool()->MoveSelection(1);
+			return;
+		}
+		if (androidKeyCode == 66 || androidKeyCode == 62) { // ENTER / SPACE
+			pNetGame->GetMenuPool()->SelectCurrentRow();
+			return;
+		}
+		if (androidKeyCode == 34 || androidKeyCode == 111) { // F / ESC
+			pNetGame->GetMenuPool()->ExitMenu();
+			return;
 		}
 	}
 
@@ -461,6 +521,7 @@ void ButtonPanel::handleHardwareKey(int androidKeyCode, bool isDown)
 		case 48:  // KEYCODE_T
 		case 136: // KEYCODE_F6
 			if (isDown) {
+				clearHeldKeys();
 				if (Settings::systemkeyboard()) {
 					if (g_java) g_java->showKeyboard(true);
 				}
@@ -612,35 +673,49 @@ void ButtonPanel::handleHardwareKey(int androidKeyCode, bool isDown)
 			break;
 
 		case 51: // KEYCODE_W
+			m_hwW = isDown;
+			recomputeHeldAxes();
+			break;
 		case 19: // KEYCODE_DPAD_UP
-			m_heldUD = isDown ? (uint16_t) -128 : 0;
-			if (!isDown) LocalPlayerKeys.wKeyUD = 0;
+			m_hwDpadUp = isDown;
+			recomputeHeldAxes();
 			break;
 
 		case 47: // KEYCODE_S
+			m_hwS = isDown;
+			recomputeHeldAxes();
+			break;
 		case 20: // KEYCODE_DPAD_DOWN
-			m_heldUD = isDown ? 128 : 0;
-			if (!isDown) LocalPlayerKeys.wKeyUD = 0;
+			m_hwDpadDown = isDown;
+			recomputeHeldAxes();
 			break;
 
 		case 29: // KEYCODE_A
-		case 21: // KEYCODE_DPAD_LEFT
-			m_heldLR = isDown ? (uint16_t) -128 : 0;
-			if (!isDown) {
-				LocalPlayerKeys.wKeyLR = 0;
+			m_hwA = isDown;
+			recomputeHeldAxes();
+			if (isDown && pNetGame) {
+				pNetGame->SendPrevClass();
 			}
-			else if (pNetGame) {
+			break;
+		case 21: // KEYCODE_DPAD_LEFT
+			m_hwDpadLeft = isDown;
+			recomputeHeldAxes();
+			if (isDown && pNetGame) {
 				pNetGame->SendPrevClass();
 			}
 			break;
 
 		case 32: // KEYCODE_D
-		case 22: // KEYCODE_DPAD_RIGHT
-			m_heldLR = isDown ? 128 : 0;
-			if (!isDown) {
-				LocalPlayerKeys.wKeyLR = 0;
+			m_hwD = isDown;
+			recomputeHeldAxes();
+			if (isDown && pNetGame) {
+				pNetGame->SendNextClass();
 			}
-			else if (pNetGame) {
+			break;
+		case 22: // KEYCODE_DPAD_RIGHT
+			m_hwDpadRight = isDown;
+			recomputeHeldAxes();
+			if (isDown && pNetGame) {
 				pNetGame->SendNextClass();
 			}
 			break;

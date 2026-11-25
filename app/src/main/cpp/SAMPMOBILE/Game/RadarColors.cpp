@@ -216,6 +216,13 @@ void SetRadarColor(int nIndex, uint32_t dwColor)
 	}
 }
 
+void ResetRadarColorSlot(int nIndex)
+{
+	if (nIndex >= 0 && nIndex < kRadarColorSlots) {
+		dwUseHudColors[nIndex] = dwHudColors[nIndex % kRadarColorTableLen];
+	}
+}
+
 void GameResetRadarColors()
 {
 	for (int i = 0; i < kRadarColorSlots; ++i) {

@@ -20,12 +20,25 @@ float fLocalAspectRatio;
 float fLocalPlayerSkills[kWeaponSkillCount];
 float fRemotePlayerSkills[PLAYER_PED_SLOTS][kWeaponSkillCount];
 
+extern sa::CPlayerInfo* WORLD_PLAYERS;
+extern PAD_KEYS RemotePlayerKeys[PLAYER_PED_SLOTS];
+
+static inline uint8_t GameGetActiveCamIndex()
+{
+	sa::CCamera& cam = sa::getTheCamera();
+	return (cam.m_nActiveCam < 3) ? cam.m_nActiveCam : 0;
+}
+
 /**
  * @return
  */
 CAMERA_AIM* GameGetInternalAim()
 {
-	return pcaInternalAim;
+	if (!pcaInternalAim) {
+		return nullptr;
+	}
+	sa::CCamera& cam = sa::getTheCamera();
+	return reinterpret_cast<CAMERA_AIM*>(&cam.m_aCams[GameGetActiveCamIndex()].Front);
 }
 
 /**
@@ -33,7 +46,15 @@ CAMERA_AIM* GameGetInternalAim()
  */
 uint8_t GameGetLocalPlayerCameraMode()
 {
-	return pbyteCameraMode ? *pbyteCameraMode : 4;
+	if (!pbyteCameraMode) {
+		return 4;
+	}
+	sa::CCamera& cam = sa::getTheCamera();
+	uint16_t mode = cam.m_aCams[GameGetActiveCamIndex()].m_nMode;
+	if ((mode == 0 || mode == 4) && cam.PlayerWeaponMode.m_nMode != 0) {
+		mode = cam.PlayerWeaponMode.m_nMode;
+	}
+	return static_cast<uint8_t>(mode);
 }
 
 /**
@@ -45,10 +66,58 @@ uint8_t GameGetPlayerCameraMode(uint8_t bytePlayerNumber)
 	return bytePlayerNumber < PLAYER_PED_SLOTS ? byteCameraMode[bytePlayerNumber] : 4;
 }
 
+uint8_t GameResolveRemoteEffectiveCameraMode(uint8_t bytePlayerNumber)
+{
+	uint8_t mode = GameGetPlayerCameraMode(bytePlayerNumber);
+	if (bytePlayerNumber == 0 || bytePlayerNumber >= PLAYER_PED_SLOTS || !WORLD_PLAYERS) {
+		return mode;
+	}
+
+	sa::CPed* ped = WORLD_PLAYERS[bytePlayerNumber].m_pPed;
+	if (!ped || ped->m_nPedFlags.bInVehicle) {
+		return mode;
+	}
+
+	const PAD_KEYS& rk = RemotePlayerKeys[bytePlayerNumber];
+	const bool bAimKey = rk.bKeys[ePadKeys::KEY_HANDBRAKE];
+	const bool bFireKey = rk.bKeys[ePadKeys::KEY_FIRE];
+
+	uint8_t weapon = 0;
+	if (ped->m_nActiveWeaponSlot < 13) {
+		weapon = static_cast<uint8_t>(ped->m_aWeapons[ped->m_nActiveWeaponSlot].dwType);
+	}
+
+	if (bAimKey) {
+		switch (weapon) {
+			case sa::eWeaponType::WEAPONTYPE_SNIPERRIFLE: return 7;
+			case sa::eWeaponType::WEAPONTYPE_RLAUNCHER:   return 8;
+			case sa::eWeaponType::WEAPONTYPE_RLAUNCHER_HS:return 51;
+			case sa::eWeaponType::WEAPONTYPE_CAMERA:      return 46;
+			default: break;
+		}
+		if ((weapon >= sa::eWeaponType::WEAPONTYPE_PISTOL && weapon <= sa::eWeaponType::WEAPONTYPE_MINIGUN)
+				|| weapon == sa::eWeaponType::WEAPONTYPE_SPRAYCAN
+				|| weapon == sa::eWeaponType::WEAPONTYPE_EXTINGUISHER) {
+			if (mode == 0 || mode == 4) {
+				return 53; // MODE_AIMWEAPON before first AimSync arrives
+			}
+		}
+	}
+	else if (!bFireKey) {
+		if (mode == 7 || mode == 8 || mode == 46 || mode == 51 || mode == 53 || mode == 55) {
+			return 4; // MODE_FOLLOWPED once remote player releases aim/fire
+		}
+	}
+
+	return mode;
+}
+
 float GameGetLocalPlayerCameraExtZoom()
 {
 	if (!pfCameraExtZoom) return 0.0f;
-	return std::clamp((*pfCameraExtZoom - 35.0f) * 0.028571429f, 0.0f, 1.0f);
+	sa::CCamera& cam = sa::getTheCamera();
+	const float fov = cam.m_aCams[GameGetActiveCamIndex()].FOV;
+	return std::clamp((fov - 35.0f) * 0.028571429f, 0.0f, 1.0f);
 }
 
 float GameGetAspectRatio()

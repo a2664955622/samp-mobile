@@ -1,4 +1,5 @@
 #include "../Game/Game.h"
+#include "../Game/Util.h"
 #include "../Client.h"
 #include "NetGame.h"
 #include "RpcHandlers.h"
@@ -194,7 +195,7 @@ void RpcHandlers::OnRequestClass(const proto::RequestClassReply& p)
 	memcpy(SpawnInfo.iSpawnWeaponsAmmo, p.spawnInfo.spawnWeaponsAmmo.data(), sizeof(SpawnInfo.iSpawnWeaponsAmmo));
 
 	if (p.selectable) {
-		pLocalPlayer->SetSpawnInfo(&SpawnInfo);
+		pLocalPlayer->SetSpawnInfo(&SpawnInfo, p.spawnInfo.customSkin);
 		pLocalPlayer->HandleClassSelectionOutcome(true);
 	}
 	else {
@@ -359,7 +360,8 @@ void RpcHandlers::OnWorldPlayerAdd(const proto::WorldPlayerAdd& p)
 		CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(p.playerId);
 		if (pRemotePlayer) {
 			sa::CVector vecPos(p.position.x, p.position.y, p.position.z);
-			if (pRemotePlayer->Spawn(p.team, p.skin, &vecPos, p.rotation, p.color, p.fightingStyle)) {
+			const int effectiveSkin = ResolveEffectivePedSkin(p.skin, p.customSkin);
+			if (pRemotePlayer->Spawn(p.team, effectiveSkin, &vecPos, p.rotation, p.color, p.fightingStyle)) {
 				CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
 				if (pPlayerPed) {
 					for (int i = 0; i < 11; i++) {
@@ -464,12 +466,16 @@ void RpcHandlers::OnWorldVehicleAdd(const proto::WorldVehicleAdd& p)
 	}
 
 	if (bIsTrain) {
-		VehicleInfo.VehicleID++;
-		pVehiclePool->New(&VehicleInfo);
-		VehicleInfo.VehicleID++;
-		pVehiclePool->New(&VehicleInfo);
-		VehicleInfo.VehicleID++;
-		pVehiclePool->New(&VehicleInfo);
+		for (int c = 0; c < 3; ++c) {
+			VehicleInfo.VehicleID++;
+			if (pVehiclePool->New(&VehicleInfo)) {
+				if (CVehicle* pCarriage = pVehiclePool->GetAt(VehicleInfo.VehicleID)) {
+					if (p.bodyColor1 != -1 || p.bodyColor2 != -1) {
+						pCarriage->SetColor(p.bodyColor1, p.bodyColor2);
+					}
+				}
+			}
+		}
 	}
 
 	if (pVehicle->GetVehicleSubtype() == VEHICLE_SUBTYPE_CAR) {
@@ -730,7 +736,10 @@ void RpcHandlers::OnSetCheckpoint(const proto::SetCheckpoint& p)
 void RpcHandlers::OnDisableCheckpoint(const proto::DisableCheckpoint&)
 {
 	spdlog::debug("RPC: Disable checkpoint");
-	if (pGame) pGame->EnableCheckpoints(false);
+	if (pGame) {
+		pGame->EnableCheckpoints(false);
+		pGame->UpdateCheckpoints();
+	}
 }
 
 void RpcHandlers::OnSetRaceCheckpoint(const proto::SetRaceCheckpoint& p)
@@ -751,7 +760,10 @@ void RpcHandlers::OnSetRaceCheckpoint(const proto::SetRaceCheckpoint& p)
 void RpcHandlers::OnDisableRaceCheckpoint(const proto::DisableRaceCheckpoint&)
 {
 	spdlog::debug("RPC: Disable race checkpoint");
-	if (pGame) pGame->EnableRaceCheckpoints(false);
+	if (pGame) {
+		pGame->EnableRaceCheckpoints(false);
+		pGame->UpdateCheckpoints();
+	}
 }
 
 void RpcHandlers::OnDamageVehicle(const proto::DamageVehicle& p)
@@ -928,9 +940,14 @@ void RpcHandlers::OnShowActor(const proto::ShowActor& p)
 
 	if (!proto::isFinite(p.position) || !std::isfinite(p.angle)) return;
 
+	const int effectiveSkin = ResolveEffectivePedSkin(p.skin, p.customSkin);
+	if (!IsValidPedModel(static_cast<uint>(effectiveSkin))) {
+		return;
+	}
+
 	NEW_ACTOR newActor{};
 	newActor.ActorID = p.actorId;
-	newActor.iSkin = p.skin;
+	newActor.iSkin = effectiveSkin;
 	newActor.vecPos = sa::CVector(p.position.x, p.position.y, p.position.z);
 	newActor.fAngle = p.angle;
 	newActor.fHealth = p.health;

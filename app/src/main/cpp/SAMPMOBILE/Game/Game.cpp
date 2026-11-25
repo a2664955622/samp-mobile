@@ -3,6 +3,7 @@
 //
 
 #include "Game.h"
+#include "Hooks.h"
 #include "../Client.h"
 #include "../Java/Java.h"
 #include "../UI/UISettings.h"
@@ -72,7 +73,8 @@ void Game::StartGame()
 {
 	//spdlog::info("Game::StartGame");
 
-	// StartGameScreen::OnNewGameCheck
+	Hooks::allowInitialWorldBoot();
+	// StartGameScreen::OnNewGameCheck -> Menu_NewGame -> SettingsBeforeStartingGame
 	eng::fn::StartGameScreen_OnNewGameCheck();
 
 	GameAimSyncInit();

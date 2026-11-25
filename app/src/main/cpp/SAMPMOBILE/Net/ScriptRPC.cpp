@@ -108,7 +108,7 @@ void RpcHandlers::OnSetSpawnInfo(const proto::SetSpawnInfo& p)
 	memcpy(spawnInfo.iSpawnWeapons, p.spawnInfo.spawnWeapons.data(), sizeof(spawnInfo.iSpawnWeapons));
 	memcpy(spawnInfo.iSpawnWeaponsAmmo, p.spawnInfo.spawnWeaponsAmmo.data(), sizeof(spawnInfo.iSpawnWeaponsAmmo));
 
-	pNetGame->GetPlayerPool()->GetLocalPlayer()->SetSpawnInfo(&spawnInfo);
+	pNetGame->GetPlayerPool()->GetLocalPlayer()->SetSpawnInfo(&spawnInfo, p.spawnInfo.customSkin);
 }
 
 void RpcHandlers::OnForceClassSelection(const proto::ForceClassSelection&)
@@ -123,6 +123,10 @@ void RpcHandlers::OnForceClassSelection(const proto::ForceClassSelection&)
 void RpcHandlers::OnShowGangZone(const proto::ShowGangZone& p)
 {
 	spdlog::debug("ScriptRPC: ScrAddGangZone");
+
+	if (!proto::isFinite(p.min) || !proto::isFinite(p.max)) {
+		return;
+	}
 
 	CGangZonePool* pGangZonePool = pNetGame->GetGangZonePool();
 	if (pGangZonePool) {
@@ -325,8 +329,8 @@ void RpcHandlers::OnSetPlayerSkin(const proto::SetPlayerSkin& p)
 		return;
 	}
 
-	const int skinId = static_cast<int>(p.skinId);
-	if (IsValidPedModel(skinId)) {
+	const int skinId = ResolveEffectivePedSkin(static_cast<int>(p.skinId), static_cast<int>(p.customSkinId));
+	if (IsValidPedModel(static_cast<uint>(skinId))) {
 		if (pPlayerPool->GetLocalPlayerID() == p.playerId) {
 			if (pPlayerPool->GetLocalPlayer() && pPlayerPool->GetLocalPlayer()->GetPlayerPed()) {
 				pPlayerPool->GetLocalPlayer()->GetPlayerPed()->SetModelIndex(static_cast<uint>(skinId));
@@ -356,8 +360,8 @@ void RpcHandlers::OnSetPlayerMapIcon(const proto::SetPlayerMapIcon& p)
 {
 	spdlog::debug("ScriptRPC: ScrSetPlayerMapIcon");
 
-	// CRadar::RadarBlipSprites holds 64 entries (0..63); guard out-of-range IDs.
-	if (p.type >= 64) {
+	// CRadar::RadarBlipSprites holds 64 entries (0..63); guard out-of-range IDs and non-finite coords.
+	if (!proto::isFinite(p.position) || p.type >= 64) {
 		return;
 	}
 
@@ -1023,6 +1027,12 @@ void RpcHandlers::OnPutPlayerInVehicle(const proto::PutPlayerInVehicle& p)
 	CVehiclePool* pVehiclePool = pNetGame->GetVehiclePool();
 	if (!pVehiclePool) {
 		return;
+	}
+
+	if (CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool()) {
+		if (CLocalPlayer* pLocalPlayer = pPlayerPool->GetLocalPlayer()) {
+			pLocalPlayer->DisableSurfing();
+		}
 	}
 
 	uint32_t dwGtaVehicleID = pVehiclePool->FindGtaIDFromID(p.vehicleId);

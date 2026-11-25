@@ -41,6 +41,7 @@ import androidx.appcompat.app.AlertDialog;
 import androidx.core.content.FileProvider;
 import androidx.fragment.app.Fragment;
 import androidx.recyclerview.widget.GridLayoutManager;
+import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.bumptech.glide.Glide;
@@ -65,14 +66,18 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.sampmobile.launcher.BuildConfig;
 import com.sampmobile.launcher.R;
+import com.sampmobile.launcher.download.GamedataInstallerTask;
+import com.sampmobile.launcher.download.GamedataState;
 import com.sampmobile.launcher.ui.GameDataImportDialog;
 import com.sampmobile.launcher.ui.widget.GtaOptionView;
 import com.sampmobile.launcher.ui.widget.GtaSaSliderView;
 import com.sampmobile.launcher.ui.widget.GtaTabStrip;
 import com.sampmobile.launcher.utils.GameDataImporter;
+import com.sampmobile.launcher.utils.GameDataVerifier;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
 import com.sampmobile.launcher.utils.Utils;
 
@@ -80,17 +85,19 @@ import com.sampmobile.launcher.utils.Utils;
 public class SettingsPageFragment extends Fragment implements LauncherThemeManager.ThemeListener {
 
     private static final int CAT_MULTIPLAYER = 0;
-    private static final int CAT_GRAPHICS    = 1;
-    private static final int CAT_CAMERA      = 2;
-    private static final int CAT_CONTROLS    = 3;
-    private static final int CAT_AUDIO       = 4;
-    private static final int CAT_HUD_CHAT    = 5;
-    private static final int CAT_SCREENSHOTS = 6;
-    private static final int CAT_LOGS        = 7;
-    private static final int CAT_HELP_ABOUT  = 8;
+    private static final int CAT_GAMEDATA    = 1;
+    private static final int CAT_GRAPHICS    = 2;
+    private static final int CAT_CAMERA      = 3;
+    private static final int CAT_CONTROLS    = 4;
+    private static final int CAT_AUDIO       = 5;
+    private static final int CAT_HUD_CHAT    = 6;
+    private static final int CAT_SCREENSHOTS = 7;
+    private static final int CAT_LOGS        = 8;
+    private static final int CAT_HELP_ABOUT  = 9;
 
     private static final String[] CATEGORY_TITLES = {
             "联机",
+            "文件验证",
             "画面",
             "镜头",
             "操作",
@@ -101,9 +108,15 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
             "帮助与关于"
     };
 
+    private static final String[] GAMEDATA_EDITION_ITEMS = {
+            "精简版（推荐）",
+            "完整版（2.10 GiB）"
+    };
+
     private int currentCategory = CAT_MULTIPLAYER;
     private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private View rootView;
+    private GtaTabStrip settingsTabs;
 
     private View[] categoryPanels;
 
@@ -118,12 +131,29 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
 
     private TextView btn_gfx_preset_low, btn_gfx_preset_med, btn_gfx_preset_high, btn_gfx_preset_ultra;
     private TextView btn_open_hud_editor, btn_reset_hud_editor;
-    private TextView tv_gamedata_status, btn_import_gamedata_zip;
+
+    // 文件验证与资源管理选项卡
+    private GtaOptionView option_gd_edition;
+    private TextView tv_gd_summary, tv_gd_storage_meta, tv_gd_list_summary, tv_gd_list_empty;
+    private TextView btn_gd_import, btn_gd_download, btn_gd_verify, btn_gd_filter_all, btn_gd_filter_issues;
+    private View layout_gd_download_progress;
+    private TextView tv_gd_dl_status, tv_gd_dl_bytes;
+    private android.widget.ProgressBar pb_gd_download;
+    private RecyclerView rv_gd_files;
+    private final List<GameDataVerifier.FileCheckItem> allGameDataItems = new ArrayList<>();
+    private final List<GameDataVerifier.FileCheckItem> displayedGameDataItems = new ArrayList<>();
+    private GameDataFileAdapter gameDataFileAdapter;
+    private GameDataVerifier.Edition selectedGameDataEdition = GameDataVerifier.Edition.LITE;
+    private GameDataVerifier.Report lastGameDataReport;
+    private boolean gameDataFilterIssuesOnly = false;
+    private final AtomicBoolean gdDownloading = new AtomicBoolean(false);
+    private volatile GamedataInstallerTask activeDownloadTask;
+    private long lastDownloadProgressPostMs = 0L;
 
     private final ActivityResultLauncher<String[]> gameDataZipPicker =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
                 if (uri != null && isAdded()) {
-                    GameDataImportDialog.startImport(requireActivity(), uri, this::refreshGameDataStatus);
+                    GameDataImportDialog.startImport(requireActivity(), uri, this::refreshGameDataVerification);
                 }
             });
 
@@ -205,6 +235,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
 
     private static final int[] PANEL_LAYOUTS = {
             R.layout.settings_panel_multiplayer,
+            R.layout.settings_panel_gamedata,
             R.layout.settings_panel_graphics,
             R.layout.settings_panel_camera,
             R.layout.settings_panel_controls,
@@ -278,21 +309,34 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
     public void onPageShown() {
         if (!isAdded() || settings_prefs == null) return;
         setWidgetsForSettings();
-        if (currentCategory == CAT_SCREENSHOTS) {
+        if (currentCategory == CAT_GAMEDATA) {
+            refreshGameDataVerification();
+        } else if (currentCategory == CAT_SCREENSHOTS) {
             refreshScreenshotGallery();
         } else if (currentCategory == CAT_LOGS) {
             refreshDiagnosticStatus();
         }
     }
 
+    /** 供 MainActivity 在缺少游戏数据时一键切到「文件验证」选项卡。 */
+    public void openGameDataTab() {
+        if (categoryPanels == null) return;
+        if (settingsTabs != null) {
+            settingsTabs.setSelectedTab(CAT_GAMEDATA, false);
+        }
+        switchCategory(CAT_GAMEDATA);
+    }
+
     @Override
     public void onDestroyView() {
+        cancelActiveGameDataDownload();
         LauncherThemeManager.removeListener(this);
         super.onDestroyView();
     }
 
     @Override
     public void onDestroy() {
+        cancelActiveGameDataDownload();
         super.onDestroy();
         ioExecutor.shutdownNow();
     }
@@ -304,6 +348,8 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         updateGraphicsPresetUI();
         updateScreenshotModeUI();
         updateHudEditorButtonUI();
+        updateGameDataFilterUI();
+        updateGameDataDownloadButtonUI();
         if (screenshotAdapter != null) {
             screenshotAdapter.notifyDataSetChanged();
         }
@@ -467,29 +513,35 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         tv_about_version_line = view.findViewById(R.id.tv_about_version_line);
         tv_about_summary = view.findViewById(R.id.tv_about_summary);
 
-        // 游戏数据包一键导入
-        tv_gamedata_status = view.findViewById(R.id.tv_gamedata_status);
-        btn_import_gamedata_zip = view.findViewById(R.id.btn_import_gamedata_zip);
-        if (btn_import_gamedata_zip != null) {
-            btn_import_gamedata_zip.setOnClickListener(v ->
-                    gameDataZipPicker.launch(new String[]{"application/zip", "application/octet-stream", "*/*"}));
+        // 文件验证与游戏资源选项卡
+        option_gd_edition = view.findViewById(R.id.option_gd_edition);
+        tv_gd_summary = view.findViewById(R.id.tv_gd_summary);
+        tv_gd_storage_meta = view.findViewById(R.id.tv_gd_storage_meta);
+        tv_gd_list_summary = view.findViewById(R.id.tv_gd_list_summary);
+        tv_gd_list_empty = view.findViewById(R.id.tv_gd_list_empty);
+        btn_gd_import = view.findViewById(R.id.btn_gd_import);
+        btn_gd_download = view.findViewById(R.id.btn_gd_download);
+        btn_gd_verify = view.findViewById(R.id.btn_gd_verify);
+        btn_gd_filter_all = view.findViewById(R.id.btn_gd_filter_all);
+        btn_gd_filter_issues = view.findViewById(R.id.btn_gd_filter_issues);
+        layout_gd_download_progress = view.findViewById(R.id.layout_gd_download_progress);
+        tv_gd_dl_status = view.findViewById(R.id.tv_gd_dl_status);
+        tv_gd_dl_bytes = view.findViewById(R.id.tv_gd_dl_bytes);
+        pb_gd_download = view.findViewById(R.id.pb_gd_download);
+        rv_gd_files = view.findViewById(R.id.rv_gd_files);
+        if (rv_gd_files != null) {
+            rv_gd_files.setLayoutManager(new LinearLayoutManager(requireContext()));
+            gameDataFileAdapter = new GameDataFileAdapter();
+            rv_gd_files.setAdapter(gameDataFileAdapter);
         }
-        refreshGameDataStatus();
-    }
-
-    private void refreshGameDataStatus() {
-        if (tv_gamedata_status == null || !isAdded()) return;
-        List<String> missing = GameDataImporter.findMissingCoreFiles(requireContext().getExternalFilesDir(null));
-        if (missing.isEmpty()) {
-            tv_gamedata_status.setText("状态：游戏数据包已就绪（可随时重新选择 .zip 覆盖导入）");
-        } else {
-            tv_gamedata_status.setText("状态：未就绪，缺少 " + String.join("、", missing));
-        }
+        setupGameDataControls();
+        refreshGameDataVerification();
     }
 
     private void setupCategoryNavigation(View view) {
         categoryPanels = new View[]{
                 view.findViewById(R.id.panel_multiplayer),
+                view.findViewById(R.id.panel_gamedata),
                 view.findViewById(R.id.panel_graphics),
                 view.findViewById(R.id.panel_camera),
                 view.findViewById(R.id.panel_controls),
@@ -500,9 +552,9 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
                 view.findViewById(R.id.panel_help_about)
         };
 
-        GtaTabStrip tabs = view.findViewById(R.id.settings_tabs);
-        tabs.setTabs(CATEGORY_TITLES);
-        tabs.setOnTabSelectedListener((index, reselected) -> {
+        settingsTabs = view.findViewById(R.id.settings_tabs);
+        settingsTabs.setTabs(CATEGORY_TITLES);
+        settingsTabs.setOnTabSelectedListener((index, reselected) -> {
             if (reselected) {
                 if (categoryPanels[index] instanceof android.widget.ScrollView) {
                     ((android.widget.ScrollView) categoryPanels[index]).smoothScrollTo(0, 0);
@@ -526,7 +578,9 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
             categoryPanels[i].setVisibility((i == catIdx) ? View.VISIBLE : View.GONE);
         }
 
-        if (catIdx == CAT_SCREENSHOTS) {
+        if (catIdx == CAT_GAMEDATA) {
+            refreshGameDataVerification();
+        } else if (catIdx == CAT_SCREENSHOTS) {
             refreshScreenshotGallery();
         } else if (catIdx == CAT_LOGS) {
             refreshDiagnosticStatus();
@@ -1671,6 +1725,448 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         tv_about_summary.setText(
                 "专为移动端打造的圣安地列斯多人联机启动器与游戏客户端，全面支持 0.3.7 与 0.3.DL 服务器协议，集成原生画质调节、纯净截图库与模块化扩展支持。\n\n"
                 + "开源致谢：基于 Alyn SA-MP Mobile 二次开发，致谢 AML / MonetLoader / CLEO 等社区开源项目。");
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    //  文件验证与游戏资源管理（手动导入 / 手动下载精简版 / 逐项文件状态）
+    // ════════════════════════════════════════════════════════════════════════
+
+    private void setupGameDataControls() {
+        if (option_gd_edition != null) {
+            option_gd_edition.setAdapter(createDropdownAdapter(GAMEDATA_EDITION_ITEMS));
+            option_gd_edition.setText(GAMEDATA_EDITION_ITEMS[0], false);
+            option_gd_edition.setOnItemClickListener((parent, v, pos, id) -> {
+                selectedGameDataEdition = (pos == 1)
+                        ? GameDataVerifier.Edition.FULL
+                        : GameDataVerifier.Edition.LITE;
+                refreshGameDataVerification();
+            });
+        }
+        if (btn_gd_import != null) {
+            btn_gd_import.setOnClickListener(v -> {
+                if (gdDownloading.get()) {
+                    Toast.makeText(requireContext(), "正在下载数据包，请先取消后再导入", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                gameDataZipPicker.launch(new String[]{"application/zip", "application/octet-stream", "*/*"});
+            });
+        }
+        if (btn_gd_download != null) {
+            btn_gd_download.setOnClickListener(v -> {
+                if (gdDownloading.get()) {
+                    cancelActiveGameDataDownload();
+                } else {
+                    onClickManualGameDataDownload();
+                }
+            });
+        }
+        if (btn_gd_verify != null) {
+            btn_gd_verify.setOnClickListener(v -> {
+                refreshGameDataVerification();
+                Toast.makeText(requireContext(), "正在重新验证游戏文件…", Toast.LENGTH_SHORT).show();
+            });
+        }
+        if (btn_gd_filter_all != null) {
+            btn_gd_filter_all.setOnClickListener(v -> {
+                gameDataFilterIssuesOnly = false;
+                updateGameDataFilterUI();
+                applyGameDataListFilter();
+            });
+        }
+        if (btn_gd_filter_issues != null) {
+            btn_gd_filter_issues.setOnClickListener(v -> {
+                gameDataFilterIssuesOnly = true;
+                updateGameDataFilterUI();
+                applyGameDataListFilter();
+            });
+        }
+        updateGameDataFilterUI();
+        updateGameDataDownloadButtonUI();
+    }
+
+    private void updateGameDataFilterUI() {
+        if (btn_gd_filter_all == null || btn_gd_filter_issues == null || !isAdded()) return;
+        int accentColor = LauncherThemeManager.getAccentColor(requireContext());
+        int colorOnAccent = requireContext().getResources().getColor(R.color.launcher_on_accent);
+        int colorText = requireContext().getResources().getColor(R.color.launcher_text);
+
+        boolean all = !gameDataFilterIssuesOnly;
+        btn_gd_filter_all.setBackgroundResource(all ? R.drawable.launcher_btn_primary : R.drawable.launcher_btn_outline);
+        btn_gd_filter_all.setBackgroundTintList(all ? ColorStateList.valueOf(accentColor) : null);
+        btn_gd_filter_all.setTextColor(all ? colorOnAccent : colorText);
+
+        btn_gd_filter_issues.setBackgroundResource(!all ? R.drawable.launcher_btn_primary : R.drawable.launcher_btn_outline);
+        btn_gd_filter_issues.setBackgroundTintList(!all ? ColorStateList.valueOf(accentColor) : null);
+        btn_gd_filter_issues.setTextColor(!all ? colorOnAccent : colorText);
+    }
+
+    private void updateGameDataDownloadButtonUI() {
+        if (btn_gd_download == null || !isAdded()) return;
+        if (gdDownloading.get()) {
+            btn_gd_download.setBackgroundResource(R.drawable.launcher_btn_danger);
+            btn_gd_download.setBackgroundTintList(null);
+            btn_gd_download.setTextColor(requireContext().getResources().getColor(R.color.launcher_danger));
+            btn_gd_download.setText("取消下载");
+        } else {
+            int accentColor = LauncherThemeManager.getAccentColor(requireContext());
+            btn_gd_download.setBackgroundResource(R.drawable.launcher_btn_primary);
+            btn_gd_download.setBackgroundTintList(ColorStateList.valueOf(accentColor));
+            btn_gd_download.setTextColor(requireContext().getResources().getColor(R.color.launcher_on_accent));
+            btn_gd_download.setText("启动器下载");
+        }
+    }
+
+    private void refreshGameDataVerification() {
+        Context ctx = getContext();
+        if (ctx == null || tv_gd_summary == null) return;
+        final Context appCtx = ctx.getApplicationContext();
+        final GameDataVerifier.Edition edition = selectedGameDataEdition;
+        ioExecutor.execute(() -> {
+            GameDataVerifier.Report report = GameDataVerifier.verify(appCtx, edition);
+            androidx.fragment.app.FragmentActivity act = getActivity();
+            if (act != null && isAdded()) {
+                act.runOnUiThread(() -> {
+                    if (!isAdded() || getView() == null) return;
+                    renderGameDataReport(report);
+                });
+            }
+        });
+    }
+
+    private void renderGameDataReport(GameDataVerifier.Report report) {
+        lastGameDataReport = report;
+        String editionLabel = (report.edition == GameDataVerifier.Edition.FULL)
+                ? "完整版校验（2.10 GiB）"
+                : "精简版校验";
+        String detectedPack = report.hasFullAudio ? "已含完整版音频" : "精简版结构";
+        if (report.problemCount() == 0) {
+            tv_gd_summary.setText(String.format(Locale.US,
+                    "状态：已就绪（%s · %s）", editionLabel, detectedPack));
+            tv_gd_summary.setTextColor(requireContext().getResources().getColor(R.color.ui_good));
+        } else if (report.coreReady && report.edition == GameDataVerifier.Edition.FULL) {
+            tv_gd_summary.setText(String.format(Locale.US,
+                    "状态：核心可进服，缺少完整版音频项 %d 处（切回精简版即可正常游玩）", report.problemCount()));
+            tv_gd_summary.setTextColor(requireContext().getResources().getColor(R.color.ui_warn));
+        } else {
+            tv_gd_summary.setText(String.format(Locale.US,
+                    "状态：未就绪（缺失 %d 项，异常 %d 项）· 请导入或下载游戏数据",
+                    report.missingCount, report.invalidCount));
+            tv_gd_summary.setTextColor(requireContext().getResources().getColor(R.color.ui_bad));
+        }
+
+        String verText = (report.installedVersion != null && !report.installedVersion.isEmpty())
+                ? " · 清单版本 " + report.installedVersion
+                : "";
+        tv_gd_storage_meta.setText(String.format(Locale.US,
+                "当前占用 %s · 可用空间 %s%s · 统一提供精简版下载（完整版 2.10 GiB 暂仅支持本地导入与校验）",
+                GameDataVerifier.formatBytes(report.totalDataBytes),
+                GameDataVerifier.formatBytes(report.freeSpaceBytes),
+                verText));
+
+        String skipHint = report.skippedCount > 0
+                ? String.format(Locale.US, " · 精简版跳过 %d 项", report.skippedCount)
+                : "";
+        tv_gd_list_summary.setText(String.format(Locale.US,
+                "已通过 %d/%d · 缺失 %d · 异常 %d%s",
+                report.okCount, report.requiredCount(),
+                report.missingCount, report.invalidCount, skipHint));
+
+        allGameDataItems.clear();
+        allGameDataItems.addAll(report.items);
+        applyGameDataListFilter();
+    }
+
+    private void applyGameDataListFilter() {
+        displayedGameDataItems.clear();
+        for (GameDataVerifier.FileCheckItem item : allGameDataItems) {
+            if (!gameDataFilterIssuesOnly || item.isProblem()) {
+                displayedGameDataItems.add(item);
+            }
+        }
+        if (gameDataFileAdapter != null) {
+            gameDataFileAdapter.notifyDataSetChanged();
+        }
+        if (tv_gd_list_empty != null && rv_gd_files != null) {
+            boolean empty = displayedGameDataItems.isEmpty();
+            tv_gd_list_empty.setVisibility(empty ? View.VISIBLE : View.GONE);
+            rv_gd_files.setVisibility(empty ? View.GONE : View.VISIBLE);
+        }
+    }
+
+    private void onClickManualGameDataDownload() {
+        if (!isAdded()) return;
+        if (selectedGameDataEdition == GameDataVerifier.Edition.FULL) {
+            new AlertDialog.Builder(requireActivity())
+                    .setTitle("完整版暂未开放下载")
+                    .setMessage("当前启动器统一提供精简版游戏资源下载，完整版（2.10 GiB）暂仅支持通过「本地导入」安装与文件校验。\n\n是否切换至精简版并开始下载？")
+                    .setPositiveButton("切换精简版并下载", (d, w) -> {
+                        selectedGameDataEdition = GameDataVerifier.Edition.LITE;
+                        if (option_gd_edition != null) {
+                            option_gd_edition.setText(GAMEDATA_EDITION_ITEMS[0], false);
+                        }
+                        refreshGameDataVerification();
+                        proceedLiteManualDownload();
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+        proceedLiteManualDownload();
+    }
+
+    private void proceedLiteManualDownload() {
+        if (!isAdded()) return;
+        String manifestUrl = GamedataState.resolveManifestUrl(requireContext());
+        if (manifestUrl.isEmpty()) {
+            new AlertDialog.Builder(requireActivity())
+                    .setTitle("未配置下载源")
+                    .setMessage("当前安装包未内置精简版数据下载源。\n\n请先准备好游戏数据包 .zip，点击「本地导入」直接导入到启动器中。")
+                    .setPositiveButton("去本地导入", (d, w) ->
+                            gameDataZipPicker.launch(new String[]{"application/zip", "application/octet-stream", "*/*"}))
+                    .setNegativeButton("知道了", null)
+                    .show();
+            return;
+        }
+
+        boolean coreReady = GameDataImporter.isGameDataReady(requireContext().getExternalFilesDir(null));
+        boolean hasProblems = lastGameDataReport != null && lastGameDataReport.problemCount() > 0;
+        if (coreReady && !hasProblems) {
+            new AlertDialog.Builder(requireActivity())
+                    .setTitle("本地资源已完整")
+                    .setMessage("检测到当前精简版核心文件已全部通过校验。是否仍要重新下载并覆盖修复？（您的设置与服务器列表将完整保留）")
+                    .setPositiveButton("强制重新下载", (d, w) -> startManualGameDataDownload(manifestUrl, true))
+                    .setNeutralButton("仅检查更新", (d, w) -> startManualGameDataDownload(manifestUrl, false))
+                    .setNegativeButton("取消", null)
+                    .show();
+            return;
+        }
+
+        startManualGameDataDownload(manifestUrl, true);
+    }
+
+    private void startManualGameDataDownload(String manifestUrl, boolean forceRedownload) {
+        if (!gdDownloading.compareAndSet(false, true)) return;
+        lastDownloadProgressPostMs = 0L;
+
+        if (layout_gd_download_progress != null) {
+            layout_gd_download_progress.setVisibility(View.VISIBLE);
+        }
+        if (pb_gd_download != null) {
+            pb_gd_download.setProgress(0);
+        }
+        if (tv_gd_dl_status != null) {
+            tv_gd_dl_status.setText("正在连接下载服务…");
+            tv_gd_dl_status.setTextColor(requireContext().getResources().getColor(R.color.launcher_text));
+        }
+        if (tv_gd_dl_bytes != null) {
+            tv_gd_dl_bytes.setText("0%");
+        }
+        updateGameDataDownloadButtonUI();
+
+        final Context appCtx = requireContext().getApplicationContext();
+        final GamedataInstallerTask task = new GamedataInstallerTask(appCtx, manifestUrl, forceRedownload);
+        activeDownloadTask = task;
+
+        Thread worker = new Thread(() -> task.run(new GamedataInstallerTask.Listener() {
+            @Override
+            public void onStage(GamedataInstallerTask.Stage stage) {
+                postToUi(() -> {
+                    if (tv_gd_dl_status == null) return;
+                    switch (stage) {
+                        case FETCHING_MANIFEST:
+                            tv_gd_dl_status.setText("正在获取精简版数据清单…");
+                            break;
+                        case CHECKING:
+                            tv_gd_dl_status.setText("正在检查数据版本…");
+                            break;
+                        case DOWNLOADING:
+                            tv_gd_dl_status.setText("正在下载游戏数据（支持断点续传）…");
+                            break;
+                        case VERIFYING:
+                            tv_gd_dl_status.setText("正在校验数据包完整性（SHA-256）…");
+                            break;
+                        case EXTRACTING:
+                            tv_gd_dl_status.setText("正在解压安装游戏文件…");
+                            break;
+                        case ACTIVATING:
+                            tv_gd_dl_status.setText("正在启用已安装资源…");
+                            break;
+                        case READY:
+                            break;
+                        default:
+                            break;
+                    }
+                });
+            }
+
+            @Override
+            public void onProgress(long bytesDone, long bytesTotal) {
+                long now = System.currentTimeMillis();
+                int perMille = bytesTotal > 0
+                        ? (int) Math.min(1000L, (bytesDone * 1000L) / bytesTotal)
+                        : 0;
+                boolean force = perMille >= 1000 || lastDownloadProgressPostMs == 0L;
+                if (!force && (now - lastDownloadProgressPostMs) < 200L) return;
+                lastDownloadProgressPostMs = now;
+                postToUi(() -> {
+                    if (pb_gd_download != null && bytesTotal > 0) {
+                        pb_gd_download.setProgress(perMille);
+                    }
+                    if (tv_gd_dl_bytes != null && bytesTotal > 0) {
+                        tv_gd_dl_bytes.setText(String.format(Locale.US, "%d%%  (%s / %s)",
+                                perMille / 10,
+                                GameDataVerifier.formatBytes(bytesDone),
+                                GameDataVerifier.formatBytes(bytesTotal)));
+                    }
+                });
+            }
+
+            @Override
+            public void onStatus(String message) {
+                if (message == null || message.isEmpty()) return;
+                postToUi(() -> {
+                    if (tv_gd_dl_status != null) {
+                        tv_gd_dl_status.setText(message);
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String message, Throwable cause) {
+                gdDownloading.set(false);
+                activeDownloadTask = null;
+                postToUi(() -> {
+                    updateGameDataDownloadButtonUI();
+                    if (tv_gd_dl_status != null) {
+                        tv_gd_dl_status.setText(message != null ? message : "下载失败");
+                        tv_gd_dl_status.setTextColor(requireContext().getResources().getColor(R.color.ui_bad));
+                    }
+                    refreshGameDataVerification();
+                });
+            }
+
+            @Override
+            public void onDone(boolean installedNow) {
+                gdDownloading.set(false);
+                activeDownloadTask = null;
+                if (installedNow) {
+                    try {
+                        Utils.saveSettings(appCtx);
+                    } catch (Exception ignored) {
+                    }
+                }
+                postToUi(() -> {
+                    updateGameDataDownloadButtonUI();
+                    if (pb_gd_download != null) {
+                        pb_gd_download.setProgress(1000);
+                    }
+                    if (tv_gd_dl_bytes != null) {
+                        tv_gd_dl_bytes.setText("100%");
+                    }
+                    if (tv_gd_dl_status != null) {
+                        tv_gd_dl_status.setText(installedNow ? "精简版资源下载并安装完成" : "本地数据已是最新，无需重新下载");
+                        tv_gd_dl_status.setTextColor(requireContext().getResources().getColor(R.color.ui_good));
+                    }
+                    refreshGameDataVerification();
+                });
+            }
+        }), "gamedata-manual-download");
+        worker.start();
+    }
+
+    private void cancelActiveGameDataDownload() {
+        GamedataInstallerTask task = activeDownloadTask;
+        if (task != null) {
+            task.cancel();
+            if (isAdded() && tv_gd_dl_status != null) {
+                tv_gd_dl_status.setText("正在取消下载…");
+            }
+        }
+    }
+
+    private void postToUi(Runnable action) {
+        androidx.fragment.app.FragmentActivity act = getActivity();
+        if (act != null && isAdded()) {
+            act.runOnUiThread(() -> {
+                if (isAdded() && getView() != null) {
+                    action.run();
+                }
+            });
+        }
+    }
+
+    private class GameDataFileAdapter extends RecyclerView.Adapter<GameDataFileAdapter.VH> {
+        class VH extends RecyclerView.ViewHolder {
+            final View statusDot;
+            final TextView tvPath, tvDesc, tvSize, tvBadge;
+
+            VH(View itemView) {
+                super(itemView);
+                statusDot = itemView.findViewById(R.id.v_gd_status_dot);
+                tvPath = itemView.findViewById(R.id.tv_gd_file_path);
+                tvDesc = itemView.findViewById(R.id.tv_gd_file_desc);
+                tvSize = itemView.findViewById(R.id.tv_gd_file_size);
+                tvBadge = itemView.findViewById(R.id.tv_gd_file_badge);
+            }
+        }
+
+        @NonNull
+        @Override
+        public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
+            View v = LayoutInflater.from(parent.getContext())
+                    .inflate(R.layout.item_gamedata_file, parent, false);
+            return new VH(v);
+        }
+
+        @Override
+        public void onBindViewHolder(@NonNull VH h, int position) {
+            GameDataVerifier.FileCheckItem item = displayedGameDataItems.get(position);
+            Context ctx = h.itemView.getContext();
+            h.tvPath.setText(item.path);
+            h.tvDesc.setText(item.group + " · " + item.label);
+
+            if (item.status == GameDataVerifier.Status.OK) {
+                String sizeText = item.directory
+                        ? String.format(Locale.US, "%d 个文件 · %s", item.fileCount, GameDataVerifier.formatBytes(item.bytes))
+                        : GameDataVerifier.formatBytes(item.bytes);
+                h.tvSize.setText(sizeText);
+            } else if (item.status == GameDataVerifier.Status.INVALID) {
+                h.tvSize.setText(GameDataVerifier.formatBytes(item.bytes));
+            } else {
+                h.tvSize.setText("—");
+            }
+
+            int colorRes;
+            String badgeText;
+            switch (item.status) {
+                case OK:
+                    colorRes = R.color.ui_good;
+                    badgeText = "正常";
+                    break;
+                case INVALID:
+                    colorRes = R.color.ui_warn;
+                    badgeText = "文件异常";
+                    break;
+                case SKIPPED_LITE:
+                    colorRes = R.color.launcher_text_dim;
+                    badgeText = "精简版跳过";
+                    break;
+                case MISSING:
+                default:
+                    colorRes = R.color.ui_bad;
+                    badgeText = "缺失";
+                    break;
+            }
+            int color = ctx.getResources().getColor(colorRes);
+            h.statusDot.setBackgroundTintList(ColorStateList.valueOf(color));
+            h.tvBadge.setText(badgeText);
+            h.tvBadge.setTextColor(color);
+        }
+
+        @Override
+        public int getItemCount() {
+            return displayedGameDataItems.size();
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════

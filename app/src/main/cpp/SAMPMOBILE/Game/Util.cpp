@@ -504,7 +504,7 @@ bool IsValidPedModel(uint modelID)
 
 sa::CBaseModelInfo* GetModelInfoByID(int iModelID)
 {
-	if (iModelID < 0 || iModelID > 20000) {
+	if (iModelID < 0 || iModelID > 30000) {
 		spdlog::error("Invalid model ID: {}", iModelID);
 		return nullptr;
 	}
@@ -522,6 +522,14 @@ sa::CBaseModelInfo* GetModelInfoByID(int iModelID)
 	}
 
 	return modelInfoPtrs[iModelID];
+}
+
+int ResolveEffectivePedSkin(int baseSkin, int customSkin)
+{
+	if (customSkin > 20000 && IsValidPedModel(static_cast<uint>(customSkin))) {
+		return customSkin;
+	}
+	return baseSkin;
 }
 
 bool IsExistInfoForModel(int iModelID)

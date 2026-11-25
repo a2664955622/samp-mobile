@@ -49,6 +49,12 @@ third_party/licenses/THIRD_PARTY_NOTICES.md:
   * RakNet (SA-MP client fork) — BSD-style License
   * GlossHook — MIT License
   * CLEO Android opcode & touch specification inspiration — BSD-3-Clause
+  * omp-cef protocol & client specification reference — MIT License (aurora-mp/omp-cef)
+  * KCP (ikcp) — MIT License (Copyright © skywind3000)
+  * PicoSHA2 — MIT License (Copyright © 2017 okdshin)
+  * BLAKE2 reference implementation — CC0-1.0 / Apache-2.0 (Copyright © 2012 Samuel Neves)
+  * tiny-AES-c — Unlicense (Public Domain)
+  * TweetNaCl — Public Domain
   * OpenAL Soft (libOpenAL*.so) — LGPL-2.0+
   * LLVM libc++_shared (libc++_shared.so) — Apache-2.0 WITH LLVM-exception
   * Roboto Fonts — Apache-2.0

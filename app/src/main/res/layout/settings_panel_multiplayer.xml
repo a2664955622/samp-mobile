@@ -15,61 +15,6 @@
         android:orientation="vertical"
         android:padding="@dimen/_12sdp">
 
-        <!-- 卡片：游戏数据包一键导入 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="@dimen/_10sdp"
-            android:background="@drawable/launcher_card"
-            android:orientation="vertical"
-            android:padding="@dimen/_12sdp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical"
-                    android:paddingEnd="@dimen/_8sdp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="游戏数据包导入（.zip）"
-                        android:textColor="@color/launcher_accent"
-                        android:textSize="@dimen/_9ssp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:id="@+id/tv_gamedata_status"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="@dimen/_2sdp"
-                        android:text="检测中..."
-                        android:textColor="@color/launcher_text_dim"
-                        android:textSize="@dimen/_7ssp" />
-                </LinearLayout>
-
-                <TextView
-                    android:id="@+id/btn_import_gamedata_zip"
-                    android:tag="theme_accent_bg"
-                    android:layout_width="wrap_content"
-                    android:layout_height="@dimen/_26sdp"
-                    android:background="@drawable/launcher_btn_primary"
-                    android:gravity="center"
-                    android:paddingHorizontal="@dimen/_12sdp"
-                    android:text="一键导入 .zip"
-                    android:textColor="@color/launcher_on_accent"
-                    android:textSize="@dimen/_8ssp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-        </LinearLayout>
-
         <!-- 卡片：角色与服务器兼容 -->
         <LinearLayout
             android:layout_width="match_parent"

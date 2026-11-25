@@ -13,10 +13,15 @@ public:
 	void draw(ImGuiRenderer* renderer) override;
 
 	void applyHeldKeys();
+	void clearHeldKeys();
+	uint16_t heldLR() const { return m_heldLR; }
+	uint16_t heldUD() const { return m_heldUD; }
 	void handleHardwareKey(int androidKeyCode, bool isDown);
 	static void dismissTopModal();
 
 private:
+	void recomputeHeldAxes();
+
 	bool m_extended;
 
 	/* keys currently held down on the panel; re-pinned every frame in
@@ -25,6 +30,18 @@ private:
 	bool m_heldBKeys[32];
 	uint16_t m_heldLR;
 	uint16_t m_heldUD;
+	bool m_uiLeft = false;
+	bool m_uiRight = false;
+	bool m_uiUp = false;
+	bool m_uiDown = false;
+	bool m_hwW = false;
+	bool m_hwS = false;
+	bool m_hwA = false;
+	bool m_hwD = false;
+	bool m_hwDpadUp = false;
+	bool m_hwDpadDown = false;
+	bool m_hwDpadLeft = false;
+	bool m_hwDpadRight = false;
 
 	Button* m_extend;
 

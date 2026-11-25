@@ -206,7 +206,7 @@ public:
 	bool CompareOnFootSyncKeys(uint16_t wKeys, uint16_t lrAnalog, uint16_t udAnalog);
 	bool CompareInCarSyncKeys(uint16_t wKeys, uint16_t lrAnalog, uint16_t udAnalog);
 	void ApplySpecialAction(uint8_t byteSpecialAction);
-	void SetSpawnInfo(PLAYER_SPAWN_INFO* pSpawnInfo);
+	void SetSpawnInfo(PLAYER_SPAWN_INFO* pSpawnInfo, int iCustomSkin = 0);
 	void HandleClassSelectionOutcome(bool bOutcome);
 	uint8_t GetSpecialAction();
 	uint32_t GetPlayerColorAsARGB();
@@ -284,6 +284,7 @@ private:
 	PLAYERID m_lastTargetActorId;
 
 	PLAYER_SPAWN_INFO m_SpawnInfo;
+	int m_iCustomSpawnSkin = 0;
 	ONFOOT_SYNC_DATA m_ofSync;
 	INCAR_SYNC_DATA m_icSync;
 	PASSENGER_SYNC_DATA m_psSync;

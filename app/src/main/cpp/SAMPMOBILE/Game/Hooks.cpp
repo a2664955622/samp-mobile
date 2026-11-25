@@ -804,10 +804,110 @@ static void CaptureCurrentFramebufferToPng(int mode)
 
 static std::atomic<bool> s_bPendingAdjustableHud{false};
 static bool s_bWatchingAdjustableHudExit = false;
+static std::atomic<bool> s_bAllowInitialWorldBoot{false};
+static std::atomic<bool> s_bExitRequested{false};
 
 void Hooks::openAdjustableHud()
 {
 	s_bPendingAdjustableHud.store(true);
+}
+
+void Hooks::allowInitialWorldBoot()
+{
+	s_bAllowInitialWorldBoot.store(true, std::memory_order_release);
+}
+
+// Unified graceful exit path (aligned with PC SA-MP GameHookDeferGameShutdown + /q):
+// Prevents MainGameFunc from exiting its loop into DoGameRestart -> CGame::Shutdown ->
+// CAudioEngine::Shutdown (OpenSLES/BASS HAL hang on emulators) -> OS_ApplicationEvent UAF.
+void Hooks::requestGracefulExit(const char* reason)
+{
+	if (sa::RsGlobal) {
+		sa::RsGlobal->quit = 0;
+	}
+
+	if (s_bExitRequested.exchange(true, std::memory_order_acq_rel)) {
+		return;
+	}
+
+	spdlog::info("Requesting graceful game exit ({})", reason ? reason : "unknown");
+
+	if (pNetGame && pNetGame->GetRakClient()) {
+		pNetGame->GetRakClient()->Disconnect(100);
+	}
+
+	if (auto logger = spdlog::default_logger()) {
+		logger->flush();
+	}
+
+	std::thread([]() {
+		std::this_thread::sleep_for(std::chrono::milliseconds(400));
+		_exit(0);
+	}).detach();
+
+	if (g_java) {
+		g_java->exitGame();
+	}
+	else {
+		_exit(0);
+	}
+}
+
+DECL_HOOK(void, MainMenuScreen_OnExit, void* _this)
+{
+	(void) _this;
+	Hooks::requestGracefulExit("MainMenuScreen::OnExit");
+}
+
+DECL_HOOK(void, QuitApp)
+{
+	Hooks::requestGracefulExit("QuitApp");
+}
+
+DECL_HOOK(bool, DoGameRestart)
+{
+	// MainGameFunc calls DoGameRestart() both on initial world boot (m_bWantToRestart == 1,
+	// RsGlobal->quit == 0 -> sets gGameState = 8 and returns true) and on exit
+	// (RsGlobal->quit != 0 -> runs CGame::Shutdown + CAudioEngine::Shutdown and returns false).
+	if (sa::RsGlobal && sa::RsGlobal->quit != 0) {
+		Hooks::requestGracefulExit("DoGameRestart:quit");
+		return false;
+	}
+	return DoGameRestart();
+}
+
+DECL_HOOK(void, MainMenuScreen_OnStartGame, void* _this)
+{
+	if (!Client::offlineMode()) {
+		spdlog::info("Blocked singleplayer Start Game menu in online session");
+		return;
+	}
+	MainMenuScreen_OnStartGame(_this);
+}
+
+DECL_HOOK(void, Menu_NewGame)
+{
+	if (!Client::offlineMode() && !s_bAllowInitialWorldBoot.exchange(false, std::memory_order_acq_rel)) {
+		spdlog::info("Blocked singleplayer Menu_NewGame in online session");
+		return;
+	}
+	Menu_NewGame();
+}
+
+DECL_HOOK(void, StartGameScreen_OnLoadGame, void* _this)
+{
+	if (!Client::offlineMode()) {
+		return;
+	}
+	StartGameScreen_OnLoadGame(_this);
+}
+
+DECL_HOOK(void, StartGameScreen_OnDeleteGame, void* _this)
+{
+	if (!Client::offlineMode()) {
+		return;
+	}
+	StartGameScreen_OnDeleteGame(_this);
 }
 
 // GTA:SA v2.10 runs the frontend/menu on a separate frame path
@@ -827,6 +927,11 @@ DECL_HOOK(void, FrontendIdle)
 		spdlog::info("hook fired: FrontendIdle tid={}", (int) g_gameThreadTid);
 	}
 	FrontendIdle();
+
+	if (sa::RsGlobal && sa::RsGlobal->quit != 0) {
+		Hooks::requestGracefulExit("FrontendIdle:RsGlobal.quit");
+		return;
+	}
 
 	if (s_bWatchingAdjustableHudExit) {
 		auto* pAdjInst = eng::as<uintptr_t*>(eng::Sym::CAdjustableHUD_m_pInstance);
@@ -1089,6 +1194,10 @@ DECL_HOOK(uint32_t, Idle, void *param, bool firstFrame)
 	SanitizeAllAlphaLinkLists();
 	s_clientProcessedThisFrame = false;
 	uint32_t result = Idle(param, firstFrame);
+	if (sa::RsGlobal && sa::RsGlobal->quit != 0) {
+		Hooks::requestGracefulExit("Idle:RsGlobal.quit");
+		return result;
+	}
 	if (!s_clientProcessedThisFrame) {
 		Client::process(false);
 	}
@@ -1277,6 +1386,8 @@ DECL_HOOK(void, CWidget, uintptr_t pWidget, const char *pszSprite, uintptr_t Wid
 	CWidget(pWidget, pszSprite, WidgetPos, nFlags, Mapping);
 }
 
+extern void RunWithUnscaledJoystickSx(uintptr_t widget, void (*fn)(uintptr_t));
+
 DECL_HOOK(void, CWidget_Update, uintptr_t pWidget)
 {
 	if (pNetGame)
@@ -1289,7 +1400,7 @@ DECL_HOOK(void, CWidget_Update, uintptr_t pWidget)
 			return;
 		}
 	}
-	CWidget_Update(pWidget);
+	RunWithUnscaledJoystickSx(pWidget, CWidget_Update);
 }
 
 std::atomic<bool> g_suppressWidgetSetEnabled{false};
@@ -1878,37 +1989,41 @@ DECL_HOOK(bool, CWorld_CameraToIgnoreThisObject, sa::CEntity *pEntity)
 
 DECL_HOOK(int, CRadar_SetCoordBlip, uint32_t BlpType, sa::CVector vecPosition, uint32_t nColour, uint32_t DispFlag, char *pScriptName)
 {
-	// CWorld::FindGroundZForCoord
-	vecPosition.z = eng::fn::CWorld_FindGroundZForCoord( vecPosition.x, vecPosition.y);
-
-	if (Client::offlineMode() && pGame)
+	if (pScriptName && !strncmp(pScriptName, "CODEWAY", 7))
 	{
-		CPlayerPed *pLocal = pGame->FindPlayerPed();
-		if (pLocal && pLocal->m_ped)
-		{
-			RwMatrix mat = pLocal->m_ped->GetMatrix().ToRwMatrix();
-			mat.pos = sa::CVector(vecPosition.x, vecPosition.y, vecPosition.z + 5.0f);
-			if (pLocal->IsInVehicle() && pLocal->m_ped->pVehicle)
-			{
-				pLocal->m_ped->pVehicle->SetMatrix((sa::CMatrix &)mat);
-			}
-			pLocal->m_ped->SetMatrix((sa::CMatrix &)mat);
+		// CWorld::FindGroundZForCoord — only snap user-placed pause-map target markers ("CODEWAY"),
+		// never server-supplied coord blips (e.g. SetPlayerMapIcon style 1/3).
+		vecPosition.z = eng::fn::CWorld_FindGroundZForCoord(vecPosition.x, vecPosition.y);
 
-			if (pUI && pUI->chat())
+		if (Client::offlineMode() && pGame)
+		{
+			CPlayerPed *pLocal = pGame->FindPlayerPed();
+			if (pLocal && pLocal->m_ped)
 			{
-				pUI->chat()->addInfoMessage("-> Teleported to: %.2f %.2f %.2f", vecPosition.x, vecPosition.y, vecPosition.z);
+				RwMatrix mat = pLocal->m_ped->GetMatrix().ToRwMatrix();
+				mat.pos = sa::CVector(vecPosition.x, vecPosition.y, vecPosition.z + 5.0f);
+				if (pLocal->IsInVehicle() && pLocal->m_ped->pVehicle)
+				{
+					pLocal->m_ped->pVehicle->SetMatrix((sa::CMatrix &)mat);
+				}
+				pLocal->m_ped->SetMatrix((sa::CMatrix &)mat);
+
+				if (pUI && pUI->chat())
+				{
+					pUI->chat()->addInfoMessage("-> Teleported to: %.2f %.2f %.2f", vecPosition.x, vecPosition.y, vecPosition.z);
+				}
 			}
 		}
-	}
 
-	if (pNetGame && pNetGame->GetRakClient() && pScriptName && !strncmp(pScriptName, "CODEWAY", 7))
-	{
-		RakNet::BitStream bsSend;
-		proto::Writer writer(bsSend);
-		proto::MapMarkerReq req{};
-		req.position = {vecPosition.x, vecPosition.y, vecPosition.z};
-		req.serialize(writer, proto::ProtoVersion::V037);
-		pNetGame->GetRakClient()->RPC(&RPC_MapMarker, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+		if (pNetGame && pNetGame->GetRakClient())
+		{
+			RakNet::BitStream bsSend;
+			proto::Writer writer(bsSend);
+			proto::MapMarkerReq req{};
+			req.position = {vecPosition.x, vecPosition.y, vecPosition.z};
+			req.serialize(writer, proto::ProtoVersion::V037);
+			pNetGame->GetRakClient()->RPC(&RPC_MapMarker, &bsSend, HIGH_PRIORITY, RELIABLE, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
+		}
 	}
 
 	return CRadar_SetCoordBlip(BlpType, vecPosition, nColour, DispFlag, pScriptName);
@@ -1931,12 +2046,17 @@ DECL_HOOK(uint32_t, CHudColours_GetIntColour, uintptr_t _this, uint32_t index)
 	return TranslateColorCodeToRGBA(index);
 }
 
+static inline bool HasOccupiedVehicleDriver(const sa::CVehicle *v)
+{
+	return v && (v->pDriver != nullptr || (v->m_pTowingVehicle != nullptr && v->m_pTowingVehicle->pDriver != nullptr));
+}
+
 DECL_HOOK(uint32_t, CAutoMobile_ProcessEntityCollision, sa::CVehicle *_this, sa::CEntity *pCollided, uintptr_t a3)
 {
 	if (!pNetGame || !pNetGame->m_netSet || !pNetGame->m_netSet->disableVehicleCollisions ||
 		!_this || !pCollided || !pCollided->IsVehicle() ||
 		pCollided->m_nModelIndex < 400 || pCollided->m_nModelIndex > 611 ||
-		!_this->pDriver || !reinterpret_cast<sa::CVehicle*>(pCollided)->pDriver)
+		!HasOccupiedVehicleDriver(_this) || !HasOccupiedVehicleDriver(reinterpret_cast<sa::CVehicle*>(pCollided)))
 	{
 		return CAutoMobile_ProcessEntityCollision(_this, pCollided, a3);
 	}
@@ -1949,7 +2069,7 @@ DECL_HOOK(uint32_t, CBike_ProcessEntityCollision, sa::CVehicle *_this, sa::CEnti
 	if (!pNetGame || !pNetGame->m_netSet || !pNetGame->m_netSet->disableVehicleCollisions ||
 		!_this || !pCollided || !pCollided->IsVehicle() ||
 		pCollided->m_nModelIndex < 400 || pCollided->m_nModelIndex > 611 ||
-		!_this->pDriver || !reinterpret_cast<sa::CVehicle*>(pCollided)->pDriver)
+		!HasOccupiedVehicleDriver(_this) || !HasOccupiedVehicleDriver(reinterpret_cast<sa::CVehicle*>(pCollided)))
 	{
 		return CBike_ProcessEntityCollision(_this, pCollided, a3);
 	}
@@ -1962,7 +2082,7 @@ DECL_HOOK(uint32_t, CMonsterTruck_ProcessEntityCollision, sa::CVehicle *_this, s
 	if (!pNetGame || !pNetGame->m_netSet || !pNetGame->m_netSet->disableVehicleCollisions ||
 		!_this || !pCollided || !pCollided->IsVehicle() ||
 		pCollided->m_nModelIndex < 400 || pCollided->m_nModelIndex > 611 ||
-		!_this->pDriver || !reinterpret_cast<sa::CVehicle*>(pCollided)->pDriver)
+		!HasOccupiedVehicleDriver(_this) || !HasOccupiedVehicleDriver(reinterpret_cast<sa::CVehicle*>(pCollided)))
 	{
 		return CMonsterTruck_ProcessEntityCollision(_this, pCollided, a3);
 	}
@@ -1972,18 +2092,18 @@ DECL_HOOK(uint32_t, CMonsterTruck_ProcessEntityCollision, sa::CVehicle *_this, s
 
 DECL_HOOK(uint32_t, CTrailer_ProcessEntityCollision, sa::CVehicle *_this, sa::CEntity *pCollided, uintptr_t a3)
 {
+	if (_this && pCollided && pCollided->IsVehicle()
+		&& _this->m_pTowingVehicle == reinterpret_cast<sa::CVehicle*>(pCollided))
+	{
+		// skip self-collision between trailer and its own tractor
+		return 0;
+	}
+
 	if (!pNetGame || !pNetGame->m_netSet || !pNetGame->m_netSet->disableVehicleCollisions ||
 		!_this || !pCollided || !pCollided->IsVehicle() ||
 		pCollided->m_nModelIndex < 400 || pCollided->m_nModelIndex > 611 ||
-		!_this->pDriver || !reinterpret_cast<sa::CVehicle*>(pCollided)->pDriver)
+		!HasOccupiedVehicleDriver(_this) || !HasOccupiedVehicleDriver(reinterpret_cast<sa::CVehicle*>(pCollided)))
 	{
-		if (_this && pCollided && pCollided->IsVehicle()
-			&& _this->m_pTowingVehicle == reinterpret_cast<sa::CVehicle*>(pCollided))
-		{
-			// skip self-collision between trailer and its own tractor
-			return 0;
-		}
-
 		return CTrailer_ProcessEntityCollision(_this, pCollided, a3);
 	}
 
@@ -1999,12 +2119,139 @@ DECL_HOOK(uint32_t, CPhysical_ProcessEntityCollision, sa::CPhysical *_this, sa::
 	{
 		auto* pVehA = reinterpret_cast<sa::CVehicle*>(_this);
 		auto* pVehB = reinterpret_cast<sa::CVehicle*>(pCollided);
-		if (pVehA->pDriver && pVehB->pDriver) {
+		if (HasOccupiedVehicleDriver(pVehA) && HasOccupiedVehicleDriver(pVehB)) {
 			return 0;
 		}
 	}
 
 	return CPhysical_ProcessEntityCollision(_this, pCollided, a3);
+}
+
+// PC SA-MP parity (hooks.cpp:1024-1040, GameHookGuardPhysicalProcessCollision):
+// SetGravityProcessing(false) sets bit 31 (0x80000000u) on CEntity::m_nFlags.
+// Returning before CPhysical::ProcessCollision prevents m_bIsInSafePosition = 1
+// when m_bUsesCollision == 0, allowing CWorld::Process -> ProcessShift -> ApplySpeed()
+// to integrate velocity smoothly for GhostMode, vehicle-surfing, and entering peds.
+DECL_HOOK(void, CPhysical_ProcessCollision, sa::CPhysical *_this)
+{
+	if (!_this || (_this->m_nFlags & 0x80000000u) != 0)
+	{
+		return;
+	}
+	CPhysical_ProcessCollision(_this);
+}
+
+// PC SA-MP parity (hooks.cpp:1500-1540): update local & remote surfing attachments
+// at the end of CWorld::Process() (after vehicle/object physics step, before RenderScene).
+DECL_HOOK(void, CWorld_ProcessAttachedEntities)
+{
+	CWorld_ProcessAttachedEntities();
+
+	if (!pNetGame)
+	{
+		return;
+	}
+
+	CPlayerPool *pPlayerPool = pNetGame->GetPlayerPool();
+	if (!pPlayerPool)
+	{
+		return;
+	}
+
+	if (CLocalPlayer *pLocal = pPlayerPool->GetLocalPlayer())
+	{
+		if (pLocal->m_bIsActive && pLocal->m_surfSync.bIsActive)
+		{
+			pLocal->UpdateSurfing();
+		}
+	}
+
+	for (PLAYERID i = 0; i <= pPlayerPool->m_iLastPlayerID && i < MAX_PLAYERS; ++i)
+	{
+		if (!pPlayerPool->GetSlotState(i)) continue;
+		CRemotePlayer *pRemote = pPlayerPool->GetAt(i);
+		if (pRemote && pRemote->IsActive() && pRemote->IsSurfing())
+		{
+			pRemote->ProcessSurfing();
+		}
+	}
+}
+
+// PC SA-MP parity (hooks.cpp:1195-1207, GameHookOverrideVerticalLineCollisionFlags):
+// Force checkObjects = true whenever buildings are queried so custom CreateObject floors
+// act as solid ground across FindGroundZ, SetPlayerPosFindZ, ped placement, and shadows.
+DECL_HOOK(bool, CWorld_ProcessVerticalLine, const sa::CVector *vecOrigin, float fDistance, sa::CColPoint *pColPoint,
+	sa::CEntity **ppEntity, bool bBuildings, bool bVehicles, bool bPeds, bool bObjects, bool bDummies,
+	bool bSeeThrough, void *pIgnoreCar)
+{
+	if (pNetGame && bBuildings)
+	{
+		bObjects = true;
+	}
+	return CWorld_ProcessVerticalLine(vecOrigin, fDistance, pColPoint, ppEntity,
+		bBuildings, bVehicles, bPeds, bObjects, bDummies, bSeeThrough, pIgnoreCar);
+}
+
+// PC SA-MP parity (patches.cpp:183-185): disable 2-player co-op screen-edge tether clamping.
+DECL_HOOK(bool, CGameLogic_IsPlayerAllowedToGoInThisDirection, sa::CPed *pPed, sa::CVector vecDir, float fDistance)
+{
+	if (!Client::offlineMode())
+	{
+		return true;
+	}
+	return CGameLogic_IsPlayerAllowedToGoInThisDirection(pPed, vecDir, fDistance);
+}
+
+// PC SA-MP parity (hooks.cpp:1275-1344, GameHookPreservePedTransform):
+// Preserve invulnerable Actor position and zero XY velocity across CCivilianPed::ProcessControl.
+DECL_HOOK(void, CCivilianPed_ProcessControl, sa::CPed *_this)
+{
+	if (!_this || !pNetGame)
+	{
+		CCivilianPed_ProcessControl(_this);
+		return;
+	}
+
+	const bool bInvulnFlags = _this->physicalFlags.bBulletProof
+		&& _this->physicalFlags.bExplosionProof
+		&& _this->physicalFlags.bMeleeProof;
+
+	CActor *pManagedActor = nullptr;
+	if (CActorPool *pActorPool = pNetGame->GetActorPool())
+	{
+		PLAYERID actorId = pActorPool->FindIDFromGtaPtr(_this);
+		if (actorId != INVALID_PLAYER_ID)
+		{
+			pManagedActor = pActorPool->GetAt(actorId);
+		}
+	}
+
+	const bool bLockTransform = bInvulnFlags || (pManagedActor && pManagedActor->m_invulnerable);
+	sa::CVector savedPos{};
+	bool bHasSavedPos = false;
+
+	if (bLockTransform)
+	{
+		_this->m_vecMoveSpeed.x = 0.0f;
+		_this->m_vecMoveSpeed.y = 0.0f;
+		if (_this->m_matrix)
+		{
+			savedPos = _this->m_matrix->m_pos;
+			bHasSavedPos = true;
+		}
+	}
+
+	CCivilianPed_ProcessControl(_this);
+
+	if (bLockTransform)
+	{
+		if (bHasSavedPos && _this->m_matrix)
+		{
+			_this->m_matrix->m_pos = savedPos;
+		}
+		_this->m_vecMoveSpeed.x = 0.0f;
+		_this->m_vecMoveSpeed.y = 0.0f;
+	}
 }
 
 bool g_bCreatingSirenVehicle = false;
@@ -2250,6 +2497,13 @@ void Hooks::install()
 	// UI
 	REG_HOOK(Boot, ANDRunThread, AND_RunThread, "Capture GameMain thread id");
 	REG_HOOK(Boot, FrontendIdle, FrontendIdle, "Auto-start game & adjustable HUD exit");
+	REG_HOOK(Boot, MainMenuScreen_OnExit, MainMenuScreen_OnExit, "Graceful process exit on pause-menu Quit Game");
+	REG_HOOK(Boot, QuitApp, QuitApp, "Graceful process exit on QuitApp");
+	REG_HOOK(Boot, DoGameRestart, DoGameRestart, "Prevent engine shutdown UAF/deadlock on exit or restart");
+	REG_HOOK(Boot, MainMenuScreen_OnStartGame, MainMenuScreen_OnStartGame, "Block singleplayer Start Game menu in online session");
+	REG_HOOK(Boot, Menu_NewGame, Menu_NewGame, "Block singleplayer New Game restart in online session");
+	REG_HOOK(Boot, StartGameScreen_OnLoadGame, StartGameScreen_OnLoadGame, "Block singleplayer Load Game in online session");
+	REG_HOOK(Boot, StartGameScreen_OnDeleteGame, StartGameScreen_OnDeleteGame, "Block singleplayer Delete Save in online session");
 	REG_HOOK(Boot, Render2dStuff, Render2dStuff, "ImGui HUD & SA-MP 2D overlay render");
 	REG_HOOK(Boot, Idle, Idle, "Main render frame & skipped-frame net pump");
 	REG_HOOK_BL(Boot, addr::RwCameraEndUpdate_patch, "Idle.RwCameraEndUpdate", Idle_RwCameraEndUpdate_hook, &Idle_RwCameraEndUpdate_orig, "Render ImGui UI & HUD screenshot before RwCameraEndUpdate");
@@ -2283,6 +2537,11 @@ void Hooks::install()
 	REG_HOOK(Boot, CMonsterTruck_ProcessEntityCollision, CMonsterTruck_ProcessEntityCollision, "DisableRemoteVehicleCollisions (monster)");
 	REG_HOOK(Boot, CTrailer_ProcessEntityCollision, CTrailer_ProcessEntityCollision, "DisableRemoteVehicleCollisions (trailer)");
 	REG_HOOK(Boot, CPhysical_ProcessEntityCollision, CPhysical_ProcessEntityCollision, "DisableRemoteVehicleCollisions (boats/other)");
+	REG_HOOK(Boot, CPhysical_ProcessCollision, CPhysical_ProcessCollision, "Guard CPhysical::ProcessCollision for 0x80000000 gravity-disabled peds");
+	REG_HOOK(Boot, CWorld_ProcessAttachedEntities, CWorld_ProcessAttachedEntities, "Pre-render local & remote surfing matrix sync");
+	REG_HOOK(Boot, CWorld_ProcessVerticalLine, CWorld_ProcessVerticalLine, "Include dynamic CObject floors in vertical ground queries");
+	REG_HOOK(Boot, CGameLogic_IsPlayerAllowedToGoInThisDirection, CGameLogic_IsPlayerAllowedToGoInThisDirection, "Disable 2P co-op screen tether clamping");
+	REG_HOOK(Boot, CCivilianPed_ProcessControl, CCivilianPed_ProcessControl, "Preserve invulnerable Actor transform in ProcessControl");
 	REG_HOOK(Boot, CTrailer_BreakTowLink, CTrailer_BreakTowLink, "Prevent spurious trailer detach");
 	REG_HOOK(Boot, CVehicle_UsesSiren, CVehicle_UsesSiren, "Enable horn-siren on non-emergency vehicles with addSiren");
 

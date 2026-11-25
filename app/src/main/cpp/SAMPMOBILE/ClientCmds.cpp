@@ -22,23 +22,11 @@ extern AudioStream* pAudioStream;
 
 void cmdQuit(const std::string& params)
 {
+	(void) params;
 	if (pUI) {
 		pUI->chat()->addInfoMessage("-> Exiting game...");
 	}
-
-	if (pNetGame) {
-		if (pNetGame->GetRakClient()) {
-			pNetGame->GetRakClient()->Disconnect(100);
-		}
-	}
-
-	if (auto logger = spdlog::default_logger()) {
-		logger->flush();
-	}
-
-	if (g_java) {
-		g_java->exitGame();
-	}
+	Hooks::requestGracefulExit("/q");
 }
 
 void cmdRcon(const std::string& params)

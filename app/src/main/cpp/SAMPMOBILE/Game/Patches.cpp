@@ -225,6 +225,8 @@ void Patches::apply()
 
 	patches::registerRet("CCarEnterExit::SetPedInCarDirect", "Avoid direct teleport into vehicles", patches::Scope::Online, eng::Sym::CCarEnterExit_SetPedInCarDirect);
 	patches::registerRet0("CPopulation::AddPed", "Disable ambient pedestrian spawns (return nullptr)", patches::Scope::Online, eng::Sym::CPopulation_AddPed);
+	patches::registerRet0("CGameLogic::IsCoopGameGoingOn", "Disable PS2 2-player shared-screen co-op mode", patches::Scope::Online, eng::Sym::CGameLogic_IsCoopGameGoingOn);
+	patches::registerRet0("CGameLogic::IsPlayerUse2PlayerControls", "Disable 2P co-op camera-relative aim/melee controls", patches::Scope::Online, eng::Sym::CGameLogic_IsPlayerUse2PlayerControls);
 
 	// Vehicle audio processing: only disable when .osw audio data is absent (T06)
 	const bool hasAudio = hasFullAudioData();

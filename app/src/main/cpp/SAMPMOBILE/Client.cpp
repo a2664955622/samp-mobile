@@ -23,6 +23,8 @@
 #include "Game/Game.h"
 #include "Game/AudioStream.h"
 #include "Net/NetGame.h"
+#include "Cef/CefBrowser.h"
+#include "Cef/CefSession.h"
 #include "Voice/Plugin.h"
 #include "Crashlytics.h"
 
@@ -433,6 +435,21 @@ void Client::process(bool canRender2d)
 	// Drain queued JNI inputs (keyboard chat, dialog responses, hardware keys) on GameMain.
 	Java::processPendingInputs();
 
+	// omp-cef compatible browser + transport. Kept outside the pNetGame check so
+	// the debug direct-connect path (tools/cef_kat/run_browser_test.sh) works in
+	// offline mode; Tick() itself resets when SA-MP is not connected.
+	CefBrowser::Get().Install();
+	// Run JNI debug entry points that arrived on the Android main thread, on
+	// this (game) thread, before anything else touches CEF state this frame.
+	CefBrowser::Get().DrainGameThreadQueue();
+	CefSession::Get().Tick();
+	// World2D: project every world-anchored page to screen space once per frame,
+	// on the game thread (the same thread the PC client projects from).
+	CefBrowser::Get().TickWorld2D();
+	// WorldObject3D: pull one frame per attached page and upload it into the
+	// RenderWare texture the object material is pointing at.
+	CefBrowser::Get().TickWorldObject3D();
+
 	if (pNetGame) {
 		pNetGame->Process();
 
@@ -493,6 +510,10 @@ jint JNI_OnLoad(JavaVM* vm, [[maybe_unused]] void* reserved)
 	}
 
 	g_vm = vm;
+
+	// Resolve app-side classes here: threads attached later via
+	// AttachCurrentThread use the bootstrap loader and cannot FindClass them.
+	CefBrowser::OnJniLoad(env);
 
 	return env->GetVersion();
 }

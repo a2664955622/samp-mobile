@@ -140,15 +140,24 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
         }
         StringBuilder msg = new StringBuilder("未检测到完整游戏数据包（缺少 ");
         msg.append(String.join("、", missing));
-        msg.append("）。\n\n请先使用 tools/build_gamedata.py 生成 gamedata.zip 传到手机任意位置，然后点击下方一键导入。");
+        msg.append("）。\n\n可前往「设置 → 文件验证」查看详细文件状态并选择本地导入或启动器下载精简版资源。");
         new AlertDialog.Builder(this)
                 .setTitle("缺少游戏数据包")
                 .setMessage(msg.toString())
-                .setPositiveButton("一键导入 .zip", (d, w) ->
+                .setPositiveButton("前往文件验证", (d, w) -> openSettingsGameDataTab())
+                .setNeutralButton("一键导入 .zip", (d, w) ->
                         gameDataZipPicker.launch(new String[]{"application/zip", "application/octet-stream", "*/*"}))
                 .setNegativeButton("取消", null)
                 .show();
         return false;
+    }
+
+    private void openSettingsGameDataTab() {
+        showPage(PAGE_SETTINGS);
+        Fragment frag = getSupportFragmentManager().findFragmentByTag(TAG_SETTINGS);
+        if (frag instanceof SettingsPageFragment) {
+            ((SettingsPageFragment) frag).openGameDataTab();
+        }
     }
 
     @Override

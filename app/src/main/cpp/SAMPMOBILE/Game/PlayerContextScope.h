@@ -3,14 +3,20 @@
 #include <cstdint>
 #include <cstring>
 #include "Aimstuff.h"
+#include "../GameSA/include/Camera.h"
+
+namespace sa {
+CCamera& getTheCamera();
+}
 
 // RAII scope that temporarily switches the engine's global local-player state
-// (camera mode, weapon camera mode, zoom/aspect, aim vectors, PlayerInFocus)
-// to a remote player slot, and restores the saved state on scope exit.
+// (active camera index, camera mode, weapon camera mode, zoom/aspect, aim vectors,
+// PlayerInFocus) to a remote player slot, and restores the saved state on scope exit.
 //
-// All saved values (camera modes, FOV/aspect, aim vectors, PlayerInFocus) live
-// on the scope instance rather than globals, so nested scopes cannot clobber
-// an outer scope's local-player snapshot.
+// GTA:SA's CCamera::StartTransition toggles TheCamera.m_nActiveCam between 0 and 1
+// on every camera switch, while CTaskSimpleUseGun::ProcessPed reads m_aCams[0].m_nMode
+// directly and Find3rdPersonCamTargetVector / ProcessPlayerWeapon read m_aCams[m_nActiveCam].
+// Pinning m_nActiveCam = 0 inside remote scopes unifies both paths onto m_aCams[0].
 class ScopedPlayerContext {
 public:
 	enum Flags : uint32_t {
@@ -36,11 +42,19 @@ public:
 			return;
 		}
 
+		if (flags_ & (kCamMode | kZoomAspect | kAim)) {
+			sa::CCamera& cam = sa::getTheCamera();
+			savedActiveCam_ = cam.m_nActiveCam;
+			cam.m_nActiveCam = 0;
+			savedActiveCamValid_ = true;
+		}
+
 		if (flags_ & kCamMode) {
-			const uint8_t remoteMode = GameGetPlayerCameraMode(playerNum);
+			const uint8_t remoteMode = GameResolveRemoteEffectiveCameraMode(playerNum);
 			if (pbyteCameraMode) {
-				savedCameraMode_ = *pbyteCameraMode;
-				*pbyteCameraMode = remoteMode;
+				sa::CCamera& cam = sa::getTheCamera();
+				savedCameraMode_ = cam.m_aCams[0].m_nMode;
+				cam.m_aCams[0].m_nMode = static_cast<sa::eCamMode>(remoteMode);
 				savedCamMode1_ = true;
 			}
 			if (wCameraMode2) {
@@ -62,11 +76,11 @@ public:
 		}
 
 		if (flags_ & kAim) {
-			if (CAMERA_AIM* internalAim = GameGetInternalAim()) {
-				std::memcpy(&savedAim_, internalAim, sizeof(CAMERA_AIM));
-				savedAimValid_ = true;
-				GameSetRemotePlayerAim(playerNum);
-			}
+			sa::CCamera& cam = sa::getTheCamera();
+			auto* cam0Aim = reinterpret_cast<CAMERA_AIM*>(&cam.m_aCams[0].Front);
+			std::memcpy(&savedAim_, cam0Aim, sizeof(CAMERA_AIM));
+			savedAimValid_ = true;
+			GameSetRemotePlayerAim(playerNum);
 		}
 
 		if (flags_ & kSkills) {
@@ -103,7 +117,8 @@ public:
 		}
 
 		if (savedCamMode1_ && pbyteCameraMode) {
-			*pbyteCameraMode = savedCameraMode_;
+			sa::CCamera& cam = sa::getTheCamera();
+			cam.m_aCams[0].m_nMode = static_cast<sa::eCamMode>(savedCameraMode_);
 		}
 		if (savedCamMode2_ && wCameraMode2) {
 			std::memcpy(wCameraMode2, savedWeaponMode_, sizeof(savedWeaponMode_));
@@ -115,9 +130,14 @@ public:
 		}
 
 		if (savedAimValid_) {
-			if (CAMERA_AIM* internalAim = GameGetInternalAim()) {
-				std::memcpy(internalAim, &savedAim_, sizeof(CAMERA_AIM));
-			}
+			sa::CCamera& cam = sa::getTheCamera();
+			auto* cam0Aim = reinterpret_cast<CAMERA_AIM*>(&cam.m_aCams[0].Front);
+			std::memcpy(cam0Aim, &savedAim_, sizeof(CAMERA_AIM));
+		}
+
+		if (savedActiveCamValid_) {
+			sa::CCamera& cam = sa::getTheCamera();
+			cam.m_nActiveCam = savedActiveCam_;
 		}
 	}
 
@@ -128,13 +148,15 @@ public:
 
 private:
 	uint32_t flags_ = kNone;
-	uint8_t savedCameraMode_ = 0;
+	uint16_t savedCameraMode_ = 0;
+	uint8_t savedActiveCam_ = 0;
 	uint8_t savedWeaponMode_[12]{};
 	uint8_t savedCurrentPlayer_ = 0;
 	float savedExtZoom_ = 0.0f;
 	float savedAspectRatio_ = 0.0f;
 	CAMERA_AIM savedAim_{};
 	float savedSkills_[kWeaponSkillCount]{};
+	bool savedActiveCamValid_ = false;
 	bool savedCamMode1_ = false;
 	bool savedCamMode2_ = false;
 	bool savedZoomAspect_ = false;

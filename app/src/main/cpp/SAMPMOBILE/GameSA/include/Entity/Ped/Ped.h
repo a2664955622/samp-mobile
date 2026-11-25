@@ -485,7 +485,13 @@ struct CPed : public CPhysical {
 
 public:
 	[[nodiscard]] bool IsInVehicle() const noexcept { return bInVehicle && pVehicle != nullptr; }
-	[[nodiscard]] bool IsAPassenger() const noexcept { return bInVehicle && pVehicle != nullptr && pVehicle->pDriver != this; }
+	[[nodiscard]] bool IsAPassenger() const noexcept
+	{
+		return bInVehicle && pVehicle != nullptr
+			&& (pVehicle->pDriver != this
+				|| pVehicle->m_nModelIndex == MODEL_STREAKC
+				|| pVehicle->m_nModelIndex == MODEL_FREIFLAT);
+	}
 
 	void ClearWeapons()
 	{

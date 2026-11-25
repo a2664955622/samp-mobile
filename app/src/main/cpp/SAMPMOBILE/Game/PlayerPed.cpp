@@ -398,6 +398,9 @@ void CPlayerPed::SetSpecialAction(uint8_t byteSpecialAction)
 		if (GetStuff() != targetStuff) {
 			GiveStuff(targetStuff);
 		}
+		else if (!IsInVehicle() && GetCurrentWeapon() != 0) {
+			SetArmedWeapon(0);
+		}
 	}
 	else if (GetStuff() != STUFF_TYPE_NONE) {
 		DropStuff();
@@ -711,20 +714,19 @@ void CPlayerPed::GiveStuff(int iType)
 
 void CPlayerPed::DropStuff()
 {
+	if (m_ped && GamePool_Ped_GetAt(m_gtaId) && m_ped->m_pIntelligence) {
+		// Detach & delete CTaskSimpleHoldEntity in secondary slot 4 BEFORE freeing the object pool slot
+		// so m_aSecondaryTasks[4] never retains a dangling CObject* across pool slot reuse.
+		eng::fn::CTaskManager_SetTaskSecondary(&m_ped->m_pIntelligence->m_TaskMgr, nullptr, 4);
+	}
+
 	if (m_dwStuffObject) {
 		if (GamePool_Object_GetAt(m_dwStuffObject)) {
-			if (m_ped && GamePool_Ped_GetAt(m_gtaId)) {
-				ScriptCommand(&task_pick_up_object, m_gtaId, m_dwStuffObject, 0.0, 0.0, 0.0, 6, 16, "NULL", "NULL", 0);
-			}
 			ScriptCommand(&destroy_object, m_dwStuffObject);
 		}
 		m_dwStuffObject = 0;
 	}
 
-	if (m_ped && GamePool_Ped_GetAt(m_gtaId) && IsAdded() && !IsInVehicle()) {
-		RwMatrix mat = m_ped->GetMatrix().ToRwMatrix();
-		TeleportTo(mat.pos.x, mat.pos.y, mat.pos.z);
-	}
 	m_iStuffType = STUFF_TYPE_NONE;
 }
 
@@ -960,17 +962,15 @@ void CPlayerPed::StopPassengerDriveByMode()
 	}
 }
 
-bool IsTaskRunNamedOrSlideToCoord(sa::CTask* pTask)
+bool IsTaskRunNamedAnim(sa::CTask* pTask)
 {
 	if (!pTask) return false;
 	const uintptr_t vtable = *reinterpret_cast<uintptr_t*>(pTask);
 	// eng::vmtSlot(sym, 1) == sym + 2*sizeof(void*), which is the Itanium ABI object vptr.
-	if (vtable == eng::vmtSlot(eng::Sym::vtable_CTaskSimpleSlideToCoord, 1) ||
-			vtable == eng::vmtSlot(eng::Sym::vtable_CTaskSimpleRunNamedAnim, 1)) {
+	if (vtable == eng::vmtSlot(eng::Sym::vtable_CTaskSimpleRunNamedAnim, 1)) {
 		return true;
 	}
-	const int taskType = GetTaskTypeFromTask(&pTask);
-	return taskType == 401 || taskType == 934;
+	return GetTaskTypeFromTask(&pTask) == 401;
 }
 
 sa::CTask* GetSubTaskFromTask(sa::CTask* pTask)
@@ -990,9 +990,10 @@ static constexpr size_t kRunAnimFlagsOff = VER_x32 ? 0x5C : 0x6C;
 
 uint32_t CPlayerPed::GetCurrentAnimationIndexFlag()
 {
-	if (m_ped && m_gtaId && GamePool_Ped_GetAt(m_gtaId) && m_ped->m_pRwObject && m_ped->m_pIntelligence) {
+	if (m_ped && m_gtaId && GamePool_Ped_GetAt(m_gtaId) && m_ped->m_pRwObject && m_ped->m_pIntelligence
+			&& IsEnteringVehicle() == 0 && !IsExitingVehicle()) {
 		sa::CTask* pTask = m_ped->m_pIntelligence->m_TaskMgr.m_aPrimaryTasks[sa::TASK_PRIMARY_PRIMARY];
-		while (pTask && !IsTaskRunNamedOrSlideToCoord(pTask)) {
+		while (pTask && !IsTaskRunNamedAnim(pTask)) {
 			pTask = GetSubTaskFromTask(pTask);
 		}
 		if (pTask) {
@@ -1055,7 +1056,7 @@ int CPlayerPed::GetCurrentAnimationIndex(float& blendData)
 		sa::CTask* pTask = pIntelligence->m_TaskMgr.m_aPrimaryTasks[sa::TASK_PRIMARY_PRIMARY];
 
 		if (pTask) {
-			while (!IsTaskRunNamedOrSlideToCoord(pTask)) {
+			while (!IsTaskRunNamedAnim(pTask)) {
 				pTask = GetSubTaskFromTask(pTask);
 				if (!pTask) {
 					return 0;
@@ -1643,18 +1644,15 @@ void CPlayerPed::ApplyAnimation(const char* szAnimName, const char* szAnimLib, f
 	if (!strcasecmp(szAnimLib, "SEX")) {
 		return;
 	}
-	if (!strcasecmp(szAnimLib, "SAMP")) {
-		// Allow SAMP anim library if samp.ifp is installed in the data pack;
-		// otherwise return early without stalling 15ms waiting for a missing block.
-		if (!eng::fn::CAnimManager_GetAnimationBlock<void*>(szAnimLib)) {
-			return;
-		}
+	if (!eng::fn::CAnimManager_GetAnimationBlock<void*>(szAnimLib)) {
+		return;
 	}
 
 	int iWaitAnimLoad = 0;
 
 	if (!pGame->IsAnimationLoaded(szAnimLib)) {
 		pGame->RequestAnimation(szAnimLib);
+		pGame->LoadRequestedModels();
 		while (!pGame->IsAnimationLoaded(szAnimLib)) {
 			usleep(1000);
 			iWaitAnimLoad++;
@@ -1735,22 +1733,10 @@ static int CountClumpVertices(RwObject* rwObj)
 	return totalVerts;
 }
 
-void CPlayerPed::SetModelIndex(uint uiModel)
+uint EnsureValidPedModelPrototype(uint uiModel)
 {
-	spdlog::debug("SetModelIndex: {}", uiModel);
-
-	if (!m_ped) {
-		spdlog::error("SetModelIndex: m_ped is null");
-		return;
-	}
-
-	if (!GamePool_Ped_GetAt(m_gtaId)) {
-		spdlog::error("SetModelIndex: invalid gta id");
-		return;
-	}
-
 	if (!IsValidPedModel(uiModel)) {
-		spdlog::error("SetModelIndex: invalid model");
+		spdlog::error("EnsureValidPedModelPrototype: invalid model {}", uiModel);
 		uiModel = 0;
 	}
 
@@ -1760,7 +1746,7 @@ void CPlayerPed::SetModelIndex(uint uiModel)
 	// and CJ renders invisible. Detect the placeholder via vertex count (< 100) and run
 	// CClothes::ConstructPedModel(0, ...) once when texdb/player.img is present (no runtime
 	// .text unpatch); fall back to skin 29 if unavailable.
-	if (uiModel == 0) {
+	if (uiModel == 0 && pGame) {
 		RwObject* rwModel0 = GetModelRWObject(0);
 		if (!rwModel0) {
 			pGame->RequestModel(0);
@@ -1781,7 +1767,7 @@ void CPlayerPed::SetModelIndex(uint uiModel)
 					access((base + "texdb/PLAYER.IMG").c_str(), F_OK) == 0);
 				s_cjImgState = hasPlayerImg ? 1 : 0;
 				if (!hasPlayerImg) {
-					spdlog::warn("SetModelIndex(0): texdb/player.img missing; falling back to skin 29");
+					spdlog::warn("EnsureValidPedModelPrototype(0): texdb/player.img missing; falling back to skin 29");
 				}
 			}
 
@@ -1796,14 +1782,52 @@ void CPlayerPed::SetModelIndex(uint uiModel)
 					eng::fn::CPedClothesDesc_SetTextureAndModel(clothesDesc, "sneakerbincblk", "sneaker", 3);
 					eng::fn::CClothes_ConstructPedModel(0u, clothesDesc, static_cast<const void*>(nullptr), false);
 					rwModel0 = GetModelRWObject(0);
-					spdlog::info("SetModelIndex(0): CClothes::ConstructPedModel built {} vertices",
+					spdlog::info("EnsureValidPedModelPrototype(0): CClothes::ConstructPedModel built {} vertices",
 						CountClumpVertices(rwModel0));
 				}
 			}
 
 			if (CountClumpVertices(rwModel0) < 100) {
-				spdlog::warn("SetModelIndex(0): model 0 still placeholder (<100 verts); falling back to skin 29");
+				spdlog::warn("EnsureValidPedModelPrototype(0): model 0 still placeholder (<100 verts); falling back to skin 29");
 				uiModel = 29;
+			}
+		}
+	}
+
+	return uiModel;
+}
+
+void CPlayerPed::SetModelIndex(uint uiModel)
+{
+	spdlog::debug("SetModelIndex: {}", uiModel);
+
+	if (!m_ped) {
+		spdlog::error("SetModelIndex: m_ped is null");
+		return;
+	}
+
+	if (!GamePool_Ped_GetAt(m_gtaId)) {
+		spdlog::error("SetModelIndex: invalid gta id");
+		return;
+	}
+
+	uiModel = EnsureValidPedModelPrototype(uiModel);
+
+	// Preserve seated vehicle state across DeleteRWObject -> SetModelIndex:
+	// rebuilding RpClump/RpHAnimHierarchy while seated severs CAR_sit / BIKEs_Ride and T-poses.
+	bool bRestoreVehicle = false;
+	uint32_t savedVehGtaId = 0;
+	uint8_t savedSeatId = 0;
+	if (IsInVehicle()) {
+		if (sa::CVehicle* pVeh = GetGtaVehicle()) {
+			const uint32_t vehGtaId = GamePool_Vehicle_GetIndex(pVeh);
+			const int seatId = GetVehicleSeatID();
+			if (vehGtaId != 0 && GamePool_Vehicle_GetAt(vehGtaId) == pVeh && seatId >= 0) {
+				bRestoreVehicle = true;
+				savedVehGtaId = vehGtaId;
+				savedSeatId = static_cast<uint8_t>(seatId);
+				const RwMatrix vehMat = pVeh->GetMatrix().ToRwMatrix();
+				RemoveFromVehicleAndPutAt(vehMat.pos.x, vehMat.pos.y, vehMat.pos.z + 0.5f);
 			}
 		}
 	}
@@ -1817,6 +1841,10 @@ void CPlayerPed::SetModelIndex(uint uiModel)
 
 	// CAEPedSpeechAudioEntity::Initialise
 	eng::fn::CAEPedSpeechAudioEntity_Initialise( &m_ped->m_PedSpeechAudioEntity, m_ped);
+
+	if (bRestoreVehicle) {
+		PutDirectlyInVehicle(savedVehGtaId, savedSeatId);
+	}
 }
 
 void CPlayerPed::DestroyFollowPedTask()
@@ -2084,13 +2112,25 @@ void CPlayerPed::ProcessParachuting()
 	}
 }
 
+void CPlayerPed::ClearPrimaryTask()
+{
+	if (m_ped && GamePool_Ped_GetAt(m_gtaId) && m_ped->m_pIntelligence
+			&& m_ped->m_pIntelligence->m_TaskMgr.m_aPrimaryTasks[sa::TASK_PRIMARY_PRIMARY]) {
+		eng::fn::CTaskManager_SetTask(&m_ped->m_pIntelligence->m_TaskMgr, nullptr, sa::TASK_PRIMARY_PRIMARY, false);
+	}
+}
+
 void CPlayerPed::PlayAnimByIdx(int idx, float BlendData)
 {
 	if (!m_ped) return;
 	if (!idx) {
-		// reset character animation
-		RwMatrix mat = m_ped->GetMatrix().ToRwMatrix();
-		TeleportTo(mat.pos.x, mat.pos.y, mat.pos.z);
+		// Only clear primary task if it is a scripted CTaskSimpleRunNamedAnim (401);
+		// never call TeleportTo() here (which wipes CTaskSimpleUseGun and CTaskComplexEnterCar).
+		if (m_ped->m_pIntelligence) {
+			if (eng::fn::CTaskManager_FindActiveTaskByType(&m_ped->m_pIntelligence->m_TaskMgr, 401) != nullptr) {
+				ClearPrimaryTask();
+			}
+		}
 		return;
 	}
 
@@ -2227,6 +2267,9 @@ void CPlayerPed::ExitCurrentVehicle()
 				}
 			}
 		}
+	}
+	else if (IsEnteringVehicle() != 0) {
+		ClearPrimaryTask();
 	}
 }
 
@@ -2523,12 +2566,67 @@ void CPlayerPed::PutDirectlyInVehicle(uint32_t dwVehicleGTAId, uint8_t byteSeatI
 			return;
 		}
 
+		// Cleanly detach from any previous vehicle/seat first so pDriver / m_apPassengers[]
+		// never retains a stale CPed* across direct seat or vehicle switches.
+		if (m_ped->IsInVehicle()) {
+			const bool bSameVehAndSeat = (m_ped->pVehicle == pGtaVehicle)
+				&& (GetVehicleSeatID() == static_cast<int>(byteSeatID));
+			if (bSameVehAndSeat) {
+				return;
+			}
+			const RwMatrix curMat = pGtaVehicle->GetMatrix().ToRwMatrix();
+			RemoveFromVehicleAndPutAt(curMat.pos.x, curMat.pos.y, curMat.pos.z + 0.5f);
+		}
+		else if (IsEnteringVehicle() != 0) {
+			ClearPrimaryTask();
+		}
+
 		if (byteSeatID) {
-			ScriptCommand(&put_actor_in_car2, m_gtaId, dwVehicleGTAId, byteSeatID - 1);
+			const int psgrSlot = static_cast<int>(byteSeatID) - 1;
+			sa::CPed* pLocalGtaPed = GamePool_FindPlayerPed();
+			// Never allow a remote PutDirectlyInVehicle (0x0430) to run CTaskSimpleCarSetPedOut
+			// on the local player if both clients transiently target the same passenger slot.
+			if (m_ped != pLocalGtaPed && psgrSlot >= 0 && psgrSlot < 8
+					&& pLocalGtaPed && pGtaVehicle->m_apPassengers[psgrSlot] == pLocalGtaPed
+					&& pLocalGtaPed->IsInVehicle()) {
+				int fallbackSlot = -1;
+				const int maxSlots = std::min<int>(static_cast<int>(pGtaVehicle->m_nMaxPassengers), 8);
+				for (int s = 0; s < maxSlots; ++s) {
+					if (pGtaVehicle->m_apPassengers[s] == nullptr) {
+						fallbackSlot = s;
+						break;
+					}
+				}
+				if (fallbackSlot < 0) {
+					return;
+				}
+				ScriptCommand(&put_actor_in_car2, m_gtaId, dwVehicleGTAId, fallbackSlot);
+			}
+			else {
+				ScriptCommand(&put_actor_in_car2, m_gtaId, dwVehicleGTAId, psgrSlot);
+			}
 		}
 		else {
-			if (pGtaVehicle->pDriver && pGtaVehicle->pDriver->IsInVehicle()) {
-				return;
+			if (pGtaVehicle->pDriver && pGtaVehicle->pDriver != m_ped && pGtaVehicle->pDriver->IsInVehicle()) {
+				sa::CPed* pLocalGtaPed = GamePool_FindPlayerPed();
+				if (pGtaVehicle->pDriver == pLocalGtaPed && m_ped != pLocalGtaPed) {
+					return;
+				}
+				// Evict stale remote driver (e.g. rapid seat swap before old driver's OnFootSync arrives)
+				if (pNetGame && pNetGame->GetPlayerPool()) {
+					PLAYERID oldDriverId = pNetGame->GetPlayerPool()->FindRemotePlayerIDFromGtaPtr(pGtaVehicle->pDriver);
+					if (oldDriverId != INVALID_PLAYER_ID) {
+						if (CRemotePlayer* pOldDriver = pNetGame->GetPlayerPool()->GetAt(oldDriverId)) {
+							if (CPlayerPed* pOldPed = pOldDriver->GetPlayerPed()) {
+								const RwMatrix curMat = pGtaVehicle->GetMatrix().ToRwMatrix();
+								pOldPed->RemoveFromVehicleAndPutAt(curMat.pos.x, curMat.pos.y, curMat.pos.z + 1.0f);
+							}
+						}
+					}
+				}
+				if (pGtaVehicle->pDriver && pGtaVehicle->pDriver != m_ped && pGtaVehicle->pDriver->IsInVehicle()) {
+					return;
+				}
 			}
 
 			ScriptCommand(&put_actor_in_car, m_gtaId, dwVehicleGTAId);
@@ -2597,20 +2695,19 @@ void CPlayerPed::EnterVehicle(uint32_t dwVehicleGTAId, bool bPassenger)
 		SetArmedWeapon(0);
 	}
 
-	// Is it a passenger
+	// Pass time = -1 so CTaskComplexEnterCarAsPassengerTimed / DriverTimed uses GTA's
+	// built-in untimed path (tbnz w8, #31) instead of warping into the seat at 3000ms
+	// and skipping CarOpenDoorFromOutside / CarGetIn when walking >3s to reach the door.
 	if (bPassenger) {
-		//Vehicle model index is not a train passenger seat
 		if (pGtaVehicle->m_nModelIndex != TRAIN_PASSENGER || m_ped != GamePool_FindPlayerPed()) {
-			//enter the passenger seat
-			ScriptCommand(&send_actor_to_car_passenger, m_gtaId, dwVehicleGTAId, 3000, -1);
+			ScriptCommand(&send_actor_to_car_passenger, m_gtaId, dwVehicleGTAId, -1, -1);
 		}
 		else {
 			ScriptCommand(&put_actor_in_car2, m_gtaId, dwVehicleGTAId, -1);
 		}
 	}
 	else {
-		//get into the driver's seat
-		ScriptCommand(&send_actor_to_car_driverseat, m_gtaId, dwVehicleGTAId, 3000);
+		ScriptCommand(&send_actor_to_car_driverseat, m_gtaId, dwVehicleGTAId, -1);
 	}
 }
 

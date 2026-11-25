@@ -23,6 +23,7 @@ float GameGetAspectRatio();
 uint8_t GameGetLocalPlayerCameraMode();
 void GameSetPlayerCameraMode(uint8_t byteMode, uint8_t bytePlayerNumber);
 uint8_t GameGetPlayerCameraMode(uint8_t bytePlayerNumber);
+uint8_t GameResolveRemoteEffectiveCameraMode(uint8_t bytePlayerNumber);
 
 /* Aim */
 CAMERA_AIM* GameGetRemotePlayerAim(uint8_t bytePlayerNumber);

@@ -12,6 +12,7 @@ extern NetGame* pNetGame;
 
 extern CPlayerPed* g_pCurrentFiredPed;
 extern BULLET_DATA* g_pCurrentBulletData;
+extern sa::CPlayerInfo* WORLD_PLAYERS;
 
 PAD_KEYS LocalPlayerKeys;
 PAD_KEYS RemotePlayerKeys[PLAYER_PED_SLOTS];
@@ -19,6 +20,7 @@ PAD_KEYS RemotePlayerKeys[PLAYER_PED_SLOTS];
 sa::CPed* dwCurPlayerActor = nullptr;
 uint8_t byteInternalPlayer = 0;
 uint8_t byteCurPlayer = 0;
+static uintptr_t g_lastLocalPadPtr = 0;
 
 void* ghook_CWorld_ProcessLineOfSight = nullptr;
 
@@ -26,20 +28,77 @@ static CPlayerPed* GetBlockableLocalPed();
 static CPlayerPed* GetAimableLocalPed();
 static bool Using1stPersonWeaponCam();
 
-// Unified state for touch-screen combat controls (aim toggle, fire edge/hold,
-// melee block). Sampled once per game-logic frame right after
-// CTouchInterface::Clear() so CPad hooks read consistent, zero-lag state.
+static inline bool IsPadMovementDisabled(uintptr_t pad)
+{
+	// Disassembly-verified on both arm32 (0x3fa220..0x3fa226) and arm64 (0x4dcd50..0x4dcd58):
+	// CPad::DisablePlayerControls @ +272 (uint16_t), CPad::bDisablePlayerDuck/Move @ +287 (uint8_t).
+	return !pad
+		|| *reinterpret_cast<const uint16_t*>(pad + 272) != 0
+		|| *reinterpret_cast<const uint8_t*>(pad + 287) != 0;
+}
+
+static inline bool IsLocalActivePedMovementLocked()
+{
+	if (!g_lastLocalPadPtr || !IsPadMovementDisabled(g_lastLocalPadPtr)) {
+		return false;
+	}
+	if (pNetGame && pNetGame->GetPlayerPool()) {
+		if (CLocalPlayer* pLocal = pNetGame->GetPlayerPool()->GetLocalPlayer()) {
+			// Keep ButtonPanel directional keys working during inactive class-selection / spectating,
+			// where servers read lrAnalog/udAnalog while the local ped is intentionally frozen.
+			if (!pLocal->m_bIsActive || pLocal->IsSpectating()) {
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+// Unified state for touch-screen combat & on-foot movement controls.
+// Sampled once per game-logic frame right after CTouchInterface::Clear()
+// so every CPad / UseGun hook and outbound sync packet reads consistent,
+// zero-lag state without starving WIDGET_PED_MOVE's frame counter.
 struct TouchCombatState {
 	bool aimLatch = false;
-	bool aimSuppress = false;
+	uint8_t lastAimWeapon = 0;
+	bool onFootStickSampled = false;
+	bool stickTouched = false;
+	int16_t stickLR = 0;
+	int16_t stickUD = 0;
 	bool fireDown = false;
 	bool firePrevDown = false;
 	bool fireJustPressed = false;
 	uint32_t fireDownTickMs = 0;
 	bool blockDown = false;
+	uint32_t meleeComboUntilMs = 0;
+	uint32_t meleeFireUntilMs = 0;
 };
 
 static TouchCombatState g_touchCombat{};
+
+static inline bool IsLocalMeleeComboActive()
+{
+	return GetBlockableLocalPed() != nullptr
+		&& static_cast<int32_t>(g_touchCombat.meleeComboUntilMs - GetTickCount()) > 0;
+}
+
+static inline bool IsLocalMeleeFireActive()
+{
+	return GetBlockableLocalPed() != nullptr
+		&& static_cast<int32_t>(g_touchCombat.meleeFireUntilMs - GetTickCount()) > 0;
+}
+
+static inline bool IsLocalMeleeBlockActive()
+{
+	return GetBlockableLocalPed() != nullptr && g_touchCombat.blockDown && !IsLocalMeleeComboActive();
+}
+
+static inline bool LocalPedHasCancellableSpecialAction(CPlayerPed* pPed)
+{
+	return pPed && !pPed->IsDead() && !pPed->IsInVehicle()
+		&& (pPed->GetStuff() != STUFF_TYPE_NONE || pPed->IsDancing()
+			|| pPed->HasHandsUp() || pPed->IsPissing());
+}
 
 // Tap vs hold threshold for regular firearms: a normal touch tap lasts
 // ~40-150ms (3-9 frames), which would otherwise fire 2-3 rounds on automatic
@@ -47,27 +106,33 @@ static TouchCombatState g_touchCombat{};
 static constexpr uint32_t kFireHoldRepeatDelayMs = 180;
 
 // CWidget field offsets verified on arm32 and arm64 libGTASA.so
-static constexpr uintptr_t kWidgetSpriteOffset  = VER_x32 ? 8  : 16;
-static constexpr uintptr_t kWidgetPosOffset     = VER_x32 ? 12 : 24;
-static constexpr uintptr_t kWidgetAlphaOffset   = VER_x32 ? 76 : 88;
-static constexpr uintptr_t kWidgetEnabledOffset = VER_x32 ? 77 : 89;
+static constexpr uintptr_t kWidgetSpriteOffset      = VER_x32 ? 8   : 16;
+static constexpr uintptr_t kWidgetPosOffset         = VER_x32 ? 12  : 24;
+static constexpr uintptr_t kWidgetAlphaOffset       = VER_x32 ? 76  : 88;
+static constexpr uintptr_t kWidgetEnabledOffset     = VER_x32 ? 77  : 89;
+static constexpr uintptr_t kWidgetCachedTouchOffset = VER_x32 ? 120 : 132;
 
-// Temporarily scales CWidgetRegionMove's WidgetPosition.sx (which controls outer
-// ring radius, inner thumb radius, and max drag distance) while preserving the
-// full left-screen touch activation rectangles (m_ScreenRect / m_TouchRect).
+static uintptr_t g_activeScaledJoystickWidget = 0;
+static float g_activeJoystickOrigSx = 0.0f;
+
+// Temporarily scales CWidgetRegionMove's WidgetPosition.sx (outer ring radius,
+// inner thumb radius, and max drag distance) while CWidget_Update always uses
+// unscaled origSx so m_ScreenRect / m_TouchRect span the full left half of the
+// screen (preventing CoorsAreInWidget in CWidgetRegionMove::Update from setting
+// alpha = 0 mid-drag when joystickScale < 1.0f, and avoiding nested double-scale).
 struct ScopedJoystickScale {
 	uintptr_t w = 0;
 	float origSx = 0.0f;
 
-	ScopedJoystickScale(uintptr_t widget, bool ensureBaseRectInit = false)
+	explicit ScopedJoystickScale(uintptr_t widget)
 	{
 		float scale = Settings::joystickScale();
 		if (!widget || scale == 1.0f || scale < 0.4f || scale > 2.0f) return;
-		if (ensureBaseRectInit) {
-			eng::fn::CWidget_Update( widget);
-		}
+		if (g_activeScaledJoystickWidget == widget) return;
 		w = widget;
 		origSx = *reinterpret_cast<float*>(w + kWidgetPosOffset + 8);
+		g_activeScaledJoystickWidget = w;
+		g_activeJoystickOrigSx = origSx;
 		*reinterpret_cast<float*>(w + kWidgetPosOffset + 8) = origSx * scale;
 	}
 
@@ -75,32 +140,68 @@ struct ScopedJoystickScale {
 	{
 		if (w) {
 			*reinterpret_cast<float*>(w + kWidgetPosOffset + 8) = origSx;
-			eng::fn::CWidget_Update( w);
+			g_activeScaledJoystickWidget = 0;
+			g_activeJoystickOrigSx = 0.0f;
 		}
 	}
 };
 
+void RunWithUnscaledJoystickSx(uintptr_t widget, void (*fn)(uintptr_t))
+{
+	if (widget && widget == g_activeScaledJoystickWidget) {
+		float& sx = *reinterpret_cast<float*>(widget + kWidgetPosOffset + 8);
+		const float scaledSx = sx;
+		sx = g_activeJoystickOrigSx;
+		fn(widget);
+		sx = scaledSx;
+		return;
+	}
+	fn(widget);
+}
+
+// Protect an actively held left thumbstick (WIDGET_PED_MOVE) from having its
+// bound touch slot & clamped anchor overwritten when a second finger touches
+// empty space on the left half of the screen during multi-touch combat.
+DECL_HOOK(void, CWidget_SetInitialTouchWidget, int touchNum, uintptr_t widget)
+{
+	if (widget && touchNum >= 0 && touchNum < 4) {
+		uintptr_t* widgets = GetTouchWidgets();
+		if (widgets && widget == widgets[sa::WidgetIDs::WIDGET_PED_MOVE]) {
+			auto* initialWidgets = eng::as<uintptr_t*>(eng::Sym::CWidget_m_pInitialTouchWidget);
+			const int32_t existingTouch = *reinterpret_cast<const int32_t*>(widget + kWidgetCachedTouchOffset);
+			if (initialWidgets && existingTouch >= 0 && existingTouch < 4
+					&& existingTouch != touchNum
+					&& initialWidgets[existingTouch] == widget
+					&& eng::fn::CTouchInterface_IsTouchDown(existingTouch) != 0) {
+				initialWidgets[touchNum] = 0;
+				return;
+			}
+		}
+	}
+	CWidget_SetInitialTouchWidget(touchNum, widget);
+}
+
 DECL_HOOK(void, CWidgetRegionMove_Update, uintptr_t _this)
 {
-	ScopedJoystickScale guard(_this, true);
+	ScopedJoystickScale guard(_this);
 	CWidgetRegionMove_Update(_this);
 }
 
 DECL_HOOK(void, CWidgetRegionMove_ClampInternalTouchAnchor, uintptr_t _this)
 {
-	ScopedJoystickScale guard(_this, false);
+	ScopedJoystickScale guard(_this);
 	CWidgetRegionMove_ClampInternalTouchAnchor(_this);
 }
 
 DECL_HOOK(void, CWidgetRegionMove_Draw, uintptr_t _this)
 {
-	ScopedJoystickScale guard(_this, false);
+	ScopedJoystickScale guard(_this);
 	CWidgetRegionMove_Draw(_this);
 }
 
 DECL_HOOK(uint32_t, CWidgetRegionMove_IsTouched, uintptr_t _this, uintptr_t pVec2D)
 {
-	ScopedJoystickScale guard(_this, false);
+	ScopedJoystickScale guard(_this);
 	return CWidgetRegionMove_IsTouched(_this, pVec2D);
 }
 
@@ -156,6 +257,19 @@ DECL_HOOK(void, CPed_ProcessControl, sa::CPed* _this)
 
 	if (dwCurPlayerActor && (curPlayer != 0) && byteInternalPlayer == 0) {
 		byteCurPlayer = curPlayer;
+		// CPad::GetExitTargeting is only called inside local CCamera::CamControl and
+		// never runs for remote peds. Clear stale remote targeting state as soon as
+		// both KEY_HANDBRAKE and KEY_FIRE are released.
+		if (curPlayer < PLAYER_PED_SLOTS
+				&& !RemotePlayerKeys[curPlayer].bKeys[ePadKeys::KEY_HANDBRAKE]
+				&& !RemotePlayerKeys[curPlayer].bKeys[ePadKeys::KEY_FIRE]) {
+			if (_this->m_pPlayerData && _this->m_pPlayerData->m_bFreeAiming) {
+				_this->m_pPlayerData->m_bFreeAiming = false;
+			}
+			if (_this->m_pEntLockOnTarget) {
+				eng::fn::CPlayerPed_ClearWeaponTarget(_this);
+			}
+		}
 		{
 			ScopedPlayerContext ctx(curPlayer, ScopedPlayerContext::kFull);
 
@@ -175,44 +289,153 @@ DECL_HOOK(void, CPed_ProcessControl, sa::CPed* _this)
 	byteCurPlayer = prevCurPlayer;
 }
 
-static inline uint16_t AdjustRemoteWalkAxis(int16_t val, int16_t other, const PAD_KEYS& keys)
+static inline int16_t AdjustRemoteWalkAxis(int16_t val, int16_t other, const PAD_KEYS& keys)
 {
 	if (keys.bKeys[ePadKeys::KEY_WALK]) {
-		if (val == -128) return static_cast<uint16_t>(-64);
-		if (val == 128) return static_cast<uint16_t>(64);
+		if (val == -128) return -64;
+		if (val == 128) return 64;
 	}
 	// CTaskSimpleUseGun::SetMoveAnim requires (|lr| + |ud|) / 128.0f >= 0.1f (~13)
 	// to play GUNMOVE walk legs; gentle touch-stick tilts can fall just below that.
 	if (val != 0 && keys.bKeys[ePadKeys::KEY_HANDBRAKE]) {
 		const int absSum = std::abs(static_cast<int>(val)) + std::abs(static_cast<int>(other));
 		if (absSum < 16) {
-			return static_cast<uint16_t>(val < 0 ? -16 : 16);
+			return static_cast<int16_t>(val < 0 ? -16 : 16);
 		}
 	}
-	return static_cast<uint16_t>(val);
+	return val;
 }
 
-DECL_HOOK(uint16_t, CPad_GetPedWalkLeftRight, uintptr_t _this)
+DECL_HOOK(int16_t, CPad_GetPedWalkLeftRight, uintptr_t _this)
 {
 	if (CurrentPlayerSlot()) {
 		const PAD_KEYS& rk = RemotePlayerKeys[byteCurPlayer];
 		return AdjustRemoteWalkAxis(static_cast<int16_t>(rk.wKeyLR), static_cast<int16_t>(rk.wKeyUD), rk);
 	}
 	else {
-		LocalPlayerKeys.wKeyLR = CPad_GetPedWalkLeftRight(_this);
-		return LocalPlayerKeys.wKeyLR;
+		g_lastLocalPadPtr = _this;
+		if (IsPadMovementDisabled(_this)) {
+			LocalPlayerKeys.wKeyLR = 0;
+			return 0;
+		}
+		int16_t lr = g_touchCombat.onFootStickSampled ? g_touchCombat.stickLR : 0;
+		if (!g_touchCombat.stickTouched) {
+			const int16_t padLR = CPad_GetPedWalkLeftRight(_this);
+			if (padLR != 0) {
+				lr = padLR;
+			}
+		}
+		if (lr == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldLR() != 0) {
+			lr = static_cast<int16_t>(pUI->buttonpanel()->heldLR());
+		}
+		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
+		return lr;
 	}
 }
-DECL_HOOK(uint16_t, CPad_GetPedWalkUpDown, uintptr_t _this)
+DECL_HOOK(int16_t, CPad_GetPedWalkUpDown, uintptr_t _this)
 {
 	if (CurrentPlayerSlot()) {
 		const PAD_KEYS& rk = RemotePlayerKeys[byteCurPlayer];
 		return AdjustRemoteWalkAxis(static_cast<int16_t>(rk.wKeyUD), static_cast<int16_t>(rk.wKeyLR), rk);
 	}
 	else {
-		LocalPlayerKeys.wKeyUD = CPad_GetPedWalkUpDown(_this);
-		return LocalPlayerKeys.wKeyUD;
+		g_lastLocalPadPtr = _this;
+		if (IsPadMovementDisabled(_this)) {
+			LocalPlayerKeys.wKeyUD = 0;
+			return 0;
+		}
+		int16_t ud = g_touchCombat.onFootStickSampled ? g_touchCombat.stickUD : 0;
+		if (!g_touchCombat.stickTouched) {
+			const int16_t padUD = CPad_GetPedWalkUpDown(_this);
+			if (padUD != 0) {
+				ud = padUD;
+			}
+		}
+		if (ud == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldUD() != 0) {
+			ud = static_cast<int16_t>(pUI->buttonpanel()->heldUD());
+		}
+		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
+		return ud;
 	}
+}
+
+// Fix GTA:SA CTaskSimpleUseGun::StartAnim bug when aiming starts while already
+// moving: for non-MOVEFIRE weapons (Rifle 33, Sniper 34, RPG 35/36, Flamethrower 37,
+// Minigun 38, Camera 43, or non-Hitman skill) and crouch-moving, StartAnim returns
+// early at 0x5dec5c without advancing m_nLastCommand from 0 to 1, causing
+// CTaskSimpleUseGun::ProcessPed (0x5deaa0) to run AbortIK every frame instead of AimGun.
+DECL_HOOK(void, CTaskSimpleUseGun_StartAnim, uintptr_t _this, sa::CPed* pPed)
+{
+	CTaskSimpleUseGun_StartAnim(_this, pPed);
+	if (!_this) return;
+
+	constexpr uintptr_t kNextCmdOff = VER_x32 ? 0x0F : 0x17;
+	constexpr uintptr_t kLastCmdOff = VER_x32 ? 0x10 : 0x18;
+	constexpr uintptr_t kAnimPtrOff = VER_x32 ? 0x2C : 0x40;
+
+	const uintptr_t pAnim = *reinterpret_cast<const uintptr_t*>(_this + kAnimPtrOff);
+	int8_t& nextCmd = *reinterpret_cast<int8_t*>(_this + kNextCmdOff);
+	int8_t& lastCmd = *reinterpret_cast<int8_t*>(_this + kLastCmdOff);
+	if (pAnim == 0 && lastCmd == 0 && nextCmd == 1) {
+		lastCmd = 1;
+		nextCmd = 0;
+	}
+}
+
+// Enable movement while scoped in 1st-person weapon modes (Sniper=34, RPG=35, HS-RPG=36, Camera=43):
+// Stock GTA:SA Mobile zeroes vecMove2D in PlayerControlZeldaWeapon when (weaponInfo->m_nFlags & 0x04)
+// and !IsPlayerUse2PlayerControls, locking local movement and causing remote scoped players to slide.
+DECL_HOOK(void, CTaskSimplePlayerOnFoot_PlayerControlZeldaWeapon, void* _this, sa::CPed* pPed)
+{
+	const bool bIsRemote = pPed && pPed != GamePool_FindPlayerPed() && FindPlayerNumFromPedPtr(pPed) != 0;
+	const float savedAimRot = bIsRemote ? pPed->m_fAimingRotation : 0.0f;
+
+	CTaskSimplePlayerOnFoot_PlayerControlZeldaWeapon(_this, pPed);
+
+	if (bIsRemote) {
+		pPed->m_fAimingRotation = savedAimRot;
+	}
+
+	if (!pPed || !pPed->m_pIntelligence || pPed->m_pAttachedTo) {
+		return;
+	}
+
+	uintptr_t taskUseGun = eng::fn::CPedIntelligence_GetTaskUseGun(pPed->m_pIntelligence);
+	if (!taskUseGun) {
+		return;
+	}
+
+	constexpr uintptr_t kTaskUseGunWeaponInfoOff = VER_x32 ? 0x30 : 0x48;
+	const uintptr_t weaponInfo = *reinterpret_cast<const uintptr_t*>(taskUseGun + kTaskUseGunWeaponInfoOff);
+	if (!weaponInfo) {
+		return;
+	}
+
+	const uint8_t weapFlags0 = *reinterpret_cast<const uint8_t*>(weaponInfo + 0x18);
+	if ((weapFlags0 & 0x04u) == 0) {
+		return;
+	}
+
+	int16_t lr = 0;
+	int16_t ud = 0;
+	if (CurrentPlayerSlot() != 0) {
+		const PAD_KEYS& rk = RemotePlayerKeys[byteCurPlayer];
+		lr = AdjustRemoteWalkAxis(static_cast<int16_t>(rk.wKeyLR), static_cast<int16_t>(rk.wKeyUD), rk);
+		ud = AdjustRemoteWalkAxis(static_cast<int16_t>(rk.wKeyUD), static_cast<int16_t>(rk.wKeyLR), rk);
+	}
+	else if (!IsLocalActivePedMovementLocked()) {
+		lr = static_cast<int16_t>(LocalPlayerKeys.wKeyLR);
+		ud = static_cast<int16_t>(LocalPlayerKeys.wKeyUD);
+	}
+
+	sa::CVector2D move{static_cast<float>(lr) * (1.0f / 128.0f), static_cast<float>(ud) * (1.0f / 128.0f)};
+	const float magSq = move.x * move.x + move.y * move.y;
+	if (magSq > 1.0f) {
+		const float invMag = 1.0f / std::sqrt(magSq);
+		move.x *= invMag;
+		move.y *= invMag;
+	}
+	eng::fn::CTaskSimpleUseGun_ControlGunMove(taskUseGun, &move);
 }
 
 DECL_HOOK(uint16_t, CPad_JumpJustDown, uintptr_t _this)
@@ -232,14 +455,17 @@ DECL_HOOK(uint16_t, CPad_JumpJustDown, uintptr_t _this)
 				return 0;
 			}
 		}
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad_JumpJustDown(_this);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
+		const uint16_t jumpDown = CPad_JumpJustDown(_this);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (jumpDown != 0) || IsLocalMeleeBlockActive();
+		return jumpDown;
 	}
 }
 DECL_HOOK(uint16_t, CPad_GetJump, uintptr_t _this)
 {
 	if (CurrentPlayerSlot()) {
-		if (RemotePlayerKeys[byteCurPlayer].bIgnoreJump) return 0;
+		if (RemotePlayerKeys[byteCurPlayer].bIgnoreJump || RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_HANDBRAKE]) {
+			return 0;
+		}
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_JUMP];
 	}
 	else {
@@ -249,8 +475,9 @@ DECL_HOOK(uint16_t, CPad_GetJump, uintptr_t _this)
 				return 0;
 			}
 		}
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad_GetJump(_this);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
+		const uint16_t jumpHeld = CPad_GetJump(_this);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (jumpHeld != 0) || IsLocalMeleeBlockActive();
+		return jumpHeld;
 	}
 }
 
@@ -282,13 +509,23 @@ DECL_HOOK(uint16_t, CPad_MeleeAttackJustDown, uintptr_t _this)
 	}
 	else {
 		uint32_t dwResult = CPad_MeleeAttackJustDown(_this);
-		/*if (dwResult == 2)
-		{
-			RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_HANDBRAKE] = true;
-			RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = true;
-			return dwResult;
-		}*/
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = dwResult;
+		if (dwResult == 0 && GetBlockableLocalPed() != nullptr
+				&& LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE]
+				&& LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK]) {
+			dwResult = 2;
+		}
+		if (dwResult == 2) {
+			g_touchCombat.meleeComboUntilMs = GetTickCount() + 130;
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = true;
+			return 2;
+		}
+		if (dwResult == 1) {
+			g_touchCombat.meleeFireUntilMs = GetTickCount() + 100;
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = true;
+			return 1;
+		}
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = IsLocalMeleeFireActive();
 		return dwResult;
 	}
 }
@@ -325,6 +562,9 @@ DECL_HOOK(bool, CPad_GetTarget, uintptr_t _this, bool bCheckVehicle)
 	if (const uint8_t slot = CurrentPlayerSlot(); slot > 0 && slot < PLAYER_PED_SLOTS) {
 		return RemotePlayerKeys[slot].bKeys[ePadKeys::KEY_HANDBRAKE];
 	}
+	if (IsLocalMeleeComboActive()) {
+		return true;
+	}
 	return CPad_GetTarget(_this, bCheckVehicle);
 }
 
@@ -348,11 +588,15 @@ DECL_HOOK(uint32_t, CPad_GetSprint, uintptr_t _this, uint32_t unk)
 DECL_HOOK(uint32_t, CPad_GetAutoClimb, uintptr_t _this)
 {
 	if (CurrentPlayerSlot()) {
+		if (RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_HANDBRAKE]) {
+			return 0;
+		}
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_JUMP];
 	}
 	else {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = CPad_GetAutoClimb(_this);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP];
+		const uint32_t climb = CPad_GetAutoClimb(_this);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (climb != 0) || IsLocalMeleeBlockActive();
+		return climb;
 	}
 }
 
@@ -362,8 +606,10 @@ DECL_HOOK(uint32_t, CPad_GetAbortClimb, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_SECONDARY_ATTACK];
 	}
 	else {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = CPad_GetAbortClimb(_this);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK];
+		const uint32_t abortClimb = CPad_GetAbortClimb(_this);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] =
+			(abortClimb != 0) || IsLocalMeleeComboActive() || LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK];
+		return abortClimb;
 	}
 }
 
@@ -391,14 +637,22 @@ DECL_HOOK(uint32_t, CPad_SwimJumpJustDown, uintptr_t _this)
 
 // CTaskSimplePlayerOnFoot::PlayerControlFighter accumulates m_nTimer when
 // ped->m_pTargetedObject == nullptr and CHID::GetInputType() != 2, forcing
-// QUIT_FIGHTING (cmd 15) at >1999ms (~2s). While the local player actively
-// holds the touch block button, reset that idle fighter timeout so blocking
-// never drops mid-hold.
+// QUIT_FIGHTING (cmd 15) at >1999ms (~2s). Reset that idle fighter timeout
+// whenever either the local player or a remote player is actively holding block.
 DECL_HOOK(void, CTaskSimplePlayerOnFoot_PlayerControlFighter, uintptr_t _this, sa::CPed* pPed)
 {
-	if (!CurrentPlayerSlot() && _this && pPed && pPed == GamePool_FindPlayerPed()
-		&& g_touchCombat.blockDown) {
-		*reinterpret_cast<uint32_t*>(_this + kTaskPlayerOnFootTimerOffset) = 0;
+	if (_this && pPed) {
+		const uint8_t slot = CurrentPlayerSlot();
+		if (slot == 0) {
+			if (pPed == GamePool_FindPlayerPed() && g_touchCombat.blockDown) {
+				*reinterpret_cast<uint32_t*>(_this + kTaskPlayerOnFootTimerOffset) = 0;
+			}
+		}
+		else if (slot < PLAYER_PED_SLOTS
+				&& RemotePlayerKeys[slot].bKeys[ePadKeys::KEY_JUMP]
+				&& RemotePlayerKeys[slot].bKeys[ePadKeys::KEY_HANDBRAKE]) {
+			*reinterpret_cast<uint32_t*>(_this + kTaskPlayerOnFootTimerOffset) = 0;
+		}
 	}
 	CTaskSimplePlayerOnFoot_PlayerControlFighter(_this, pPed);
 }
@@ -412,7 +666,9 @@ DECL_HOOK(uint32_t, CPad_GetBlock, uintptr_t _this)
 		return 0;
 	}
 	if (GetBlockableLocalPed()) {
-		return g_touchCombat.blockDown ? 1u : 0u;
+		const bool bBlocking = g_touchCombat.blockDown
+			|| (LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] && LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE]);
+		return bBlocking ? 1u : 0u;
 	}
 	return 0;
 }
@@ -420,22 +676,40 @@ DECL_HOOK(uint32_t, CPad_GetBlock, uintptr_t _this)
 DECL_HOOK(int16_t, CPad_GetSteeringLeftRight, uintptr_t _this)
 {
 	if (CurrentPlayerSlot()) {
-		return (int16_t) RemotePlayerKeys[byteCurPlayer].wKeyLR;
+		return static_cast<int16_t>(RemotePlayerKeys[byteCurPlayer].wKeyLR);
 	}
 	else {
-		LocalPlayerKeys.wKeyLR = CPad_GetSteeringLeftRight(_this);
-		return LocalPlayerKeys.wKeyLR;
+		g_lastLocalPadPtr = _this;
+		if (IsPadMovementDisabled(_this)) {
+			LocalPlayerKeys.wKeyLR = 0;
+			return 0;
+		}
+		int16_t lr = CPad_GetSteeringLeftRight(_this);
+		if (lr == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldLR() != 0) {
+			lr = static_cast<int16_t>(pUI->buttonpanel()->heldLR());
+		}
+		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
+		return lr;
 	}
 }
 
-DECL_HOOK(uint16_t, CPad_GetSteeringUpDown, uintptr_t _this)
+DECL_HOOK(int16_t, CPad_GetSteeringUpDown, uintptr_t _this)
 {
 	if (CurrentPlayerSlot()) {
-		return RemotePlayerKeys[byteCurPlayer].wKeyUD;
+		return static_cast<int16_t>(RemotePlayerKeys[byteCurPlayer].wKeyUD);
 	}
 	else {
-		LocalPlayerKeys.wKeyUD = CPad_GetSteeringUpDown(_this);
-		return LocalPlayerKeys.wKeyUD;
+		g_lastLocalPadPtr = _this;
+		if (IsPadMovementDisabled(_this)) {
+			LocalPlayerKeys.wKeyUD = 0;
+			return 0;
+		}
+		int16_t ud = CPad_GetSteeringUpDown(_this);
+		if (ud == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldUD() != 0) {
+			ud = static_cast<int16_t>(pUI->buttonpanel()->heldUD());
+		}
+		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
+		return ud;
 	}
 }
 
@@ -499,8 +773,8 @@ DECL_HOOK(uint32_t, CPad_GetHorn, uintptr_t _this, bool bCheckVehicle)
 
 DECL_HOOK(uint32_t, CPad_ExitVehicleJustDown, uintptr_t _this, int a2, uintptr_t vehicle, int a4, uintptr_t vec)
 {
-	static uint32_t dwPassengerEnterExit = GetTickCount();
-	if (GetTickCount() - dwPassengerEnterExit < 1000) {
+	static uint32_t dwPassengerEnterExit = 0;
+	if (dwPassengerEnterExit != 0 && GetTickCount() - dwPassengerEnterExit < 500) {
 		return 0;
 	}
 
@@ -1059,7 +1333,7 @@ DECL_HOOK(uint32_t, CPad_GetWeapon, uintptr_t _this, sa::CPed* pPed, bool bShoul
 	if (CanLocalPedUseOnFootFire(_this, pPed)) {
 		dwResult = EvaluateLocalTouchFireLevel(pLocal->GetCurrentWeapon()) ? 0xFF : 0x00;
 	}
-	LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = dwResult;
+	LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = (dwResult != 0) || IsLocalMeleeFireActive();
 	return dwResult;
 }
 
@@ -1234,15 +1508,16 @@ static bool Using1stPersonWeaponCam()
 		&sa::getTheCamera());
 }
 
-// engine-side aim state: CPlayerPedData::m_bFreeAiming for lock-on/free-aim
-// weapons, or a first-person weapon camera for scoped ones.
+// Engine-side aim state: CPlayerPedData::m_bFreeAiming, lock-on target, or
+// first-person weapon camera (CCamera::IsTargetingActive covers all three).
 static bool EngineIsAiming(CPlayerPed* pPed)
 {
 	if (!pPed || !pPed->m_ped) return false;
 	if (pPed->m_ped->m_pPlayerData && pPed->m_ped->m_pPlayerData->m_bFreeAiming) {
 		return true;
 	}
-	return Using1stPersonWeaponCam();
+	return Using1stPersonWeaponCam()
+		|| eng::fn::CCamera_IsTargetingActive(&sa::getTheCamera());
 }
 
 static uint32_t PollTouchRelease(int32_t widgetID)
@@ -1286,15 +1561,21 @@ void UpdateTouchCombatVisuals()
 		*reinterpret_cast<uint8_t*>(wAtk + kWidgetAlphaOffset) = 0xff;
 	}
 
-	// T17: keep left thumbstick & sprint visible while dancing so players can steer dance moves
+	// Keep sprint button visible while dancing (WIDGET_PED_MOVE is natively kept
+	// enabled every logic frame on foot via TickTouchCombatInput).
 	if (bOnFoot && pLocal->IsDancing()) {
-		if (uintptr_t wMove = widgets[sa::WidgetIDs::WIDGET_PED_MOVE]) {
-			*reinterpret_cast<uint8_t*>(wMove + kWidgetEnabledOffset) = 1;
-			*reinterpret_cast<uint8_t*>(wMove + kWidgetAlphaOffset) = 0xff;
-		}
 		if (uintptr_t wSprint = widgets[sa::WidgetIDs::WIDGET_SPRINT]) {
 			*reinterpret_cast<uint8_t*>(wSprint + kWidgetEnabledOffset) = 1;
 			*reinterpret_cast<uint8_t*>(wSprint + kWidgetAlphaOffset) = 0xff;
+		}
+	}
+
+	// Keep enter-car button visible on foot while holding Stuff / Dancing / HandsUp / Pissing
+	// so touch players can cancel/drop them (KEY_SECONDARY_ATTACK) even when no vehicle is nearby.
+	if (bOnFoot && LocalPedHasCancellableSpecialAction(pLocal)) {
+		if (uintptr_t wEnter = widgets[sa::WidgetIDs::WIDGET_ENTER_CAR]) {
+			*reinterpret_cast<uint8_t*>(wEnter + kWidgetEnabledOffset) = 1;
+			*reinterpret_cast<uint8_t*>(wEnter + kWidgetAlphaOffset) = 0xff;
 		}
 	}
 
@@ -1339,13 +1620,32 @@ void UpdateTouchCombatVisuals()
 // zero-lag state.
 static void TickTouchCombatInput()
 {
-	uintptr_t* widgets = GetTouchWidgets();
-	if (!widgets) return;
+	// Reset analog axes and per-frame stick state each logic frame so tasks that
+	// bypass CPad::GetPedWalk* never broadcast stale non-zero lr/ud.
+	LocalPlayerKeys.wKeyLR = 0;
+	LocalPlayerKeys.wKeyUD = 0;
+	g_touchCombat.onFootStickSampled = false;
+	g_touchCombat.stickTouched = false;
+	g_touchCombat.stickLR = 0;
+	g_touchCombat.stickUD = 0;
 
 	CPlayerPed* pLocal = pGame ? pGame->FindPlayerPed() : nullptr;
-	bool bOnFoot = pLocal && !pLocal->IsDead() && !pLocal->IsInVehicle() && !pLocal->IsInJetpack();
-	bool bPassenger = pLocal && !pLocal->IsDead() && pLocal->IsInVehicle() && pLocal->IsAPassenger();
-	bool bPassengerDriveBy = bPassenger && pLocal->IsInPassengerDriveByMode();
+	const bool bOnFoot = pLocal && !pLocal->IsDead() && !pLocal->IsInVehicle() && !pLocal->IsInJetpack();
+	const bool bPassenger = pLocal && !pLocal->IsDead() && pLocal->IsInVehicle() && pLocal->IsAPassenger();
+	const bool bPassengerDriveBy = bPassenger && pLocal->IsInPassengerDriveByMode();
+
+	// Clear on-foot KEY_HANDBRAKE before re-applying ButtonPanel held keys so
+	// frames that did not call GetKeys(clear=true) never retain stale aim state.
+	if (bOnFoot) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = false;
+	}
+
+	if (pUI && pUI->buttonpanel() && !IsLocalActivePedMovementLocked()) {
+		pUI->buttonpanel()->applyHeldKeys();
+	}
+
+	uintptr_t* widgets = GetTouchWidgets();
+	if (!widgets) return;
 
 	// 1) Fire button edge + hold tracking (on foot & passenger drive-by)
 	const bool bFirePrev = g_touchCombat.firePrevDown;
@@ -1360,96 +1660,131 @@ static void TickTouchCombatInput()
 	g_touchCombat.firePrevDown = bFireNow;
 	g_touchCombat.fireDown = bFireNow;
 
-	// Pin KEY_HANDBRAKE while aiming on foot so OnFootSync never drops the aim bit
-	// between GetKeys(clear=true) and CCamera::IsTargetingActive.
-	if (bOnFoot && pLocal && EngineIsAiming(pLocal)) {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
+	// Allow cancelling Stuff / Dance / HandsUp / Pissing via WIDGET_ENTER_CAR on foot
+	if (bOnFoot && LocalPedHasCancellableSpecialAction(pLocal)
+			&& widgets[sa::WidgetIDs::WIDGET_ENTER_CAR]
+			&& PollTouchRelease(sa::WidgetIDs::WIDGET_ENTER_CAR) != 0) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = true;
 	}
 
-	// 1.2) T32: Aim button toggles passenger drive-by on touch screens
+	// 1.2) Aim button toggles passenger drive-by on touch screens
 	if (bPassenger && pLocal->CanDoPassengerDriveBy() && widgets[kAimToggleWidget] && PollTouchRelease(kAimToggleWidget) != 0) {
 		g_bPassengerDriveByToggleRequested.store(true, std::memory_order_release);
 	}
 
-	// 1.5) T17: Poll virtual thumbstick + sprint while dancing (CTaskSimpleRunNamedAnim does not poll CPad walk)
-	static bool s_bDanceStickActive = false;
-	if (bOnFoot && pLocal && pLocal->IsDancing()) {
-		if (widgets[sa::WidgetIDs::WIDGET_PED_MOVE]) {
-			sa::CVector2D stick{0.0f, 0.0f};
-			if (eng::fn::CTouchInterface_IsTouched(sa::WidgetIDs::WIDGET_PED_MOVE, &stick, 1) != 0) {
-				s_bDanceStickActive = true;
-				if (stick.x < -0.25f)      LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(-128);
-				else if (stick.x > 0.25f)  LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(128);
-				else                       LocalPlayerKeys.wKeyLR = 0;
-
-				if (stick.y < -0.25f)      LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(-128);
-				else if (stick.y > 0.25f)  LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(128);
-				else                       LocalPlayerKeys.wKeyUD = 0;
-			}
-			else if (s_bDanceStickActive) {
-				s_bDanceStickActive = false;
-				LocalPlayerKeys.wKeyLR = 0;
-				LocalPlayerKeys.wKeyUD = 0;
-			}
+	// 2) Aim-toggle & scoped camera mode state machine (runs BEFORE stick & key
+	// sampling so entering/exiting 1st-person scope takes effect with 0-frame lag).
+	if (CPlayerPed* pAimPed = GetAimableLocalPed()) {
+		const uint8_t curAimWep = pAimPed->GetCurrentWeapon();
+		if (g_touchCombat.lastAimWeapon != curAimWep) {
+			g_touchCombat.aimLatch = false;
+			g_touchCombat.lastAimWeapon = curAimWep;
 		}
-		if (PollTouchDown(sa::WidgetIDs::WIDGET_SPRINT)) {
-			LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = true;
+
+		if (widgets[kAimToggleWidget] && PollTouchRelease(kAimToggleWidget) != 0) {
+			g_touchCombat.aimLatch = !g_touchCombat.aimLatch;
+		}
+
+		const int scopedMode = ScopedAimCamMode(curAimWep);
+		if (scopedMode) {
+			if (g_touchCombat.aimLatch && !Using1stPersonWeaponCam()) {
+				eng::fn::CCamera_SetNewPlayerWeaponMode(
+					&sa::getTheCamera(), scopedMode, 0, 0);
+				eng::fn::CPed_SetPedState(
+					pAimPed->m_ped, sa::ePedState::PED_SNIPER_MODE);
+			}
+			else if (!g_touchCombat.aimLatch && Using1stPersonWeaponCam()) {
+				eng::fn::CCamera_ClearPlayerWeaponMode(
+					&sa::getTheCamera());
+				if (pAimPed->m_ped->m_pPlayerData) {
+					pAimPed->m_ped->m_pPlayerData->m_bFreeAiming = false;
+				}
+				eng::fn::CPlayerPed_ClearWeaponTarget(pAimPed->m_ped);
+			}
 		}
 	}
 	else {
-		s_bDanceStickActive = false;
+		g_touchCombat.aimLatch = false;
+		g_touchCombat.lastAimWeapon = 0;
 	}
 
-	// 2) Block button (pure held state, independent of aim latch)
-	g_touchCombat.blockDown = (GetBlockableLocalPed() != nullptr) && PollTouchDown(kBlockWidget);
+	// 3) Unified on-foot virtual thumbstick poll: always poll WIDGET_PED_MOVE once
+	// per logic frame on foot (when movement is unlocked) so m_nFrameCount never
+	// starves to 0 across 3rd-person Sniper/RPG hipfire, scope transitions, duck/roll,
+	// jump/climb, dancing, or skydiving.
+	// CWidgetRegionMove::IsTouched outputs stick.x / stick.y in [-128.0f .. +128.0f].
+	if (bOnFoot && !IsLocalActivePedMovementLocked()) {
+		if (widgets[sa::WidgetIDs::WIDGET_PED_MOVE]) {
+			sa::CVector2D stick{0.0f, 0.0f};
+			g_touchCombat.onFootStickSampled = true;
+			if (eng::fn::CTouchInterface_IsTouched(sa::WidgetIDs::WIDGET_PED_MOVE, &stick, 1) != 0) {
+				g_touchCombat.stickTouched = true;
+				if (pLocal->IsDancing()) {
+					if (stick.x < -32.0f)      g_touchCombat.stickLR = -128;
+					else if (stick.x > 32.0f)  g_touchCombat.stickLR = 128;
+					else                       g_touchCombat.stickLR = 0;
 
-	// 2.5) On-foot camera distance toggle (close=1, normal=2, far=3)
-	// Matches CCamera::CamControl's m_nPedZoom range {1, 2, 3}.
+					if (stick.y < -32.0f)      g_touchCombat.stickUD = -128;
+					else if (stick.y > 32.0f)  g_touchCombat.stickUD = 128;
+					else                       g_touchCombat.stickUD = 0;
+				}
+				else {
+					int lr = std::clamp(static_cast<int>(stick.x), -128, 128);
+					int ud = std::clamp(static_cast<int>(stick.y), -128, 128);
+					// Ensure non-zero stick tilts exceed CTaskSimpleUseGun::SetMoveAnim's
+					// (|lr|+|ud|)/128 >= 0.1f (~13) threshold locally and on PC/Mobile observers.
+					const int absSum = std::abs(lr) + std::abs(ud);
+					if (absSum > 0 && absSum < 16) {
+						if (std::abs(lr) >= std::abs(ud)) {
+							lr = (lr < 0) ? -16 : 16;
+						}
+						else {
+							ud = (ud < 0) ? -16 : 16;
+						}
+					}
+					g_touchCombat.stickLR = static_cast<int16_t>(lr);
+					g_touchCombat.stickUD = static_cast<int16_t>(ud);
+				}
+			}
+		}
+
+		int16_t finalLR = g_touchCombat.stickLR;
+		int16_t finalUD = g_touchCombat.stickUD;
+		if (finalLR == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldLR() != 0) {
+			finalLR = static_cast<int16_t>(pUI->buttonpanel()->heldLR());
+		}
+		if (finalUD == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldUD() != 0) {
+			finalUD = static_cast<int16_t>(pUI->buttonpanel()->heldUD());
+		}
+		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(finalLR);
+		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(finalUD);
+
+		if (pLocal->IsDancing() && PollTouchDown(sa::WidgetIDs::WIDGET_SPRINT)) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = true;
+		}
+	}
+
+	// 4) Block button & authoritative on-foot KEY_HANDBRAKE state
+	g_touchCombat.blockDown = (GetBlockableLocalPed() != nullptr) && PollTouchDown(kBlockWidget);
+	if (IsLocalMeleeBlockActive()) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = true;
+	}
+	else if (IsLocalMeleeComboActive()) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = true;
+	}
+	else if (bOnFoot && pLocal && (g_touchCombat.aimLatch || EngineIsAiming(pLocal))) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
+	}
+
+	// 5) On-foot camera distance toggle (close=1, normal=2, far=3)
 	if (bOnFoot && !Using1stPersonWeaponCam()
 		&& widgets[sa::WidgetIDs::WIDGET_CAM_TOGGLE]
 		&& PollTouchRelease(sa::WidgetIDs::WIDGET_CAM_TOGGLE) != 0) {
 		auto& cam = sa::getTheCamera();
 		int32_t cur = cam.m_nPedZoom;
 		cam.m_nPedZoom = (cur >= 1 && cur < 3) ? (cur + 1) : 1;
-	}
-
-	// 3) Aim-toggle state machine (aimable weapons only)
-	CPlayerPed* pAimPed = GetAimableLocalPed();
-	if (!pAimPed) {
-		g_touchCombat.aimLatch = false;
-		g_touchCombat.aimSuppress = false;
-		return;
-	}
-
-	bool bTapped = widgets[kAimToggleWidget] && PollTouchRelease(kAimToggleWidget) != 0;
-	bool bAiming = EngineIsAiming(pAimPed);
-	if (bTapped) {
-		g_touchCombat.aimLatch = !g_touchCombat.aimLatch;
-		g_touchCombat.aimSuppress = !g_touchCombat.aimLatch;
-	}
-	if (!bAiming) {
-		g_touchCombat.aimSuppress = false;
-	}
-	else if (!g_touchCombat.aimLatch && !g_touchCombat.aimSuppress) {
-		g_touchCombat.aimLatch = true;
-	}
-
-	int scopedMode = ScopedAimCamMode(pAimPed->GetCurrentWeapon());
-	if (scopedMode) {
-		if (g_touchCombat.aimLatch && !Using1stPersonWeaponCam()) {
-			eng::fn::CCamera_SetNewPlayerWeaponMode(
-				&sa::getTheCamera(), scopedMode, 0, 0);
-			eng::fn::CPed_SetPedState(
-				pAimPed->m_ped, sa::ePedState::PED_SNIPER_MODE);
-		}
-		else if (!g_touchCombat.aimLatch && Using1stPersonWeaponCam()) {
-			eng::fn::CCamera_ClearPlayerWeaponMode(
-				&sa::getTheCamera());
-			if (pAimPed->m_ped->m_pPlayerData) {
-				pAimPed->m_ped->m_pPlayerData->m_bFreeAiming = false;
-			}
-			eng::fn::CPlayerPed_ClearWeaponTarget( pAimPed->m_ped);
-		}
 	}
 }
 
@@ -1473,9 +1808,18 @@ DECL_HOOK(void, CTouchInterface_Clear)
 
 DECL_HOOK(uint32_t, CPad_GetEnterTargeting, uintptr_t _this)
 {
-	if (CurrentPlayerSlot()) {
+	const uint8_t slot = CurrentPlayerSlot();
+	if (slot != 0) {
+		if (slot >= PLAYER_PED_SLOTS || !RemotePlayerKeys[slot].bKeys[ePadKeys::KEY_HANDBRAKE]) {
+			return 0;
+		}
+		sa::CPed* pRemotePed = (WORLD_PLAYERS != nullptr) ? WORLD_PLAYERS[slot].m_pPed : dwCurPlayerActor;
+		if (pRemotePed && pRemotePed->m_pPlayerData && !pRemotePed->m_pPlayerData->m_bFreeAiming) {
+			return 1u;
+		}
 		return 0;
 	}
+	g_lastLocalPadPtr = _this;
 	if (!_this || *reinterpret_cast<uint16_t*>(_this + 272) != 0) {
 		return 0;
 	}
@@ -1483,14 +1827,17 @@ DECL_HOOK(uint32_t, CPad_GetEnterTargeting, uintptr_t _this)
 	return (pPed && g_touchCombat.aimLatch) ? 1u : 0u;
 }
 
+// CPad::GetExitTargeting is only called inside local CCamera::CamControl
+// (remote exit is handled directly in CPed_ProcessControl).
 DECL_HOOK(uint32_t, CPad_GetExitTargeting, uintptr_t _this)
 {
-	if (CurrentPlayerSlot()) {
+	if (CurrentPlayerSlot() != 0) {
 		return 0;
 	}
 	CPlayerPed* pPed = GetAimableLocalPed();
-	if (pPed && !g_touchCombat.aimLatch && EngineIsAiming(pPed)) {
-		eng::fn::CPlayerPed_ClearWeaponTarget( pPed->m_ped);
+	const bool bFiring = g_touchCombat.fireDown || LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
+	if (pPed && !g_touchCombat.aimLatch && !bFiring && EngineIsAiming(pPed)) {
+		eng::fn::CPlayerPed_ClearWeaponTarget(pPed->m_ped);
 		if (pPed->m_ped->m_pPlayerData) {
 			pPed->m_ped->m_pPlayerData->m_bFreeAiming = false;
 		}
@@ -1499,19 +1846,49 @@ DECL_HOOK(uint32_t, CPad_GetExitTargeting, uintptr_t _this)
 	return 0;
 }
 
+void ApplyLocalCombatSyncKeys(uint16_t& wKeys, uint16_t& lrAnalog, uint16_t& udAnalog)
+{
+	if (pUI && pUI->buttonpanel() && !IsLocalActivePedMovementLocked()) {
+		if (lrAnalog == 0 && pUI->buttonpanel()->heldLR() != 0) {
+			lrAnalog = pUI->buttonpanel()->heldLR();
+		}
+		if (udAnalog == 0 && pUI->buttonpanel()->heldUD() != 0) {
+			udAnalog = pUI->buttonpanel()->heldUD();
+		}
+	}
+
+	if (IsLocalMeleeComboActive()) {
+		wKeys |= (128u | 16u); // KEY_HANDBRAKE | KEY_SECONDARY_ATTACK (FightStyle combo)
+	}
+	else if (IsLocalMeleeBlockActive()) {
+		wKeys |= (128u | 32u); // KEY_HANDBRAKE | KEY_JUMP (Melee block)
+	}
+	else if (IsLocalMeleeFireActive()) {
+		wKeys |= 4u; // KEY_FIRE
+	}
+}
+
 DECL_HOOK(uint32_t, CCamera_IsTargetingActive, uintptr_t _this, sa::CPed* pPed)
 {
-	//if (*pbyteCurrentPlayer)
-	if (pPed != GamePool_FindPlayerPed()) {
-		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_HANDBRAKE] ? 1 : 0;
-	}
-	else {
-		/* CCamera::IsTargetingActive */
-		sa::CCamera* TheCamera = &sa::getTheCamera();
-		bool bIsTargeting = eng::fn::CCamera_IsTargetingActive( TheCamera);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = bIsTargeting;
+	if (pPed == GamePool_FindPlayerPed()) {
+		const uint32_t bIsTargeting = CCamera_IsTargetingActive(_this, pPed);
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] =
+			(bIsTargeting != 0) || IsLocalMeleeBlockActive() || IsLocalMeleeComboActive();
 		return bIsTargeting;
 	}
+
+	const uint8_t slot = pPed ? FindPlayerNumFromPedPtr(pPed) : CurrentPlayerSlot();
+	if (slot == 0 || slot >= PLAYER_PED_SLOTS) {
+		return CCamera_IsTargetingActive(_this, pPed);
+	}
+	if (!RemotePlayerKeys[slot].bKeys[ePadKeys::KEY_HANDBRAKE]) {
+		return 0;
+	}
+	// Delegate to native check (m_bFreeAiming, m_pTargetedObject, or scoped
+	// PlayerWeaponMode set by ScopedPlayerContext) so Frame 1 of non-scoped
+	// aiming returns 0 and enters through CPad_GetEnterTargeting cleanly
+	// (setting m_bFreeAiming = 1 for all guns including Rifle 33 & Flamethrower 37).
+	return CCamera_IsTargetingActive(_this, pPed);
 }
 
 RwMatrix* RwMatrixOrthoNormalize(RwMatrix* matrixOut, const RwMatrix* matrixIn)
@@ -1610,11 +1987,18 @@ DECL_HOOK(uint32_t, CWeapon_FireInstantHit_full, sa::CWeapon* _this, sa::CPed* p
 DECL_HOOK(uint32_t, CWeapon_FireSniper, sa::CWeapon* _this, sa::CPed* pFiringEntity, sa::CEntity* victim, sa::CVector* target)
 {
 	if (pFiringEntity == GamePool_FindPlayerPed()) {
+		CPlayerPool* pPlayerPool = pNetGame ? pNetGame->GetPlayerPool() : nullptr;
+		if (pPlayerPool) {
+			pPlayerPool->ApplyCollisionChecking();
+		}
 		if (pGame) {
 			CPlayerPed* pPlayerPed = pGame->FindPlayerPed();
 			if (pPlayerPed) {
 				pPlayerPed->FireInstant();
 			}
+		}
+		if (pPlayerPool) {
+			pPlayerPool->ResetCollisionChecking();
 		}
 	}
 
@@ -1860,6 +2244,31 @@ DECL_HOOK(void, CPedDamageResponseCalculator_ComputeDamageResponse, CPedDamageRe
 	return CPedDamageResponseCalculator_ComputeDamageResponse(_this, pVictim, damageResponse, bTriggerPainAudio);
 }
 
+// Intercept CWeapon::GenerateDamageEvent BEFORE it blends unsynced local melee hit/knockdown
+// animations onto managed CActors (0x706a58) or pushes CEventDamage into CPedIntelligence (0x706bd8).
+DECL_HOOK(void, CWeapon_GenerateDamageEvent, sa::CPed* pVictim, sa::CEntity* pCreator, int weaponType, int nDamageFactor, int pedPiece, int direction)
+{
+	if (pNetGame && pVictim) {
+		const PLAYERID actorId = FindActorIDFromGtaPtr(pVictim);
+		if (actorId != INVALID_PLAYER_ID) {
+			sa::CPed* pLocalPed = GamePool_FindPlayerPed();
+			if (pLocalPed && pCreator == reinterpret_cast<sa::CEntity*>(pLocalPed)) {
+				CActorPool* pActorPool = pNetGame->GetActorPool();
+				CActor* pActor = pActorPool ? pActorPool->GetAt(actorId) : nullptr;
+				CPlayerPool* pPlayerPool = pNetGame->GetPlayerPool();
+				CLocalPlayer* pLocalPlayer = pPlayerPool ? pPlayerPool->GetLocalPlayer() : nullptr;
+				if (pActor && !pActor->m_invulnerable && pLocalPlayer) {
+					const int bodyPart = (pedPiece >= 3 && pedPiece <= 9) ? pedPiece : 3;
+					pLocalPlayer->SendGiveDamageActorEvent(actorId, static_cast<float>(nDamageFactor), weaponType, bodyPart);
+				}
+			}
+			return;
+		}
+	}
+
+	CWeapon_GenerateDamageEvent(pVictim, pCreator, weaponType, nDamageFactor, pedPiece, direction);
+}
+
 // T21: EnableVehicleFriendlyFire — block damage to vehicles driven by teammates
 DECL_HOOK(void, CVehicle_InflictDamage, sa::CVehicle* _this, sa::CEntity* pDamager, int eWeaponType, float fIntensity, sa::CVector vecCoords)
 {
@@ -1938,6 +2347,8 @@ void Hooks::installPadHooks()
 		"Keep m_bFreeAiming across touch fire release while aim-latched");
 	REG_HOOK(Boot, CTaskSimplePlayerOnFoot_PlayerControlZelda, CTaskSimplePlayerOnFoot_PlayerControlZelda,
 		"Preserve remote ped m_fAimingRotation from camera");
+	REG_HOOK(Boot, CTaskSimplePlayerOnFoot_PlayerControlZeldaWeapon, CTaskSimplePlayerOnFoot_PlayerControlZeldaWeapon,
+		"Enable 1st-person scoped weapon movement and preserve remote aim rotation");
 
 	// vehicles
 	REG_HOOK(Boot, CAutomobile_ProcessControl, CAutomobile_ProcessControl, "Remote automobile control context switch");
@@ -1967,6 +2378,7 @@ void Hooks::installPadHooks()
 	REG_HOOK(Boot, CTaskSimplePlayerOnFoot_PlayerControlFighter, CTaskSimplePlayerOnFoot_PlayerControlFighter, "Touch block timeout guard");
 	REG_HOOK(Boot, CTouchInterface_Clear, CTouchInterface_Clear, "Multi-touch pinch-zoom guard");
 
+	REG_HOOK(Boot, CWidget_SetInitialTouchWidget, CWidget_SetInitialTouchWidget, "Protect active left thumbstick from multi-touch hijack");
 	REG_HOOK(Boot, CWidgetRegionMove_Update, CWidgetRegionMove_Update, "Virtual joystick scale (Update)");
 	REG_HOOK(Boot, CWidgetRegionMove_ClampInternalTouchAnchor, CWidgetRegionMove_ClampInternalTouchAnchor, "Virtual joystick scale (Anchor)");
 	REG_HOOK(Boot, CWidgetRegionMove_Draw, CWidgetRegionMove_Draw, "Virtual joystick scale (Draw)");
@@ -2005,6 +2417,7 @@ void Hooks::installPadHooks()
 	REG_HOOK_BL(Boot, addr::CTaskComplexLeaveCar_Branch2, "CTaskComplexLeaveCar.Branch2",
 		&CTaskComplexLeaveCar_hook, &CTaskComplexLeaveCar, "Notify server on vehicle exit (branch 2)");
 
+	REG_HOOK(Boot, CTaskSimpleUseGun_StartAnim, CTaskSimpleUseGun_StartAnim, "Fix UseGun aim-while-moving m_nLastCommand transition");
 	REG_HOOK(Boot, CTaskSimpleUseGun_SetPedPosition, CTaskSimpleUseGun_SetPedPosition, "Remote player aim/gun context switch");
 	REG_HOOK(Boot, CPlayerInfo_Process, CPlayerInfo_Process, "Car-proximity hipfire abort guard");
 	REG_HOOK(Boot, CTaskSimplePlayerOnFoot_MakeAbortable, CTaskSimplePlayerOnFoot_MakeAbortable, "Protect UseGun from proximity probe");
@@ -2032,6 +2445,8 @@ void Hooks::installPadHooks()
 	REG_HOOK(Boot, CBulletInfo_Update, CBulletInfo_Update, "Projectile bullet update hook");
 	REG_HOOK(Boot, CPedDamageResponseCalculator_ComputeDamageResponse, CPedDamageResponseCalculator_ComputeDamageResponse,
 		"Give/take damage reporting");
+	REG_HOOK(Boot, CWeapon_GenerateDamageEvent, CWeapon_GenerateDamageEvent,
+		"Suppress unsynced local melee hit anims & AI damage events on managed Actors");
 	REG_HOOK(Boot, CVehicle_InflictDamage, CVehicle_InflictDamage, "Vehicle friendly-fire damage filter");
 	REG_HOOK(Boot, CBulletInfo_AddBullet, CBulletInfo_AddBullet, "Bullet tracer sync");
 }

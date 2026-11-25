@@ -31,6 +31,8 @@ uint16_t ModelInfoGetReferenceCount(int iModelID);
 bool IsExistInfoForModel(int iModelID);
 bool IsValidModel(int iModelID);
 bool IsValidPedModel(uint modelID);
+int ResolveEffectivePedSkin(int baseSkin, int customSkin);
+uint EnsureValidPedModelPrototype(uint uiModel);
 int GetModelRefCounts(int iModel);
 RwObject* GetModelRWObject(uint modelID);
 

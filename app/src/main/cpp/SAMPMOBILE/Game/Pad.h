@@ -38,3 +38,4 @@ extern PAD_KEYS RemotePlayerKeys[PLAYER_PED_SLOTS];
 void RequestLocalPlaneGearToggle();
 bool ConsumeStuffUseRequest();
 bool ConsumePassengerDriveByToggle();
+void ApplyLocalCombatSyncKeys(uint16_t& wKeys, uint16_t& lrAnalog, uint16_t& udAnalog);

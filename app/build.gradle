@@ -17,6 +17,8 @@ if (localPropsFile.exists()) {
 def releaseStorePath = localProps.getProperty("SAMP_STORE_FILE") ?: System.getenv("SAMP_STORE_FILE")
 def releaseStoreFile = releaseStorePath ? file(releaseStorePath) : null
 def hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists()
+def gamedataManifestUrl = (localProps.getProperty("SAMP_GAMEDATA_MANIFEST")
+        ?: System.getenv("SAMP_GAMEDATA_MANIFEST") ?: "").trim()
 
 android {
     namespace "com.sampmobile.launcher"
@@ -30,6 +32,8 @@ android {
         versionName "1.0.0.1"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField "String", "GAMEDATA_MANIFEST_URL", "\"${gamedataManifestUrl.replace('\\', '\\\\').replace('\"', '\\\"')}\""
 
         ndkVersion "25.1.8937393"
 

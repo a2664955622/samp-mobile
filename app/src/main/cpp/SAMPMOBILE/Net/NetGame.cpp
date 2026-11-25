@@ -443,6 +443,7 @@ void NetGame::ShutdownForGameModeRestart(SessionState::ResetReason reason)
 		pGame->ClearAllHudHideReasons();
 		pGame->EnableCheckpoints(false);
 		pGame->EnableRaceCheckpoints(false);
+		pGame->UpdateCheckpoints();
 
 		if (CPlayerPed* pLocalPed = pGame->FindPlayerPed()) {
 			if (pLocalPed->IsDancing()) pLocalPed->StopDancing();
@@ -455,6 +456,7 @@ void NetGame::ShutdownForGameModeRestart(SessionState::ResetReason reason)
 			if (pLocalPed->HasAttachedObject()) pLocalPed->RemoveAllAttachedObjects();
 			pLocalPed->SetDrunkLevel(0);
 			pLocalPed->DrunkProcess();
+			pLocalPed->SetFightingStyle(4);
 			pLocalPed->SetInterior(0, true);
 			pLocalPed->SetDead();
 			pLocalPed->SetArmour(0.0f);
@@ -1063,8 +1065,12 @@ void NetGame::SetMapIcon(uint8_t byteIconID, float fPosX, float fPosY, float fPo
 void NetGame::DisableMapIcon(uint8_t byteIconID)
 {
 	if (byteIconID < MAX_MAP_ICONS) {
-		ScriptCommand(&disable_marker, m_mapIcon[byteIconID]);
-		m_mapIcon[byteIconID] = 0;
+		if (m_mapIcon[byteIconID] != 0) {
+			if (pGame) {
+				pGame->DisableMarker(m_mapIcon[byteIconID]);
+			}
+			m_mapIcon[byteIconID] = 0;
+		}
 	}
 }
 
