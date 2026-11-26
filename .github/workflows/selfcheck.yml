@@ -17,7 +17,7 @@ run-name: 自检 ${{ inputs.ref || github.ref_name }}
 # workflow_dispatch 则是从 main 读定义、按 ref 取代码，正好符合需求。
 #
 # 两条约束，来自上游 PR #1 被否决的教训：
-#   1. 不改 app/build.gradle、不改 tools/selfcheck.py —— 只调用它们。
+#   1. 不改 app/build.gradle、不改 tests/check.py —— 只调用它们。
 #   2. 不静默跳过。任何一步没跑成，宁可红灯也不让 CI 假绿。
 
 on:
@@ -61,7 +61,7 @@ jobs:
       # （warning 是 APK 未构建，属于编译前的正常状态）。
       # GTA:SA 专有资产不在仓库里，脚本本身已按此设计，无需 --require-gtasa。
       - name: 仓库自检
-        run: python tools/selfcheck.py
+        run: python tests/check.py
 
       - uses: actions/setup-java@v4
         with:
@@ -73,7 +73,7 @@ jobs:
       # runner 本来就带 SDK，直接用它自带的 sdkmanager 更省事。
       # 下面两步只在带 CEF 工具链的分支上有意义，其余分支跳过。
       - name: 准备 Android SDK
-        if: hashFiles('tools/cef_kat/logic_tests/run_logic_tests.sh') != ''
+        if: hashFiles('tests/cef/logic_tests/run_logic_tests.sh') != ''
         run: |
           set -euo pipefail
           SDK="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
@@ -90,8 +90,8 @@ jobs:
           echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
 
       - name: 离线逻辑断言
-        if: hashFiles('tools/cef_kat/logic_tests/run_logic_tests.sh') != ''
-        run: bash tools/cef_kat/logic_tests/run_logic_tests.sh
+        if: hashFiles('tests/cef/logic_tests/run_logic_tests.sh') != ''
+        run: bash tests/cef/logic_tests/run_logic_tests.sh
 
   build:
     name: 双 ABI 编译 + JNI 符号
@@ -140,10 +140,10 @@ jobs:
         run: ./gradlew :app:assembleDebug -PskipGtasaCheck=true --no-daemon
 
       - name: JNI 符号导出检查
-        if: hashFiles('tools/cef_kat/jni_symbol_check.sh') != ''
-        run: bash tools/cef_kat/jni_symbol_check.sh
+        if: hashFiles('tests/cef/jni_symbol_check.sh') != ''
+        run: bash tests/cef/jni_symbol_check.sh
 
       # 带 --require-apk：APK 必须存在，且双 ABI 的 .so 与 assets 齐全。
       # 不带 --require-gtasa，因为 CI 不打包专有资产。
       - name: APK 结构自检
-        run: python tools/selfcheck.py --require-apk
+        run: python tests/check.py --require-apk
