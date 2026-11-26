@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Widget.h"
+
 class DebugLabels : public Widget {
 public:
 	DebugLabels() = default;

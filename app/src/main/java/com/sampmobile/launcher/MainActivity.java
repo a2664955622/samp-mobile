@@ -4,7 +4,6 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.os.Build;
 import android.os.Bundle;
@@ -49,12 +48,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.sampmobile.launcher.ui.GameDataImportDialog;
+import com.sampmobile.launcher.ui.LauncherServerDialogs;
 import com.sampmobile.launcher.ui.adapter.PlayersAdapter;
 import com.sampmobile.launcher.ui.adapter.RulesAdapter;
 import com.sampmobile.launcher.ui.adapter.ServerAdapter;
 import com.sampmobile.launcher.ui.fragment.ModsManagerFragment;
 import com.sampmobile.launcher.ui.fragment.SettingsPageFragment;
 import com.sampmobile.launcher.ui.widget.GtaTabStrip;
+import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.GameDataImporter;
 import com.sampmobile.launcher.utils.LauncherFonts;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
@@ -197,7 +198,7 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
             return windowInsets;
         });
 
-        getSharedPreferences("samp_settings", Context.MODE_PRIVATE).edit().putBoolean("offline_mode", false).apply();
+        ClientSettings.setAsync(this, "offline_mode", false);
         com.sampmobile.launcher.utils.ModManager.ensureDirectories(this);
 
         initViews();
@@ -583,7 +584,7 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
 
         // fetch player list & rules in background
         String address = server.address();
-        String charset = getSharedPreferences("samp_settings", Context.MODE_PRIVATE).getString("charset", "GBK");
+        String charset = ClientSettings.getCharsetForLauncher(this);
         detailExecutor.execute(() -> {
             List<String[]> players = new ArrayList<>();
             List<String[]> rules = new ArrayList<>();
@@ -720,180 +721,38 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
         showJoinDialog(server);
     }
 
+    private final LauncherServerDialogs.Host serverDialogHost = new LauncherServerDialogs.Host() {
+        @Override
+        public boolean ensureGameDataOrPrompt() {
+            return MainActivity.this.ensureGameDataOrPrompt();
+        }
+
+        @Override
+        public void launchGameProcess() {
+            MainActivity.this.launchGameProcess();
+        }
+
+        @Override
+        public void onFavoriteServerAdded() {
+            if (currentTab == ServerAdapter.MODE_FAVORITES) {
+                refreshServers();
+            }
+        }
+    };
+
     private void showJoinDialog(ServerModel server) {
-        View v = getLayoutInflater().inflate(R.layout.layout_join_dialog, null);
-
-        AlertDialog dialog = new AlertDialog.Builder(this).setView(v).create();
-        Objects.requireNonNull(dialog.getWindow()).setBackgroundDrawableResource(android.R.color.transparent);
-
-        SharedPreferences prefs = getSharedPreferences("samp_settings", Context.MODE_PRIVATE);
-
-        TextView serverName = v.findViewById(R.id.join_server_name);
-        serverName.setText(server.server_name);
-
-        EditText nickname = v.findViewById(R.id.join_nickname);
-        nickname.setText(prefs.getString("nick_name", ""));
-        nickname.setSelection(Objects.requireNonNull(nickname.getText()).length());
-
-        TextView[] versionButtons = {
-                v.findViewById(R.id.join_version_0),
-                v.findViewById(R.id.join_version_1),
-                v.findViewById(R.id.join_version_2)};
-        final int[] versionValues = {0, 2, 3};
-        final int[] version = {0};
-        int savedVersion = prefs.getInt("samp_version", 0);
-        for (int i = 0; i < versionValues.length; i++) {
-            if (versionValues[i] == savedVersion) version[0] = i;
-        }
-        int accentColor = LauncherThemeManager.getAccentColor(this);
-        LauncherThemeManager.applyThemeToTree(v, accentColor);
-        View joinConnectBtn = v.findViewById(R.id.join_connect);
-        if (joinConnectBtn != null) {
-            joinConnectBtn.setBackgroundTintList(ColorStateList.valueOf(accentColor));
-        }
-
-        Runnable applyVersionStyles = () -> {
-            for (int i = 0; i < versionButtons.length; i++) {
-                boolean selected = version[0] == i;
-                versionButtons[i].setBackgroundResource(
-                        selected ? R.drawable.launcher_btn_primary : R.drawable.launcher_btn_outline);
-                versionButtons[i].setBackgroundTintList(
-                        selected ? ColorStateList.valueOf(accentColor) : null);
-                versionButtons[i].setTextColor(getColor(
-                        selected ? R.color.launcher_on_accent : R.color.launcher_text_dim));
-            }
-        };
-        applyVersionStyles.run();
-        for (int i = 0; i < versionButtons.length; i++) {
-            final int index = i;
-            versionButtons[i].setOnClickListener(view -> { version[0] = index; applyVersionStyles.run(); });
-        }
-
-        boolean hasPassword = "1".equals(server.server_password);
-        EditText password = v.findViewById(R.id.join_password);
-        password.setVisibility(hasPassword ? View.VISIBLE : View.GONE);
-
-        v.findViewById(R.id.join_cancel).setOnClickListener(view -> dialog.dismiss());
-
-        v.findViewById(R.id.join_connect).setOnClickListener(view -> {
-            String nick = Objects.requireNonNull(nickname.getText()).toString().trim();
-            if (nick.isEmpty()) {
-                Toast.makeText(this, R.string.set_nickname, Toast.LENGTH_LONG).show();
-                return;
-            }
-            if (nick.length() > 24) {
-                Toast.makeText(this, R.string.nickname_too_long, Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            prefs.edit()
-                    .putBoolean("offline_mode", false)
-                    .putString("nick_name", nick)
-                    .putInt("samp_version", versionValues[version[0]])
-                    .commit();
-
-            SharedPreferences.Editor edit = getSharedPreferences("samp_server", Context.MODE_PRIVATE).edit();
-            edit.putString("host", server.server_host);
-            edit.putString("port", server.server_port);
-            edit.putString("password", hasPassword ? Objects.requireNonNull(password.getText()).toString() : "");
-            edit.commit();
-
-            Utils.saveSettings(this);
-            Utils.addServerToRecent(this, server.address());
-
-            dialog.dismiss();
-            if (!ensureGameDataOrPrompt()) {
-                return;
-            }
-            launchGameProcess(prefs);
-        });
-
-        if (!isFinishing() && !isDestroyed()) {
-            showFormDialog(dialog);
-        }
+        LauncherServerDialogs.showJoinDialog(this, server, serverDialogHost);
     }
 
     private void showAddServerDialog() {
-        View v = getLayoutInflater().inflate(R.layout.layout_server_add, null);
-
-        AlertDialog dialog = new AlertDialog.Builder(this).setView(v).create();
-        Objects.requireNonNull(dialog.getWindow()).setBackgroundDrawableResource(android.R.color.transparent);
-
-        EditText address = v.findViewById(R.id.address_input_text);
-        TextView addButton = v.findViewById(R.id.add_server);
-        int accentColor = LauncherThemeManager.getAccentColor(this);
-        LauncherThemeManager.applyThemeToTree(v, accentColor);
-        if (addButton != null) {
-            addButton.setBackgroundTintList(ColorStateList.valueOf(accentColor));
-        }
-
-        address.setOnEditorActionListener((textView, i, keyEvent) -> i == EditorInfo.IME_ACTION_DONE || i == EditorInfo.IME_ACTION_NEXT || i == EditorInfo.IME_ACTION_UNSPECIFIED);
-
-        addButton.setOnClickListener(view -> {
-            address.setText(Objects.requireNonNull(address.getText()).toString().replace("\n", ""));
-
-            Pattern pattern = Pattern.compile("^(((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}|localhost|(([0-9]{1,3}\\.){3})[0-9]{1,3}):[0-9]{1,5}$");
-            Pattern pattern2 = Pattern.compile("^(((?!-)[A-Za-z0-9-]{1,63}(?<!-)\\.)+[A-Za-z]{2,6}|localhost|(([0-9]{1,3}\\.){3})[0-9]{1,3})$");
-
-            Matcher matcher = pattern.matcher(address.getText().toString());
-            Matcher matcher2 = pattern2.matcher(address.getText().toString());
-
-            if (matcher.find() || matcher2.find()) {
-                if (!address.getText().toString().contains(":")) {
-                    address.setText(address.getText().toString() + ":7777");
-                }
-                try {
-                    if (Utils.addServerToFavorites(this, address.getText().toString())) {
-                        Toast.makeText(this, R.string.server_added, Toast.LENGTH_LONG).show();
-                        dialog.dismiss();
-                        if (currentTab == ServerAdapter.MODE_FAVORITES) {
-                            refreshServers();
-                        }
-                    } else {
-                        Toast.makeText(this, R.string.server_already_exists, Toast.LENGTH_LONG).show();
-                    }
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            } else {
-                Toast.makeText(this, R.string.invalid_host, Toast.LENGTH_LONG).show();
-            }
-        });
-
-        if (!isFinishing() && !isDestroyed()) {
-            showFormDialog(dialog);
-        }
-    }
-
-    /** Form dialogs keep a compact fixed width instead of the alert default (65% of the screen). */
-    private void showFormDialog(AlertDialog dialog) {
-        dialog.show();
-        if (dialog.getWindow() != null) {
-            dialog.getWindow().setLayout(
-                    getResources().getDimensionPixelSize(com.intuit.sdp.R.dimen._300sdp),
-                    ViewGroup.LayoutParams.WRAP_CONTENT);
-        }
+        LauncherServerDialogs.showAddServerDialog(this, serverDialogHost);
     }
 
     private void showOfflineDialog() {
-        if (isFinishing() || isDestroyed()) return;
-        new AlertDialog.Builder(this)
-                .setTitle(R.string.offline_mode)
-                .setMessage(R.string.offline_mode_confirm)
-                .setPositiveButton(R.string.yes, (dialog, which) -> {
-                    SharedPreferences prefs = getSharedPreferences("samp_settings", Context.MODE_PRIVATE);
-                    prefs.edit().putBoolean("offline_mode", true).commit();
-                    Utils.saveSettings(this);
-                    if (!ensureGameDataOrPrompt()) {
-                        return;
-                    }
-                    launchGameProcess(prefs);
-                })
-                .setNegativeButton(R.string.no, null)
-                .show();
+        LauncherServerDialogs.showOfflineDialog(this, serverDialogHost);
     }
 
-    private void launchGameProcess(SharedPreferences prefs) {
+    private void launchGameProcess() {
         try {
             android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
             if (am != null) {
@@ -935,9 +794,20 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
             Intent intent = new Intent(this, com.sampmobile.game.SAMP.class);
             intent.putExtra("extra_check", "sampmobile1337");
             startActivity(intent);
-            prefs.edit().putBoolean("open_hud_edit_on_start", false).apply();
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        ClientSettings.reloadLauncher(this);
+        if (currentPage == PAGE_SETTINGS) {
+            Fragment f = getSupportFragmentManager().findFragmentByTag(TAG_SETTINGS);
+            if (f instanceof SettingsPageFragment) {
+                ((SettingsPageFragment) f).onPageShown();
+            }
         }
     }
 

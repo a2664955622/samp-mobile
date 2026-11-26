@@ -31,6 +31,8 @@ public:
 
 	// ---- GOT slots (redirection targets & AML-safe live reads) ----
 	static constexpr uintptr_t _ZN6CWorld7PlayersE_ptr = !VER_x32 ? 0x84E7A8 : 0x6783C0;
+	static constexpr uintptr_t GOT_CModelInfo_ms_modelInfoPtrs = !VER_x32 ? 0x850DB8 : 0x6796CC;
+	static constexpr uintptr_t GOT_CStreaming_ms_aInfoForModel = !VER_x32 ? 0x84DBD0 : 0x677DD0;
 	static constexpr uintptr_t GOT_CMatrixLinkList_gMatrixList = !VER_x32 ? 0x84CD98 : 0x6776AC;
 	static constexpr uintptr_t GOT_CTouchInterface_m_pWidgets = !VER_x32 ? 0x850910 : 0x679474; // redirected by libSAUtils
 	static constexpr uintptr_t GOT_MobileSettings_settings = !VER_x32 ? 0x851498 : 0x679A3C;    // redirected by libSAUtils

@@ -1,5 +1,9 @@
 #pragma once
 
+#include "../Widgets/Layout.h"
+
+class Button;
+
 class Spawn : public Layout {
 public:
 	Spawn();

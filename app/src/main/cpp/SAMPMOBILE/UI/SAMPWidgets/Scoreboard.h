@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include "../Widget.h"
+
 typedef struct _PLAYER_SCORE_INFO PLAYER_SCORE_INFO;
 
 class Scoreboard : public Widget {

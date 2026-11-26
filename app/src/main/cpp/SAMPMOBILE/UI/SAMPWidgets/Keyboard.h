@@ -1,7 +1,9 @@
 #pragma once
 
-#include <jni.h>
 #include <list>
+#include <encoding.h>
+#include "../Widgets/Layout.h"
+#include "../Widgets/Button.h"
 
 class KeyboardInput : public Widget {
 public:
@@ -133,7 +135,6 @@ public:
 	void show(Widget* caller, bool hidden = false);
 	void hide();
 	void send();
-	void newSend(JNIEnv* env, jbyteArray str);
 
 	bool hiddenInput() { return m_hiddenInput; }
 

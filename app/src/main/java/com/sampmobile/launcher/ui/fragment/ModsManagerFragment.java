@@ -4,7 +4,6 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
 import android.graphics.Typeface;
 import android.net.Uri;
@@ -38,6 +37,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.joom.paranoid.Obfuscate;
 import com.sampmobile.launcher.R;
 import com.sampmobile.launcher.ui.widget.GtaTabStrip;
+import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
 import com.sampmobile.launcher.utils.ModAssetTool;
 import com.sampmobile.launcher.utils.ModManager;
@@ -63,8 +63,9 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
     private static final int TAB_CLEO = 4;
 
     private int currentTab = TAB_MODLOADER;
-    private SharedPreferences prefs;
-    private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+    private final ModAssetImportWizard assetImportWizard = new ModAssetImportWizard(this);
+    private final ModConfigDialogs configDialogs = new ModConfigDialogs(this);
 
     private View modsContent;
     private TextView tvSectionTitle, tvSectionStatus, tvSectionDesc, tvSectionPath, tvModEmpty;
@@ -76,11 +77,11 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
     private final List<ModManager.ModLoaderEntry> modLoaderCache = new ArrayList<>();
     private ModListAdapter adapter;
 
-    private static final int IMPORT_MODE_ASSET_TOOL_ZIP = 100;
+    static final int IMPORT_MODE_ASSET_TOOL_ZIP = 100;
 
     private int pendingImportTab = -1;
     private ActivityResultLauncher<String[]> filePickerLauncher;
-    private ActivityResultLauncher<String[]> multiFilePickerLauncher;
+    ActivityResultLauncher<String[]> multiFilePickerLauncher;
 
     private static class RowItem {
         String title;
@@ -103,7 +104,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 uri -> {
                     if (uri == null || pendingImportTab < 0) return;
                     if (pendingImportTab == IMPORT_MODE_ASSET_TOOL_ZIP) {
-                        showAssetImportConfigDialog(Collections.singletonList(uri));
+                        assetImportWizard.showConfigDialog(Collections.singletonList(uri));
                     } else {
                         handleImportedFile(pendingImportTab, uri);
                     }
@@ -113,7 +114,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 new ActivityResultContracts.OpenMultipleDocuments(),
                 uris -> {
                     if (uris != null && !uris.isEmpty()) {
-                        showAssetImportConfigDialog(uris);
+                        assetImportWizard.showConfigDialog(uris);
                     }
                 }
         );
@@ -124,12 +125,11 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
     public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container, @Nullable Bundle savedInstanceState) {
         View v = inflater.inflate(R.layout.fragment_mods_manager, container, false);
         rootView = v;
-        prefs = requireActivity().getSharedPreferences("samp_settings", Context.MODE_PRIVATE);
 
         TextView tvAbi = v.findViewById(R.id.tv_process_abi);
         tvAbi.setText(ModManager.getProcessAbiLabel());
 
-        v.findViewById(R.id.btn_mods_logs).setOnClickListener(view -> showLogsDialog());
+        v.findViewById(R.id.btn_mods_logs).setOnClickListener(view -> configDialogs.showLogsDialog());
         v.findViewById(R.id.btn_mods_refresh).setOnClickListener(view -> reloadCurrentTab());
 
         modsContent = v.findViewById(R.id.mods_content);
@@ -210,23 +210,29 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         }
     }
 
-    private void configureSectionPanel() {
+    void configureSectionPanel() {
         Context ctx = requireContext();
         String key = prefKeyForTab(currentTab);
-        boolean enabled = prefs.getBoolean(key, false);
+        ClientSettings settings = ClientSettings.loadLauncher(ctx);
+        boolean enabled = settings.getBoolean(key);
 
         switchSectionMaster.setOnCheckedChangeListener(null);
         switchSectionMaster.setChecked(enabled);
         switchSectionMaster.setOnCheckedChangeListener((btn, isChecked) -> {
-            prefs.edit().putBoolean(key, isChecked).commit();
             if (currentTab == TAB_JPATCH) {
-                if (isChecked && !prefs.getBoolean("aml_scripts", false)) {
-                    prefs.edit().putBoolean("aml_scripts", true).commit();
+                if (isChecked && !ClientSettings.loadLauncher(ctx).getBoolean("aml_scripts")) {
+                    java.util.Map<String, Object> updates = new java.util.HashMap<>();
+                    updates.put(key, true);
+                    updates.put("aml_scripts", true);
+                    ClientSettings.updateBatchSync(ctx, updates);
                     Toast.makeText(ctx, "已自动同步开启 AML（JPatch 依赖 AML 运行）", Toast.LENGTH_SHORT).show();
+                } else {
+                    ClientSettings.setSync(ctx, key, isChecked);
                 }
                 ioExecutor.execute(() -> ModManager.syncJPatchBinaryState(ctx.getApplicationContext(), isChecked));
+            } else {
+                ClientSettings.setSync(ctx, key, isChecked);
             }
-            Utils.saveSettings(ctx);
             reloadCurrentTab();
         });
 
@@ -248,7 +254,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 tvSectionDesc.setText("无需修改官方 gta3.img 或基础贴图：内置 IMG+TXD 工具可直接导入皮肤/载具/武器模型（.dff/.ifp/.col）与 PNG/PC .txd 贴图，进游戏自动打包虚拟 models.img 并挂载自定义 texdb。");
                 pathDir = ModManager.getModLoaderDir(ctx);
                 btnActionPrimary.setText("导入皮肤/模型 (IMG+TXD)");
-                btnActionPrimary.setOnClickListener(v -> showAssetImportSourceChooser());
+                btnActionPrimary.setOnClickListener(v -> assetImportWizard.showSourceChooser());
                 btnActionSecondary.setText("导入完整 ZIP 模组包");
                 btnActionSecondary.setOnClickListener(v -> launchPicker(TAB_MODLOADER, new String[]{"application/zip", "application/x-zip-compressed", "*/*"}));
                 btnActionTertiary.setVisibility(View.VISIBLE);
@@ -265,7 +271,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 btnActionPrimary.setText("导入 AML 插件 (.so)");
                 btnActionPrimary.setOnClickListener(v -> launchPicker(TAB_AML, new String[]{"*/*"}));
                 btnActionSecondary.setText("AML 核心配置");
-                btnActionSecondary.setOnClickListener(v -> showAmlCoreSettingsDialog());
+                btnActionSecondary.setOnClickListener(v -> configDialogs.showAmlCoreSettingsDialog());
                 break;
 
             case TAB_JPATCH:
@@ -277,10 +283,10 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 btnActionPrimary.setText("导入 libJPatch.so");
                 btnActionPrimary.setOnClickListener(v -> launchPicker(TAB_JPATCH, new String[]{"*/*"}));
                 btnActionSecondary.setText("应用 SA-MP 安全预设");
-                btnActionSecondary.setOnClickListener(v -> applyJPatchSafePreset());
+                btnActionSecondary.setOnClickListener(v -> configDialogs.applyJPatchSafePreset());
                 btnActionTertiary.setVisibility(View.VISIBLE);
                 btnActionTertiary.setText("新增自定义配置项");
-                btnActionTertiary.setOnClickListener(v -> showAddJPatchKeyDialog());
+                btnActionTertiary.setOnClickListener(v -> configDialogs.showAddJPatchKeyDialog());
                 btnActionQuaternary.setVisibility(View.VISIBLE);
                 btnActionQuaternary.setText("打开 JPatch 官方页");
                 btnActionQuaternary.setOnClickListener(v -> openUrl(ModManager.JPATCH_OFFICIAL_URL));
@@ -334,7 +340,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         });
     }
 
-    private void reloadCurrentTab() {
+    void reloadCurrentTab() {
         final int tab = currentTab;
         final Context appCtx = requireContext().getApplicationContext();
 
@@ -482,7 +488,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         }
     }
 
-    private void launchPicker(int tab, String[] mimeTypes) {
+    void launchPicker(int tab, String[] mimeTypes) {
         pendingImportTab = tab;
         try {
             filePickerLauncher.launch(mimeTypes);
@@ -567,527 +573,6 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 })
                 .setNegativeButton("取消", null)
                 .show();
-    }
-
-    // ══════════ Built-in GTA IMG + TXD Tool Wizard ══════════
-
-    private void showAssetImportSourceChooser() {
-        Context ctx = requireContext();
-        String[] choices = {
-                "从 ZIP 压缩包导入（自动识别 .dff + .png / PC .txd）",
-                "多选散文件导入（.dff / .ifp / .col / .txd / .png）"
-        };
-        new AlertDialog.Builder(ctx)
-                .setTitle("内置 IMG + TXD 零污染导入")
-                .setItems(choices, (d, which) -> {
-                    if (which == 0) {
-                        launchPicker(IMPORT_MODE_ASSET_TOOL_ZIP,
-                                new String[]{"application/zip", "application/x-zip-compressed", "*/*"});
-                    } else {
-                        try {
-                            multiFilePickerLauncher.launch(new String[]{"*/*"});
-                        } catch (Exception e) {
-                            Toast.makeText(ctx, "无法打开多文件选择器: " + e.getMessage(), Toast.LENGTH_LONG).show();
-                        }
-                    }
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private void showAssetImportConfigDialog(List<Uri> uris) {
-        if (!isAdded() || uris == null || uris.isEmpty()) return;
-        Context ctx = requireContext();
-
-        String suggestedPack = "";
-        StringBuilder summary = new StringBuilder();
-        if (uris.size() == 1) {
-            String name = ModManager.queryDisplayName(ctx, uris.get(0));
-            if (name == null) name = "所选文件";
-            summary.append("已选文件：").append(name);
-            int dot = name.lastIndexOf('.');
-            suggestedPack = (dot > 0) ? name.substring(0, dot) : name;
-        } else {
-            summary.append("已多选 ").append(uris.size()).append(" 个文件：");
-            int shown = 0;
-            for (Uri u : uris) {
-                String n = ModManager.queryDisplayName(ctx, u);
-                if (n == null) continue;
-                if (suggestedPack.isEmpty() && n.toLowerCase(Locale.ROOT).endsWith(".dff")) {
-                    int dot = n.lastIndexOf('.');
-                    suggestedPack = (dot > 0) ? n.substring(0, dot) : n;
-                }
-                if (shown < 3) {
-                    if (shown > 0) summary.append("、");
-                    summary.append(n);
-                    shown++;
-                }
-            }
-            if (uris.size() > 3) summary.append(" 等");
-            if (suggestedPack.isEmpty()) suggestedPack = "CustomSkin";
-        }
-        suggestedPack = suggestedPack.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
-        if (suggestedPack.length() > 36) suggestedPack = suggestedPack.substring(0, 36);
-
-        int pad = (int) (14 * getResources().getDisplayMetrics().density);
-        ScrollView sv = new ScrollView(ctx);
-        LinearLayout layout = new LinearLayout(ctx);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(pad, pad / 2, pad, pad / 2);
-        sv.addView(layout);
-
-        TextView tvSummary = new TextView(ctx);
-        tvSummary.setText(summary.toString());
-        tvSummary.setTextSize(12);
-        layout.addView(tvSummary);
-
-        TextView lblPack = new TextView(ctx);
-        lblPack.setText("\n模组包名称（生成在 modloader/<名称>/，可随时开关或删除）：");
-        lblPack.setTextSize(12);
-        layout.addView(lblPack);
-
-        EditText etPack = new EditText(ctx);
-        etPack.setText(suggestedPack);
-        etPack.setHint("如 MaiShiranui_Skin1");
-        etPack.setSingleLine(true);
-        layout.addView(etPack);
-
-        TextView lblTarget = new TextView(ctx);
-        lblTarget.setText("\n目标模型名（可选；留空 = 保持原 .dff 文件名，如皮肤/载具需改名请点击下方速查）：");
-        lblTarget.setTextSize(12);
-        layout.addView(lblTarget);
-
-        EditText etTarget = new EditText(ctx);
-        etTarget.setHint("留空保持原名，或填如 truth / infernus");
-        etTarget.setSingleLine(true);
-        layout.addView(etTarget);
-
-        LinearLayout btnRow = new LinearLayout(ctx);
-        btnRow.setOrientation(LinearLayout.HORIZONTAL);
-        Button btnPickSkin = new Button(ctx);
-        btnPickSkin.setText("选择皮肤 ID");
-        btnPickSkin.setOnClickListener(v -> showIdeSelectorDialog(true, etTarget));
-        Button btnPickVeh = new Button(ctx);
-        btnPickVeh.setText("选择载具 ID");
-        btnPickVeh.setOnClickListener(v -> showIdeSelectorDialog(false, etTarget));
-        Button btnClearTarget = new Button(ctx);
-        btnClearTarget.setText("保持原名");
-        btnClearTarget.setOnClickListener(v -> etTarget.setText(""));
-
-        LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
-        btnRow.addView(btnPickSkin, lp);
-        btnRow.addView(btnPickVeh, lp);
-        btnRow.addView(btnClearTarget, lp);
-        layout.addView(btnRow);
-
-        TextView tvHint = new TextView(ctx);
-        tvHint.setText("\n说明：PNG/JPG/WEBP 与 PC .txd 会自动编译为 Android 贴图库，.dff/.ifp/.col 在进游戏时自动装入虚拟 models.img，完全不修改官方 gta3.img。");
-        tvHint.setTextSize(11);
-        layout.addView(tvHint);
-
-        new AlertDialog.Builder(ctx)
-                .setTitle("配置并编译模型 / 贴图包")
-                .setView(sv)
-                .setPositiveButton("开始编译并安装", (d, w) -> {
-                    String packName = etPack.getText().toString().trim();
-                    String targetModel = etTarget.getText().toString().trim();
-                    runAssetImport(uris, packName, targetModel.isEmpty() ? null : targetModel);
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private void showIdeSelectorDialog(boolean isSkins, EditText targetField) {
-        Context ctx = requireContext();
-        Context appCtx = ctx.getApplicationContext();
-        Toast.makeText(ctx, isSkins ? "正在读取 SAMP/peds.ide…" : "正在读取 SAMP/vehicles.ide…", Toast.LENGTH_SHORT).show();
-
-        ioExecutor.execute(() -> {
-            List<ModAssetTool.IdeEntry> allEntries = isSkins
-                    ? ModAssetTool.loadPedSkins(appCtx)
-                    : ModAssetTool.loadVehicles(appCtx);
-
-            if (!isAdded()) return;
-            requireActivity().runOnUiThread(() -> {
-                if (!isAdded()) return;
-                if (allEntries.isEmpty()) {
-                    Toast.makeText(ctx,
-                            isSkins ? "未找到 SAMP/peds.ide（请先部署游戏数据）" : "未找到 SAMP/vehicles.ide（请先部署游戏数据）",
-                            Toast.LENGTH_LONG).show();
-                    return;
-                }
-
-                int pad = (int) (12 * getResources().getDisplayMetrics().density);
-                LinearLayout box = new LinearLayout(ctx);
-                box.setOrientation(LinearLayout.VERTICAL);
-                box.setPadding(pad, pad / 2, pad, pad / 2);
-
-                EditText etSearch = new EditText(ctx);
-                etSearch.setHint(isSkins ? "搜索皮肤 ID 或名称（如 1 / truth / swat）" : "搜索载具 ID 或名称（如 411 / infernus / sultan）");
-                etSearch.setSingleLine(true);
-                box.addView(etSearch);
-
-                List<ModAssetTool.IdeEntry> filtered = new ArrayList<>(allEntries);
-                List<String> labels = new ArrayList<>(allEntries.size());
-                for (ModAssetTool.IdeEntry e : allEntries) labels.add(e.displayLabel());
-
-                ArrayAdapter<String> listAdapter = new ArrayAdapter<>(ctx, android.R.layout.simple_list_item_1, labels);
-                ListView lv = new ListView(ctx);
-                lv.setAdapter(listAdapter);
-                int listHeight = (int) (220 * getResources().getDisplayMetrics().density);
-                box.addView(lv, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, listHeight));
-
-                AlertDialog pickerDlg = new AlertDialog.Builder(ctx)
-                        .setTitle(isSkins ? "选择目标 SA-MP 皮肤" : "选择目标 SA-MP 载具")
-                        .setView(box)
-                        .setNegativeButton("取消", null)
-                        .create();
-
-                etSearch.addTextChangedListener(new TextWatcher() {
-                    @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
-                    @Override public void onTextChanged(CharSequence s, int start, int before, int count) {}
-                    @Override public void afterTextChanged(Editable s) {
-                        String q = s.toString().trim().toLowerCase(Locale.ROOT);
-                        filtered.clear();
-                        labels.clear();
-                        for (ModAssetTool.IdeEntry e : allEntries) {
-                            if (q.isEmpty()
-                                    || String.valueOf(e.id).contains(q)
-                                    || e.modelName.toLowerCase(Locale.ROOT).contains(q)
-                                    || e.extra.toLowerCase(Locale.ROOT).contains(q)) {
-                                filtered.add(e);
-                                labels.add(e.displayLabel());
-                            }
-                        }
-                        listAdapter.notifyDataSetChanged();
-                    }
-                });
-
-                lv.setOnItemClickListener((parent, view, position, id) -> {
-                    if (position >= 0 && position < filtered.size()) {
-                        ModAssetTool.IdeEntry picked = filtered.get(position);
-                        targetField.setText(picked.modelName);
-                        Toast.makeText(ctx, "已选 " + picked.displayLabel(), Toast.LENGTH_SHORT).show();
-                        pickerDlg.dismiss();
-                    }
-                });
-
-                pickerDlg.show();
-            });
-        });
-    }
-
-    private void runAssetImport(List<Uri> uris, String packName, @Nullable String targetModel) {
-        Context ctx = requireContext();
-        Context appCtx = ctx.getApplicationContext();
-
-        TextView tvProg = new TextView(ctx);
-        int pad = (int) (18 * getResources().getDisplayMetrics().density);
-        tvProg.setPadding(pad, pad, pad, pad);
-        tvProg.setText("准备解析并编译资产…");
-
-        AlertDialog progDlg = new AlertDialog.Builder(ctx)
-                .setTitle("正在编译安装模组")
-                .setView(tvProg)
-                .setCancelable(false)
-                .create();
-        progDlg.show();
-
-        ioExecutor.execute(() -> {
-            try {
-                ModAssetTool.ImportResult res = ModAssetTool.importAssetPack(
-                        appCtx,
-                        uris,
-                        packName,
-                        targetModel,
-                        msg -> {
-                            if (!isAdded()) return;
-                            requireActivity().runOnUiThread(() -> {
-                                if (progDlg.isShowing()) tvProg.setText(msg);
-                            });
-                        }
-                );
-
-                // Ensure Modloader master toggle is enabled so the installed pack works right away
-                boolean autoEnabledMaster = false;
-                if (!prefs.getBoolean("modloader", false)) {
-                    prefs.edit().putBoolean("modloader", true).commit();
-                    Utils.saveSettings(appCtx);
-                    autoEnabledMaster = true;
-                }
-                final boolean enabledNow = autoEnabledMaster;
-
-                androidx.fragment.app.FragmentActivity act = getActivity();
-                if (act == null || !isAdded()) return;
-                act.runOnUiThread(() -> {
-                    if (progDlg.isShowing()) progDlg.dismiss();
-                    if (!isAdded() || getContext() == null) return;
-
-                    if (enabledNow) {
-                        configureSectionPanel();
-                    }
-                    reloadCurrentTab();
-
-                    StringBuilder detail = new StringBuilder();
-                    detail.append("模组包目录：modloader/").append(res.packName).append("\n");
-                    detail.append("• 模型文件：").append(res.modelCount).append(" 个（进游戏自动装入虚拟 models.img）\n");
-                    if (res.renamedPrimaryModel != null) {
-                        detail.append("• 主模型已重命名为：").append(res.renamedPrimaryModel).append("\n");
-                    }
-                    if (res.compiledTextureCount > 0) {
-                        detail.append("• 已编译贴图：").append(res.compiledTextureCount)
-                                .append(" 张 → texdb/").append(res.texDbName).append("/\n");
-                    }
-                    if (res.passthroughFileCount > 0) {
-                        detail.append("• 原样导入附带文件：").append(res.passthroughFileCount).append(" 个\n");
-                    }
-                    if (enabledNow) {
-                        detail.append("• 已自动开启 Modloader 总开关\n");
-                    }
-                    if (!res.warnings.isEmpty()) {
-                        detail.append("\n注意事项：\n");
-                        for (String w : res.warnings) {
-                            detail.append("- ").append(w).append("\n");
-                        }
-                    }
-
-                    new AlertDialog.Builder(getContext())
-                            .setTitle("编译并安装成功")
-                            .setMessage(detail.toString().trim())
-                            .setPositiveButton("确定", null)
-                            .show();
-                });
-            } catch (Exception e) {
-                androidx.fragment.app.FragmentActivity act = getActivity();
-                if (act == null || !isAdded()) return;
-                act.runOnUiThread(() -> {
-                    if (progDlg.isShowing()) progDlg.dismiss();
-                    if (!isAdded() || getContext() == null) return;
-                    new AlertDialog.Builder(getContext())
-                            .setTitle("导入失败")
-                            .setMessage(e.getMessage() != null ? e.getMessage() : e.toString())
-                            .setPositiveButton("确定", null)
-                            .show();
-                });
-            }
-        });
-    }
-
-    private void showAmlCoreSettingsDialog() {
-        Context ctx = requireContext();
-        ModManager.AmlCoreSettings cur = ModManager.readAmlCoreSettings(ctx);
-
-        int pad = (int) (14 * getResources().getDisplayMetrics().density);
-        LinearLayout layout = new LinearLayout(ctx);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(pad, pad / 2, pad, 0);
-
-        TextView lblFake = new TextView(ctx);
-        lblFake.setText("伪装包名 (FakePackageName，供 GTA:SA 插件识别)：");
-        lblFake.setTextSize(12);
-        layout.addView(lblFake);
-
-        EditText etFake = new EditText(ctx);
-        etFake.setText(cur.fakePackageName);
-        etFake.setSingleLine(true);
-        layout.addView(etFake);
-
-        CheckBox cbOverlay = new CheckBox(ctx);
-        cbOverlay.setText("进游戏时显示 AML 已加载模组提示（Android 12+ 建议关闭，以免遮挡输入法）");
-        cbOverlay.setChecked(cur.showModsOverlay);
-        layout.addView(cbOverlay);
-
-        CheckBox cbLogFile = new CheckBox(ctx);
-        cbLogFile.setText("将 AML 运行日志写入 android_log_print.txt");
-        cbLogFile.setChecked(cur.printLogsToFile);
-        layout.addView(cbLogFile);
-
-        CheckBox cbVerbose = new CheckBox(ctx);
-        cbVerbose.setText("详细日志输出（记录 INFO 级别加载信息）");
-        cbVerbose.setChecked(cur.verboseLogs);
-        layout.addView(cbVerbose);
-
-        CheckBox cbSignal = new CheckBox(ctx);
-        cbSignal.setText("启用 AML 崩溃信号捕获（默认关闭，推荐保留本端原生崩溃日志）");
-        cbSignal.setChecked(cur.signalHandler);
-        layout.addView(cbSignal);
-
-        new AlertDialog.Builder(ctx)
-                .setTitle("AML 核心配置 (ModLoaderCore.ini)")
-                .setView(layout)
-                .setPositiveButton("保存", (d, w) -> {
-                    ModManager.AmlCoreSettings updated = new ModManager.AmlCoreSettings();
-                    updated.fakePackageName = etFake.getText().toString().trim();
-                    updated.showModsOverlay = cbOverlay.isChecked();
-                    updated.printLogsToFile = cbLogFile.isChecked();
-                    updated.verboseLogs = cbVerbose.isChecked();
-                    updated.signalHandler = cbSignal.isChecked();
-                    Context appCtx = ctx.getApplicationContext();
-                    ioExecutor.execute(() -> {
-                        ModManager.saveAmlCoreSettings(appCtx, updated);
-                        if (!isAdded()) return;
-                        requireActivity().runOnUiThread(() ->
-                                Toast.makeText(ctx, "已保存 ModLoaderCore.ini", Toast.LENGTH_SHORT).show());
-                    });
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private void applyJPatchSafePreset() {
-        Context ctx = requireContext();
-        new AlertDialog.Builder(ctx)
-                .setTitle("应用 SA-MP 安全预设")
-                .setMessage("将为 JPatch.ini 写入 SA-MP 2.10 安全推荐值：开启 2.10 防崩/雾墙/高帧率物理/NEON 优化，关闭与本端冲突的 UVAnim/强锁贴图格式/流送内存重复扩容项。是否继续？")
-                .setPositiveButton("应用", (d, w) -> {
-                    Context appCtx = ctx.getApplicationContext();
-                    ioExecutor.execute(() -> {
-                        ModManager.applyJPatchSampSafePreset(appCtx);
-                        if (!isAdded()) return;
-                        requireActivity().runOnUiThread(() -> {
-                            Toast.makeText(ctx, "已应用 SA-MP 安全预设到 JPatch.ini", Toast.LENGTH_SHORT).show();
-                            reloadCurrentTab();
-                        });
-                    });
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private void showAddJPatchKeyDialog() {
-        Context ctx = requireContext();
-        int pad = (int) (14 * getResources().getDisplayMetrics().density);
-        LinearLayout layout = new LinearLayout(ctx);
-        layout.setOrientation(LinearLayout.VERTICAL);
-        layout.setPadding(pad, pad / 2, pad, 0);
-
-        EditText etSec = new EditText(ctx);
-        etSec.setHint("节名 Section（默认 Patches）");
-        etSec.setText("Patches");
-        layout.addView(etSec);
-
-        EditText etKey = new EditText(ctx);
-        etKey.setHint("配置键 Key（如 FixWaterQuadrant）");
-        layout.addView(etKey);
-
-        EditText etVal = new EditText(ctx);
-        etVal.setHint("值 Value（如 1 或 0）");
-        etVal.setText("1");
-        layout.addView(etVal);
-
-        new AlertDialog.Builder(ctx)
-                .setTitle("新增 JPatch.ini 配置项")
-                .setView(layout)
-                .setPositiveButton("保存", (d, w) -> {
-                    String rawSec = etSec.getText().toString().trim();
-                    final String sec = rawSec.isEmpty() ? "Patches" : rawSec;
-                    final String key = etKey.getText().toString().trim();
-                    final String val = etVal.getText().toString().trim();
-                    if (key.isEmpty()) return;
-                    Context appCtx = ctx.getApplicationContext();
-                    ioExecutor.execute(() -> {
-                        ModManager.saveJPatchOption(appCtx, sec, key, val);
-                        if (!isAdded()) return;
-                        requireActivity().runOnUiThread(() -> {
-                            Toast.makeText(ctx, "已写入 " + key + "=" + val, Toast.LENGTH_SHORT).show();
-                            reloadCurrentTab();
-                        });
-                    });
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private void showEditJPatchValueDialog(ModManager.JPatchOption opt) {
-        Context ctx = requireContext();
-        EditText etVal = new EditText(ctx);
-        etVal.setText(opt.value);
-        etVal.setSingleLine(true);
-        int pad = (int) (16 * getResources().getDisplayMetrics().density);
-        LinearLayout wrap = new LinearLayout(ctx);
-        wrap.setPadding(pad, pad / 2, pad, 0);
-        wrap.addView(etVal, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-        new AlertDialog.Builder(ctx)
-                .setTitle("编辑 " + opt.key)
-                .setView(wrap)
-                .setPositiveButton("保存", (d, w) -> {
-                    String val = etVal.getText().toString().trim();
-                    opt.value = val;
-                    Context appCtx = ctx.getApplicationContext();
-                    ioExecutor.execute(() -> {
-                        ModManager.saveJPatchOption(appCtx, opt.section, opt.key, val);
-                        if (!isAdded()) return;
-                        requireActivity().runOnUiThread(this::reloadCurrentTab);
-                    });
-                })
-                .setNegativeButton("取消", null)
-                .show();
-    }
-
-    private void showLogsDialog() {
-        Context ctx = requireContext();
-        String[] choices = {
-                "AML 日志 (android_log_print.txt)",
-                "最新客户端日志 (ModLoader / Hook)",
-                "MonetLoader 日志 (logs/monetloader.log)",
-                "CLEO 引擎日志 (cleo/cleo.log)"
-        };
-        new AlertDialog.Builder(ctx)
-                .setTitle("选择要查看的日志")
-                .setItems(choices, (d, which) -> {
-                    Context appCtx = ctx.getApplicationContext();
-                    ioExecutor.execute(() -> {
-                        File logFile;
-                        if (which == 0) logFile = ModManager.getAmlLogFile(appCtx);
-                        else if (which == 1) logFile = ModManager.getLatestClientLogFile(appCtx);
-                        else if (which == 2) logFile = ModManager.getMonetLogFile(appCtx);
-                        else logFile = ModManager.getCleoLogFile(appCtx);
-
-                        String content = ModManager.readLogTail(logFile, 32 * 1024);
-                        if (content.isEmpty()) {
-                            content = "暂无日志内容。\n文件路径：" + (logFile != null ? logFile.getAbsolutePath() : "未生成");
-                        }
-                        final String finalContent = content;
-                        final File finalFile = logFile;
-                        if (!isAdded()) return;
-                        requireActivity().runOnUiThread(() -> showLogTextPopup(choices[which], finalContent, finalFile));
-                    });
-                })
-                .show();
-    }
-
-    private void showLogTextPopup(String title, String content, @Nullable File file) {
-        Context ctx = requireContext();
-        ScrollView sv = new ScrollView(ctx);
-        TextView tv = new TextView(ctx);
-        int pad = (int) (12 * getResources().getDisplayMetrics().density);
-        tv.setPadding(pad, pad, pad, pad);
-        tv.setTypeface(Typeface.MONOSPACE);
-        tv.setTextSize(10);
-        tv.setTextIsSelectable(true);
-        tv.setText(content);
-        sv.addView(tv);
-
-        AlertDialog.Builder b = new AlertDialog.Builder(ctx)
-                .setTitle(title)
-                .setView(sv)
-                .setPositiveButton("复制", (d, w) -> {
-                    ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
-                    if (cm != null) {
-                        cm.setPrimaryClip(ClipData.newPlainText("mod_log", content));
-                        Toast.makeText(ctx, "已复制日志", Toast.LENGTH_SHORT).show();
-                    }
-                })
-                .setNegativeButton("关闭", null);
-        if (file != null && file.isFile()) {
-            b.setNeutralButton("清空", (d, w) -> ioExecutor.execute(() -> {
-                file.delete();
-                if (!isAdded()) return;
-                requireActivity().runOnUiThread(() -> Toast.makeText(ctx, "已清空日志文件", Toast.LENGTH_SHORT).show());
-            }));
-        }
-        b.show();
     }
 
     private void openUrl(String url) {
@@ -1191,7 +676,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 h.btnValue.setText(item.valueText != null ? item.valueText : "");
                 h.btnValue.setOnClickListener(v -> {
                     if (item.payload instanceof ModManager.JPatchOption) {
-                        showEditJPatchValueDialog((ModManager.JPatchOption) item.payload);
+                        configDialogs.showEditJPatchValueDialog((ModManager.JPatchOption) item.payload);
                     }
                 });
             }
@@ -1226,8 +711,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                     entry.file = renamed;
                     entry.enabled = isChecked;
                     if (entry.isJPatch) {
-                        prefs.edit().putBoolean("jpatch_enabled", isChecked).commit();
-                        Utils.saveSettings(appCtx);
+                        ClientSettings.setSync(appCtx, "jpatch_enabled", isChecked);
                     }
                 }
                 androidx.fragment.app.FragmentActivity act = getActivity();

@@ -1,9 +1,16 @@
-#include "../Game/Game.h"
+#include "PickupPool.h"
 #include "NetGame.h"
 #include "Proto/RpcOutbound.h"
+#include "../Client.h"
+#include "../Game/Game.h"
+#include "../Game/Scripting.h"
+#include "../Game/Util.h"
+#include "../Game/Artwork/ArtworkCore.h"
+#include "../Game/Artwork/ArtworkManager.h"
+#include <RakNet/RakClientInterface.h>
+#include <RakNet/SAMP/SAMPRPC.h>
+#include <spdlog/spdlog.h>
 
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 CPickupPool::CPickupPool()
 {
@@ -14,6 +21,7 @@ CPickupPool::CPickupPool()
 		m_dwHnd[i] = 0;
 		m_cooldownUntilMs[i] = 0;
 		m_dwGTAId[i] = -1;
+		m_effectiveModel[i] = -1;
 		m_droppedWeapon[i].PlayerID = INVALID_PLAYER_ID;
 	}
 	for (int i = 0; i < kMaxGtaPickups; i++) {
@@ -67,9 +75,11 @@ void CPickupPool::New(PICKUP* pPickup, int iPickup)
 	m_cooldownUntilMs[iPickup] = 0;
 
 	int dwGTAId = -1;
+	int effectiveModel = -1;
 	uint32_t hnd = pGame->CreatePickup(pPickup->iModel, pPickup->iType,
-			pPickup->fX, pPickup->fY, pPickup->fZ, &dwGTAId);
+			pPickup->fX, pPickup->fY, pPickup->fZ, &dwGTAId, &effectiveModel);
 	m_dwHnd[iPickup] = hnd;
+	m_effectiveModel[iPickup] = effectiveModel;
 	if (hnd != 0) {
 		if (iPickup > m_highestActiveSlot) {
 			m_highestActiveSlot = iPickup;
@@ -141,8 +151,41 @@ void CPickupPool::Destroy(int iPickup)
 		m_dwHnd[iPickup] = 0;
 		m_cooldownUntilMs[iPickup] = 0;
 		m_dwGTAId[iPickup] = -1;
+		m_effectiveModel[iPickup] = -1;
 		m_droppedWeapon[iPickup].bDroppedWeapon = false;
 		m_droppedWeapon[iPickup].PlayerID = INVALID_PLAYER_ID;
+	}
+}
+
+void CPickupPool::RefreshCustomModels()
+{
+	auto& art = artwork::ArtworkManager::instance();
+	int refreshed = 0;
+	for (int i = 0; i <= m_highestActiveSlot && i < MAX_PICKUPS; ++i) {
+		if (m_dwHnd[i] == 0 || m_droppedWeapon[i].bDroppedWeapon) {
+			continue;
+		}
+		const int32_t modelId = m_Pickups[i].iModel;
+		if (!artwork::isCustomObjectId(modelId) || artwork::isInternalCustomSlot(m_effectiveModel[i])) {
+			continue;
+		}
+		if (art.ensureCustomObjectLoaded(modelId) >= 0) {
+			PICKUP copy = m_Pickups[i];
+			New(&copy, i);
+			++refreshed;
+		}
+	}
+	if (refreshed > 0) {
+		spdlog::info("CPickupPool::RefreshCustomModels: upgraded {} deferred custom pickup(s)", refreshed);
+	}
+}
+
+void CPickupPool::DestroyCustomModelsBeforeUnload()
+{
+	for (int i = 0; i <= m_highestActiveSlot && i < MAX_PICKUPS; ++i) {
+		if (m_dwHnd[i] != 0 && (artwork::isCustomObjectId(m_Pickups[i].iModel) || artwork::isInternalCustomSlot(m_effectiveModel[i]))) {
+			Destroy(i);
+		}
 	}
 }
 

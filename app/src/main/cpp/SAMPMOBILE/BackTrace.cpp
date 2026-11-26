@@ -11,7 +11,6 @@
 
 extern std::atomic<uint16_t> g_lastScriptOpcode;
 extern std::atomic<int> g_lastObjectModel;
-extern uintptr_t g_gtasaLibBase;
 
 void crash_log(const char* format, ...)
 {

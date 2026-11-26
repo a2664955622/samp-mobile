@@ -1,8 +1,12 @@
 #pragma once
 
+#include <cstdint>
 #include <cstring>
+#include "Entity.h"
 
-class CEntity;
+namespace sa {
+class CVehicle;
+}
 
 class CVehicle : public CEntity {
 public:
@@ -60,26 +64,13 @@ public:
 	bool HasSunk();
 	bool HasADriver();
 
-	void ApplyEngineStatus(bool state)
-	{
-		if (m_pVehicle && VerifyInstance()) {
-			m_pVehicle->SetEngineStatus(state);
-		}
-	}
-
+	void ApplyEngineStatus(bool state);
 	void SetEngineState(bool state)
 	{
 		m_iEngineState = state ? 1 : 0;
 		ApplyEngineStatus(state);
 	}
-
-	int GetEngineState()
-	{
-		if (m_pVehicle && VerifyInstance()) {
-			return m_pVehicle->GetEngineStatus();
-		}
-		return 0;
-	}
+	int GetEngineState();
 
 	void ApplyLightStatus(bool state);
 	void SetLightState(bool state);
@@ -92,30 +83,13 @@ public:
 	void SetDoorState(int state);
 	bool GetDoorState();
 
-	void SetSirenOn(uint8_t state)
-	{
-		if (m_pVehicle && VerifyInstance()) {
-			m_pVehicle->m_nVehicleFlags.bSirenOrAlarm = state;
-		}
-	}
-
-	bool IsSirenOn()
-	{
-		return m_pVehicle && VerifyInstance() && m_pVehicle->m_nVehicleFlags.bSirenOrAlarm;
-	}
+	void SetSirenOn(uint8_t state);
+	bool IsSirenOn();
 
 	void SetHydraThrusters(uint32_t state);
 
-	void SetAlarmState(uint16_t wAlarmState)
-	{
-		if (m_pVehicle && VerifyInstance()) {
-			m_pVehicle->m_nAlarmState = wAlarmState;
-		}
-	}
-	uint16_t GetAlarmState()
-	{
-		return (m_pVehicle && VerifyInstance()) ? m_pVehicle->m_nAlarmState : 0;
-	}
+	void SetAlarmState(uint16_t wAlarmState);
+	uint16_t GetAlarmState();
 
 	void SetComponentOpenState(int iDoor, int iComponent, float fDoorOpenRatio);
 

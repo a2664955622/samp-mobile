@@ -5,7 +5,6 @@
 
 #include <spdlog/spdlog.h>
 
-extern SymUtils* g_saSym;
 
 namespace eng {
 

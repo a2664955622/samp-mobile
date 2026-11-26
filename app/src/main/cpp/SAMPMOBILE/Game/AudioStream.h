@@ -1,7 +1,5 @@
 #pragma once
 
-#include <bass.h>
-
 class AudioStream {
 public:
 	AudioStream();

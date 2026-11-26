@@ -3,7 +3,10 @@
 //
 
 #include "MatrixLinkList.h"
+#include "../../Addr.h"
 #include "../../Client.h"
+#include "../../Game/Engine/PatchRegistry.h"
+#include <Memory.h>
 
 namespace sa {
 CMatrixLinkList gMatrixList;

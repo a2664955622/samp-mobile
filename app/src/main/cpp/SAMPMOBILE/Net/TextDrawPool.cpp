@@ -1,9 +1,14 @@
-#include "../Game/Game.h"
+#include "TextDrawPool.h"
 #include "NetGame.h"
 #include "Proto/RpcOutbound.h"
+#include "../Client.h"
+#include "../Game/Game.h"
+#include "../Game/TextDraw.h"
+#include "../Game/Util.h"
+#include <RakNet/RakClientInterface.h>
+#include <RakNet/SAMP/SAMPRPC.h>
+#include <spdlog/spdlog.h>
 
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 CTextDrawPool::CTextDrawPool()
 {
@@ -210,6 +215,24 @@ void CTextDrawPool::SnapshotProcess()
 	for (int i = 0; i < MAX_TEXT_DRAWS; i++) {
 		if (m_bSlotState[i] && m_pTextDraw[i]) {
 			m_pTextDraw[i]->SnapshotProcess();
+		}
+	}
+}
+
+void CTextDrawPool::RefreshCustomModels()
+{
+	for (int i = 0; i < MAX_TEXT_DRAWS; i++) {
+		if (m_bSlotState[i] && m_pTextDraw[i]) {
+			m_pTextDraw[i]->RefreshCustomAsset();
+		}
+	}
+}
+
+void CTextDrawPool::ReleaseCustomModelsBeforeUnload()
+{
+	for (int i = 0; i < MAX_TEXT_DRAWS; i++) {
+		if (m_bSlotState[i] && m_pTextDraw[i]) {
+			m_pTextDraw[i]->ReleaseCustomAssetBeforeUnload();
 		}
 	}
 }

@@ -1,6 +1,22 @@
 #pragma once
 
+#include <cstdint>
+#include <Core/Vector.h>
+#include "Entity.h"
+#include "Aimstuff.h"
+
+namespace sa {
+class CPed;
+class CVehicle;
+struct CEntity;
+struct CWeapon;
+struct CPedFlags;
+}
+class CObject;
+
+#ifndef PLAYER_PED_SLOTS
 #define PLAYER_PED_SLOTS    210
+#endif
 
 #define FALL_SKYDIVE        1
 #define FALL_SKYDIVE_ACCEL    2
@@ -62,8 +78,11 @@ public:
 	uint8_t GetCurrentWeapon();
 	void SetInitialState();
 	void SetModelIndex(uint uiModel);
+	void SetSkin(int baseSkin, int customSkin = 0);
+	void RememberServerSkin(int baseSkin, int customSkin = 0);
+	bool RefreshCustomSkin();
+	void RevertCustomSkinBeforeUnload();
 	void ClearWeapons();
-	void ResetHealth();
 	void GiveWeapon(int iWeaponId, int iAmmo);
 	void SetArmedWeapon(uint8_t weapon);
 	void SetTargetRotation(float fRotation);
@@ -173,6 +192,7 @@ public:
 	void SetDrunkLevel(int32_t iLevel);
 	int32_t GetDrunkLevel() const { return m_iDrunkLevel; }
 
+	bool IsParachuting() const { return m_iParachuteState != 0; }
 	void ProcessParachutes();
 	void ProcessParachuteSkydiving();
 	void ProcessParachuting();
@@ -205,14 +225,14 @@ public:
 	void ResetDamageEntity();
 
 private:
+	void ApplyGtaModelIndex(uint uiModel);
+
 	int m_bCuffedState = 0;
 	int m_bCarryState = 0;
 
 	int m_iDanceState = 0;
 	int m_iDanceStyle = -1;
 	int m_iLastDanceMove = 0;
-	int m_iDancingState = 0;
-	int m_iDancingAnim = 0;
 
 	bool m_bCellPhoneEnabled = false;
 
@@ -235,6 +255,8 @@ private:
 
 public:
 	sa::CPed* m_ped = nullptr;
+	int m_iServerSkin = -1;
+	int m_iFallbackSkin = 0;
 	uint8_t m_bytePlayerNumber = 0;
 	uint32_t m_dwArrow = 0;
 	uint32_t m_dwParachuteObject = 0;

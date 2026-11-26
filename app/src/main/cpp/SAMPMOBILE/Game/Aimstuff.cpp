@@ -1,6 +1,15 @@
+#include "Aimstuff.h"
 #include "Game.h"
+#include "Pad.h"
+#include "Patches.h"
+#include "PlayerPed.h"
+#include "Engine/Symbols.h"
+#include "../Client.h"
+#include <SA.h>
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 CAMERA_AIM* pcaInternalAim = nullptr;
 uint8_t* pbyteCameraMode = nullptr;
@@ -20,7 +29,6 @@ float fLocalAspectRatio;
 float fLocalPlayerSkills[kWeaponSkillCount];
 float fRemotePlayerSkills[PLAYER_PED_SLOTS][kWeaponSkillCount];
 
-extern sa::CPlayerInfo* WORLD_PLAYERS;
 extern PAD_KEYS RemotePlayerKeys[PLAYER_PED_SLOTS];
 
 static inline uint8_t GameGetActiveCamIndex()

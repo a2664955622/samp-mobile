@@ -5,7 +5,6 @@
 
 #include "Network.h"
 
-extern NetGame* pNetGame;
 
 bool Network::Init() noexcept
 {

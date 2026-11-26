@@ -11,8 +11,8 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AlertDialog;
 
+import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.GameDataImporter;
-import com.sampmobile.launcher.utils.Utils;
 
 import java.io.File;
 import java.util.Locale;
@@ -102,7 +102,7 @@ public final class GameDataImportDialog {
                 // Ensure settings.json exists after clean import
                 if (!res.cancelled && res.extractedFiles > 0) {
                     try {
-                        Utils.saveSettings(activity);
+                        ClientSettings.ensureExists(activity);
                     } catch (Exception ignored) {
                     }
                 }
@@ -119,7 +119,7 @@ public final class GameDataImportDialog {
                     } else if (res.extractedFiles == 0) {
                         new AlertDialog.Builder(activity)
                                 .setTitle("未识别到游戏数据包")
-                                .setMessage("所选 ZIP 中未找到 GTA:SA / SA-MP 游戏目录（需包含 SAMP/、texdb/、anim/、data/、models/ 等）。请确认选择了 tools/build_gamedata.py 生成的 .zip 文件。")
+                                .setMessage("所选 ZIP 中未找到 GTA:SA / SA-MP 游戏目录（需包含 SAMP/、texdb/、anim/、data/、models/ 等）。请确认选择了 tools/gamedata/build_gamedata.py 生成的 .zip 文件。")
                                 .setPositiveButton("确定", null)
                                 .show();
                     } else if (res.ready) {

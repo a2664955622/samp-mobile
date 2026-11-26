@@ -2,7 +2,14 @@
 // Created by ALYN on 2024/8/15.
 //
 
+#include "Camera.h"
 #include "Game.h"
+#include "Object.h"
+#include "Scripting.h"
+#include "Util.h"
+#include "Engine/Symbols.h"
+#include "../Client.h"
+#include <SA.h>
 
 CCamera::CCamera()
 {

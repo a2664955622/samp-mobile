@@ -171,6 +171,8 @@ extern int RPC_ScrPlayCrimeReport;
 extern int RPC_ScrSetPlayerVirtualWorld;
 extern int RPC_DlModelRequest;
 extern int RPC_DlModelReset;
+extern int RPC_DlRequestDff;
+extern int RPC_DlRequestTxd;
 extern int RPC_DlModelUrl;
 extern int RPC_DlFinishDownload;
 extern int RPC_DlDownloadCompleted;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Game/Engine/Symbols.h"
 #include "Core/TDBArray.h"
 #include "Enums/TextureDatabaseFormat.h"
 #include "../../Memory/include/Memory.h"

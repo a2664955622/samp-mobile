@@ -448,16 +448,55 @@ struct PickedUpWeaponPickupReq {
 	}
 };
 
+// RPC 181 (client -> server, 0.3.DL): Request DFF download URL/data by CRC32
+struct DlRequestDffReq {
+	static constexpr int kRpcId = rpc::kDlRequestDff;
+	static constexpr uint8_t kVersionMask = kVer03DL;
+	static constexpr const char* kName = "DlRequestDffReq";
+
+	uint32_t checksum = 0;
+
+	template <typename S>
+	bool serialize(S& s, ProtoVersion)
+	{
+		return s.u32(checksum);
+	}
+};
+
+// RPC 182 (client -> server, 0.3.DL): Request TXD download URL/data by CRC32
+struct DlRequestTxdReq {
+	static constexpr int kRpcId = rpc::kDlRequestTxd;
+	static constexpr uint8_t kVersionMask = kVer03DL;
+	static constexpr const char* kName = "DlRequestTxdReq";
+
+	uint32_t checksum = 0;
+
+	template <typename S>
+	bool serialize(S& s, ProtoVersion)
+	{
+		return s.u32(checksum);
+	}
+};
+
 // RPC 184 (client -> server, 0.3.DL): Artwork download finished notification
+// PC 0.3.DL writes a single `true` bit; open.mp ignores payload and returns true.
 struct DlFinishDownloadReq {
 	static constexpr int kRpcId = rpc::kDlFinishDownload;
 	static constexpr uint8_t kVersionMask = kVer03DL;
 	static constexpr const char* kName = "DlFinishDownloadReq";
 
+	bool finished = true;
+
 	template <typename S>
 	bool serialize(S& s, ProtoVersion)
 	{
-		return s.ok();
+		if constexpr (S::kReading) {
+			finished = true;
+			s.optionalTail([&](auto& tail) { return tail.bit(finished); });
+			return s.ok();
+		} else {
+			return s.bit(finished);
+		}
 	}
 };
 

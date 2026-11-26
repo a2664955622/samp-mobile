@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <Core/Vector.h>
+#include <RenderWare/rw.h>
+
 class CObject;
 
 class CCamera {

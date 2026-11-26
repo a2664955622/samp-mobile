@@ -6,7 +6,6 @@
 #include "../Game/Game.h"
 #include "../Net/NetGame.h"
 
-extern NetGame* pNetGame;
 
 // Glyph ranges requested for the UI font. Codepoints missing from a font
 // file are skipped by the atlas builder, so it is safe to request ranges

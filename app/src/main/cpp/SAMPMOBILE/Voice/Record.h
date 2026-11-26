@@ -1,6 +1,8 @@
 #pragma once
 
 #include <array>
+#include <bass.h>
+#include <opus.h>
 
 #include "include/util/Memory.hpp"
 

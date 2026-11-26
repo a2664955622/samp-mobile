@@ -34,4 +34,4 @@ libraries, prebuilt binaries, and fonts used by **SA-MP Mobile**.
 | Component | Status | Terms |
 |---|---|---|
 | **BASS / BASS_SSL (`libBASS*.so`)** | Prebuilt audio library (Un4seen Developments) | Free for non-commercial use; commercial distribution requires a license from https://www.un4seen.com/ |
-| **GTA:SA Android v2.10 (`libGTASA.so`, `libImmEmulatorJ.so`, APK assets, game data)** | **Excluded from repository** | Proprietary (Rockstar Games / Take-Two Interactive). Supplied locally by the user via `tools/prepare_gtasa.py`. |
+| **GTA:SA Android v2.10 (`libGTASA.so`, `libImmEmulatorJ.so`, APK assets, game data)** | **Excluded from repository** | Proprietary (Rockstar Games / Take-Two Interactive). Supplied locally by the user via `tools/engine/prepare_gtasa.py`. |

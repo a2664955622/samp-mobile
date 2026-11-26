@@ -1,4 +1,5 @@
-#include "../UI.h"
+#include "Layout.h"
+#include "../UISettings.h"
 
 Layout::Layout(Orientation orientation)
 {

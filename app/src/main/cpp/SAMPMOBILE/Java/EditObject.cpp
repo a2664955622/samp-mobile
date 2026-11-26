@@ -2,16 +2,23 @@
 // Created by ALYN on 25-Jan-25.
 //
 
+#include "EditObject.h"
 #include "../Client.h"
 #include "../Java/Java.h"
 #include "../UI/UI.h"
+#include "../UI/SAMPWidgets/Chat.h"
 #include "../Game/Game.h"
+#include "../Game/Object.h"
+#include "../Game/PlayerPed.h"
+#include "../Game/Util.h"
 #include "../Net/NetGame.h"
+#include "../Net/LocalPlayer.h"
 #include "../Net/Proto/RpcOutbound.h"
-#include "EditObject.h"
 
-extern UI* pUI;
-extern NetGame* pNetGame;
+#include <RakNet/RakClientInterface.h>
+#include <RakNet/SAMP/SAMPRPC.h>
+#include <spdlog/spdlog.h>
+
 
 namespace {
 bool g_hasOrigSnapshot = false;

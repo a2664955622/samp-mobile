@@ -1,18 +1,21 @@
 #pragma once
 
-#include "Player.h"
+#include <cstring>
+#include "NetTypes.h"
+
+namespace sa {
+class CPed;
+}
+class CPlayer;
+class CLocalPlayer;
+class CRemotePlayer;
 
 class CPlayerPool {
 public:
 	CPlayerPool();
 	~CPlayerPool();
 
-	void SetPlayerName(PLAYERID PlayerID, const char* szPlayerName)
-	{
-		if (PlayerID < MAX_PLAYERS && m_bPlayerSlotState[PlayerID] && m_pPlayers[PlayerID]) {
-			m_pPlayers[PlayerID]->SetPlayerName(szPlayerName);
-		}
-	}
+	void SetPlayerName(PLAYERID PlayerID, const char* szPlayerName);
 
 	void SetLocalPlayerName(const char* szPlayerName)
 	{
@@ -50,16 +53,7 @@ public:
 		return m_pLocalPlayer;
 	}
 
-	CRemotePlayer* GetAt(PLAYERID playerId)
-	{
-		if (playerId >= MAX_PLAYERS ||
-				m_bPlayerSlotState[playerId] == false ||
-				m_pPlayers[playerId] == nullptr) {
-			return nullptr;
-		}
-
-		return m_pPlayers[playerId]->m_pRemotePlayer;
-	}
+	CRemotePlayer* GetAt(PLAYERID playerId);
 
 	bool GetSlotState(PLAYERID playerId)
 	{

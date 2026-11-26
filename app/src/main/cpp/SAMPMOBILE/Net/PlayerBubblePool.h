@@ -1,5 +1,9 @@
 #pragma once
 
+#include "NetTypes.h"
+
+class ImGuiRenderer;
+
 struct PlayerBubbleStruct {
 	char szText[256];
 	float fDistance;

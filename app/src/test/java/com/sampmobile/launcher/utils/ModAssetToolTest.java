@@ -60,7 +60,7 @@ public class ModAssetToolTest {
             fw.write("end\n");
         }
 
-        List<ModAssetTool.IdeEntry> peds = ModAssetTool.parseIdeSection(ide, "peds");
+        List<ModAssetTool.IdeEntry> peds = IdeCatalogParser.parseIdeSection(ide, "peds");
         assertEquals(2, peds.size());
         assertEquals(1, peds.get(0).id);
         assertEquals("truth", peds.get(0).modelName);
@@ -68,7 +68,7 @@ public class ModAssetToolTest {
         assertEquals(7, peds.get(1).id);
         assertEquals("male01", peds.get(1).modelName);
 
-        List<ModAssetTool.IdeEntry> cars = ModAssetTool.parseIdeSection(ide, "cars");
+        List<ModAssetTool.IdeEntry> cars = IdeCatalogParser.parseIdeSection(ide, "cars");
         assertEquals(1, cars.size());
         assertEquals(411, cars.get(0).id);
         assertEquals("infernus", cars.get(0).modelName);

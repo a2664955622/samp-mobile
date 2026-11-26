@@ -5,15 +5,14 @@
 #include "../Game/Game.h"
 #include "../Game/PlayerPed.h"
 #include "../Net/NetGame.h"
+#include "../Net/RemotePlayer.h"
+#include <encoding.h>
 
 #include "SpeakerList.h"
 
 #include "PluginConfig.h"
 #include "../Game/AudioStream.h"
 
-extern UI* pUI;
-extern NetGame* pNetGame;
-extern AudioStream* pAudioStream;
 
 bool SpeakerList::Init() noexcept
 {

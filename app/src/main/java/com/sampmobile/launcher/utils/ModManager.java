@@ -240,94 +240,6 @@ public class ModManager {
         return info;
     }
 
-    // ══════════ INI Helper (Preserves Sections & Keys) ══════════
-
-    public static class IniDoc {
-        public final LinkedHashMap<String, LinkedHashMap<String, String>> sections = new LinkedHashMap<>();
-
-        public static IniDoc load(File file) {
-            IniDoc doc = new IniDoc();
-            if (file == null || !file.isFile()) return doc;
-            String curSection = "Preferences";
-            try (BufferedReader br = new BufferedReader(new FileReader(file))) {
-                String line;
-                while ((line = br.readLine()) != null) {
-                    String trimmed = line.trim();
-                    if (trimmed.isEmpty() || trimmed.startsWith(";") || trimmed.startsWith("#")) {
-                        continue;
-                    }
-                    if (trimmed.startsWith("[") && trimmed.endsWith("]") && trimmed.length() > 2) {
-                        curSection = trimmed.substring(1, trimmed.length() - 1).trim();
-                        if (!doc.sections.containsKey(curSection)) {
-                            doc.sections.put(curSection, new LinkedHashMap<>());
-                        }
-                        continue;
-                    }
-                    int eq = trimmed.indexOf('=');
-                    if (eq > 0) {
-                        String key = trimmed.substring(0, eq).trim();
-                        String val = trimmed.substring(eq + 1).trim();
-                        doc.set(curSection, key, val);
-                    }
-                }
-            } catch (IOException ignored) {
-            }
-            return doc;
-        }
-
-        public String get(String section, String key, String def) {
-            LinkedHashMap<String, String> sec = sections.get(section);
-            if (sec == null || !sec.containsKey(key)) return def;
-            String v = sec.get(key);
-            return v != null ? v : def;
-        }
-
-        public boolean has(String section, String key) {
-            LinkedHashMap<String, String> sec = sections.get(section);
-            return sec != null && sec.containsKey(key);
-        }
-
-        public void set(String section, String key, String value) {
-            LinkedHashMap<String, String> sec = sections.get(section);
-            if (sec == null) {
-                sec = new LinkedHashMap<>();
-                sections.put(section, sec);
-            }
-            sec.put(key, value != null ? value : "");
-        }
-
-        public void save(File file) throws IOException {
-            File parent = file.getParentFile();
-            if (parent != null && !parent.exists()) parent.mkdirs();
-            File tmp = new File(parent, file.getName() + ".tmp");
-            try (BufferedWriter bw = new BufferedWriter(new FileWriter(tmp))) {
-                boolean firstSec = true;
-                for (Map.Entry<String, LinkedHashMap<String, String>> se : sections.entrySet()) {
-                    if (!firstSec) bw.write("\n");
-                    firstSec = false;
-                    bw.write("[" + se.getKey() + "]\n");
-                    for (Map.Entry<String, String> kv : se.getValue().entrySet()) {
-                        bw.write(kv.getKey() + "=" + kv.getValue() + "\n");
-                    }
-                }
-            }
-            if (!tmp.renameTo(file)) {
-                try (BufferedWriter bw = new BufferedWriter(new FileWriter(file))) {
-                    boolean firstSec = true;
-                    for (Map.Entry<String, LinkedHashMap<String, String>> se : sections.entrySet()) {
-                        if (!firstSec) bw.write("\n");
-                        firstSec = false;
-                        bw.write("[" + se.getKey() + "]\n");
-                        for (Map.Entry<String, String> kv : se.getValue().entrySet()) {
-                            bw.write(kv.getKey() + "=" + kv.getValue() + "\n");
-                        }
-                    }
-                }
-                tmp.delete();
-            }
-        }
-    }
-
     // ══════════ AML Core Config (configs/ModLoaderCore.ini) ══════════
 
     public static File getAmlCoreConfigFile(Context ctx) {
@@ -348,7 +260,7 @@ public class ModManager {
     public static void prepareAmlConfig(Context ctx) {
         ensureDirectories(ctx);
         File cfgFile = getAmlCoreConfigFile(ctx);
-        IniDoc doc = IniDoc.load(cfgFile);
+        IniDocument doc = IniDocument.load(cfgFile);
         boolean changed = false;
 
         // Ensure GTA:SA package spoofing so NEEDGAME(com.rockstargames.gtasa) mods load cleanly
@@ -414,7 +326,7 @@ public class ModManager {
 
     public static AmlCoreSettings readAmlCoreSettings(Context ctx) {
         prepareAmlConfig(ctx);
-        IniDoc doc = IniDoc.load(getAmlCoreConfigFile(ctx));
+        IniDocument doc = IniDocument.load(getAmlCoreConfigFile(ctx));
         AmlCoreSettings s = new AmlCoreSettings();
         s.fakePackageName = doc.get("Preferences", "FakePackageName", "com.rockstargames.gtasa");
         s.showModsOverlay = parseIniBool(doc.get("Preferences", "ShowModsLoadedOverlay", "0"), false);
@@ -427,7 +339,7 @@ public class ModManager {
     public static void saveAmlCoreSettings(Context ctx, AmlCoreSettings s) {
         prepareAmlConfig(ctx);
         File cfgFile = getAmlCoreConfigFile(ctx);
-        IniDoc doc = IniDoc.load(cfgFile);
+        IniDocument doc = IniDocument.load(cfgFile);
         doc.set("Preferences", "FakePackageName",
                 s.fakePackageName != null && !s.fakePackageName.trim().isEmpty()
                         ? s.fakePackageName.trim() : "com.rockstargames.gtasa");
@@ -702,198 +614,34 @@ public class ModManager {
         return result;
     }
 
-    // ══════════ JPatch Binary + Config Editor ══════════
+    // ══════════ JPatch Binary + Config Editor (delegated to JPatchConfigManager) ══════════
 
     public static FileModEntry findJPatchBinary(Context ctx) {
-        for (FileModEntry e : listAmlPlugins(ctx)) {
-            if (e.isJPatch) return e;
-        }
-        return null;
+        return JPatchConfigManager.findJPatchBinary(ctx);
     }
 
     public static boolean syncJPatchBinaryState(Context ctx, boolean enable) {
-        FileModEntry jp = findJPatchBinary(ctx);
-        if (jp == null) return false;
-        if (jp.enabled == enable) return true;
-        return toggleDisabledFile(jp.file, enable) != null;
+        return JPatchConfigManager.syncJPatchBinaryState(ctx, enable);
     }
 
     public static File getJPatchConfigFile(Context ctx) {
-        File cfgDir = getAmlConfigsDir(ctx);
-        // Official AML JPatch (32-bit & 64-bit) uses AML Config("net.rusjj.jpatch") -> configs/net.rusjj.jpatch.ini
-        File official = new File(cfgDir, "net.rusjj.jpatch.ini");
-        if (official.exists()) return official;
-        File legacyIni = new File(cfgDir, "JPatch.ini");
-        if (legacyIni.exists()) return legacyIni;
-        File legacyCfg = new File(cfgDir, "JPatch.cfg");
-        if (legacyCfg.exists()) return legacyCfg;
-        return official;
-    }
-
-    static List<JPatchOption> buildKnownJPatchCatalog() {
-        List<JPatchOption> list = new ArrayList<>();
-        // Safe & high-value GTA:SA 2.10 fixes (exact keys from official net.rusjj.jpatch.ini)
-        list.add(new JPatchOption("Gameplay", "Fix210Crash", "修复 2.10 原版随机崩溃",
-                "应用 2.10 引擎崩溃补丁（推荐开启）", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "GetCompositeMatrixFixPossibleCrash", "修复矩阵合成崩溃",
-                "防止模型/骨骼矩阵空指针崩溃", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "FixCollisionAllocatingData", "修复碰撞分配异常",
-                "修复动态碰撞数据分配越界崩溃", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "FixEnterVehicleTasks", "修复上车任务异常",
-                "修复部分情形下上车动作卡住问题", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "FixChassisSwingingHighFPS", "高帧率载具防抖动",
-                "修复 60+ FPS 下车辆底盘剧烈晃动", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "FixVehiclesSpeedHighFPS", "高帧率载具速度修正",
-                "修复高帧率下车辆加速与阻力异常", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixFogWall", "修复雾气背后黑墙",
-                "修复默认着色器下远景雾墙显示异常", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixWheelsRotationSpeed", "高帧率车轮转速修正",
-                "修复高帧率下车轮旋转速度过快", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixGreenTextures", "修复绿色贴图异常",
-                "修复部分 GPU/贴图组合发绿问题", true, "1", true));
-        list.add(new JPatchOption("Visual", "SP_BilinearFilterForPlate", "修复车牌双线性过滤",
-                "提升载具车牌清晰度（SilentPatch）", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixAdjustableSizeLowering", "修复 HUD 缩放偏移",
-                "修复 Adjustable.cfg 自定义 HUD 按钮尺寸偏移", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixXclipseCrash", "修复 Xclipse/Adreno 着色器崩溃",
-                "增强部分新 GPU 驱动下的渲染稳定性", true, "1", true));
-
-        // Caution: overlap with SAMPMOBILE hooks/patches — disabled in SA-MP safe preset
-        list.add(new JPatchOption("Gameplay", "MultiTouch4", "JPatch 四指触控补丁 [联机冲突]",
-                "本端已内置 MultiTouch 拦截与 MonetLoader/CLEO 触控路由，建议关闭以免冲突", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "BuffStreamingMem", "JPatch 固定流送扩容 [联机慎用]",
-                "本端已内置 CStreaming×3 扩容，重复开启可能加大内存压力", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "DynamicStreamingMem", "JPatch 动态流送扩容 [联机慎用]",
-                "与本端内置流送内存策略重叠，联机安全预设默认关闭", false, "0", true));
-        list.add(new JPatchOption("Visual", "EnableAnimatedTextures", "JPatch UV 动画补丁 [联机冲突]",
-                "本端已自研 2.10 有界 UVAnim 驱动，建议关闭以免重复 Hook", false, "0", true));
-        list.add(new JPatchOption("Visual", "FixCrosshair", "JPatch 准星修正 [联机冲突]",
-                "本端已内置联机准星 Hook，建议关闭以免冲突", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "ForceLoadDXT", "强制 DXT 贴图格式 [联机冲突]",
-                "本端已自动按实际存在的 texdb 格式加载，开启会导致黑贴图", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "ForceLoadETC", "强制 ETC 贴图格式 [联机冲突]",
-                "本端已自动选择贴图格式，不建议强制覆盖", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "ForceLoadPVR", "强制 PVR 贴图格式 [联机冲突]",
-                "本端已自动选择贴图格式，不建议强制覆盖", false, "0", true));
-        list.add(new JPatchOption("Visual", "AlwaysDrawWantedStars", "常显通缉星级 [联机慎用]",
-                "联机通缉星级由服务端控制，默认关闭", false, "0", true));
-        return list;
+        return JPatchConfigManager.getJPatchConfigFile(ctx);
     }
 
     public static List<JPatchOption> loadJPatchOptions(Context ctx) {
-        ensureDirectories(ctx);
-        File cfgFile = getJPatchConfigFile(ctx);
-        IniDoc doc = IniDoc.load(cfgFile);
-
-        List<JPatchOption> options = buildKnownJPatchCatalog();
-        Set<String> seenKeys = new HashSet<>();
-        for (JPatchOption opt : options) {
-            seenKeys.add((opt.section + ":" + opt.key).toLowerCase(Locale.ROOT));
-            // Check both opt.section and any other section in JPatch.ini (JPatch may use [Patches]/[Main]/[Preferences])
-            String val = findIniValueAnySection(doc, opt.section, opt.key);
-            if (val != null) {
-                opt.value = val;
-            }
-        }
-
-        // Also include every extra key present in the user's real JPatch.ini so nothing is hidden!
-        for (Map.Entry<String, LinkedHashMap<String, String>> se : doc.sections.entrySet()) {
-            String sec = se.getKey();
-            for (Map.Entry<String, String> kv : se.getValue().entrySet()) {
-                String k = kv.getKey();
-                String v = kv.getValue();
-                if (seenKeys.contains((sec + ":" + k).toLowerCase(Locale.ROOT))) continue;
-                // Avoid duplicating a known key if it lived in another section
-                boolean dupKey = false;
-                for (JPatchOption opt : options) {
-                    if (opt.key.equalsIgnoreCase(k)) {
-                        opt.section = sec;
-                        opt.value = v;
-                        dupKey = true;
-                        break;
-                    }
-                }
-                if (dupKey) continue;
-
-                boolean isBool = isBooleanLike(v);
-                JPatchOption custom = new JPatchOption(sec, k, k, "来自 " + cfgFile.getName() + " [" + sec + "]", true, v, isBool);
-                custom.value = v;
-                custom.fromKnownCatalog = false;
-                options.add(custom);
-            }
-        }
-        return options;
-    }
-
-    private static String findIniValueAnySection(IniDoc doc, String preferredSection, String key) {
-        if (doc.has(preferredSection, key)) {
-            return doc.get(preferredSection, key, null);
-        }
-        for (Map.Entry<String, LinkedHashMap<String, String>> se : doc.sections.entrySet()) {
-            for (Map.Entry<String, String> kv : se.getValue().entrySet()) {
-                if (kv.getKey().equalsIgnoreCase(key)) {
-                    return kv.getValue();
-                }
-            }
-        }
-        return null;
-    }
-
-    private static boolean isBooleanLike(String val) {
-        if (val == null) return false;
-        String v = val.trim().toLowerCase(Locale.ROOT);
-        return v.equals("0") || v.equals("1") || v.equals("true") || v.equals("false");
+        return JPatchConfigManager.loadJPatchOptions(ctx);
     }
 
     public static void saveJPatchOption(Context ctx, String section, String key, String value) {
-        ensureDirectories(ctx);
-        File cfgFile = getJPatchConfigFile(ctx);
-        IniDoc doc = IniDoc.load(cfgFile);
-        // Update existing section if key already exists elsewhere
-        String targetSec = section;
-        String targetKey = key;
-        outer:
-        for (Map.Entry<String, LinkedHashMap<String, String>> se : doc.sections.entrySet()) {
-            for (String existingKey : se.getValue().keySet()) {
-                if (existingKey.equalsIgnoreCase(key)) {
-                    targetSec = se.getKey();
-                    targetKey = existingKey;
-                    break outer;
-                }
-            }
-        }
-        doc.set(targetSec, targetKey, value);
-        try {
-            doc.save(cfgFile);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        JPatchConfigManager.saveJPatchOption(ctx, section, key, value);
     }
 
     public static void applyJPatchSampSafePreset(Context ctx) {
-        ensureDirectories(ctx);
-        File cfgFile = getJPatchConfigFile(ctx);
-        IniDoc doc = IniDoc.load(cfgFile);
-        for (JPatchOption opt : buildKnownJPatchCatalog()) {
-            String targetSec = opt.section;
-            String targetKey = opt.key;
-            outer:
-            for (Map.Entry<String, LinkedHashMap<String, String>> se : doc.sections.entrySet()) {
-                for (String existingKey : se.getValue().keySet()) {
-                    if (existingKey.equalsIgnoreCase(opt.key)) {
-                        targetSec = se.getKey();
-                        targetKey = existingKey;
-                        break outer;
-                    }
-                }
-            }
-            doc.set(targetSec, targetKey, opt.defaultSafeValue);
-        }
-        try {
-            doc.save(cfgFile);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        JPatchConfigManager.applyJPatchSampSafePreset(ctx);
+    }
+
+    public static void enforceJPatchTouchSafety(Context ctx) {
+        JPatchConfigManager.enforceTouchSafety(ctx);
     }
 
     // ══════════ MonetLoader (.lua) & CLEO (.csa/.csi/.cs/.fxt) Scripts ══════════

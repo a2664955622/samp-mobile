@@ -1,11 +1,22 @@
+#include "Patches.h"
 #include "Game.h"
+#include "PlayerPed.h"
+#include "Artwork/ArtworkCore.h"
+#include "Engine/PatchRegistry.h"
+#include "Engine/Symbols.h"
+#include "../Addr.h"
 #include "../Client.h"
 #include "../Settings.h"
 #include "VehicleColoursTable.h"
-
+#include <Memory.h>
+#include <SA.h>
+#include <StreamingInfo.h>
+#include <spdlog/spdlog.h>
 #include <sys/stat.h>
 
 sa::CPlayerInfo* WORLD_PLAYERS = nullptr;
+static sa::CBaseModelInfo** s_modelInfoPtrs = nullptr;
+static sa::CStreamingInfo* s_streamingInfoTable = nullptr;
 
 bool Patches::hasFullAudioData()
 {
@@ -82,6 +93,69 @@ void Patches::allocPlayers()
 		(uintptr_t) WORLD_PLAYERS, (uintptr_t) eng::ptr(eng::Sym::CWorld_Players),
 		totalSize, PLAYER_PED_SLOTS, sizeof(sa::CPlayerInfo));
 }
+
+void Patches::allocModelTables()
+{
+	constexpr size_t kTableSize = static_cast<size_t>(artwork::kRelocatedModelTableSize);
+
+	s_modelInfoPtrs = static_cast<sa::CBaseModelInfo**>(calloc(kTableSize, sizeof(sa::CBaseModelInfo*)));
+	if (s_modelInfoPtrs) {
+		auto* gotSlot = g_saSym->Abs<sa::CBaseModelInfo***>(addr::GOT_CModelInfo_ms_modelInfoPtrs);
+		Memory::protectAddr(gotSlot);
+		*gotSlot = s_modelInfoPtrs;
+		patches::registerData("CModelInfo::ms_modelInfoPtrs", "Relocate ms_modelInfoPtrs to 32768 slots for 0.3.DL artwork",
+			patches::Scope::Boot, reinterpret_cast<uintptr_t>(gotSlot));
+		spdlog::info("Relocated CModelInfo::ms_modelInfoPtrs -> {:p} ({} entries)", (void*)s_modelInfoPtrs, kTableSize);
+	} else {
+		spdlog::error("Failed to allocate relocated ms_modelInfoPtrs ({} entries)", kTableSize);
+	}
+
+	s_streamingInfoTable = static_cast<sa::CStreamingInfo*>(calloc(kTableSize, sizeof(sa::CStreamingInfo)));
+	if (s_streamingInfoTable) {
+		for (int i = artwork::kInternalSlotBegin; i < artwork::kInternalSlotEnd; ++i) {
+			s_streamingInfoTable[i].m_nNextIndex = -1;
+			s_streamingInfoTable[i].m_nPrevIndex = -1;
+			s_streamingInfoTable[i].m_nNextModelOnCd = -1;
+			s_streamingInfoTable[i].m_nStatus = sa::LOADSTATE_NOT_LOADED;
+		}
+		auto* gotSlot = g_saSym->Abs<sa::CStreamingInfo**>(addr::GOT_CStreaming_ms_aInfoForModel);
+		Memory::protectAddr(gotSlot);
+		*gotSlot = s_streamingInfoTable;
+		patches::registerData("CStreaming::ms_aInfoForModel", "Relocate ms_aInfoForModel to 32768 slots for 0.3.DL artwork",
+			patches::Scope::Boot, reinterpret_cast<uintptr_t>(gotSlot));
+		spdlog::info("Relocated CStreaming::ms_aInfoForModel -> {:p} ({} entries)", (void*)s_streamingInfoTable, kTableSize);
+	} else {
+		spdlog::error("Failed to allocate relocated ms_aInfoForModel ({} entries)", kTableSize);
+	}
+}
+
+sa::CBaseModelInfo** Patches::modelInfoPtrs()
+{
+	if (s_modelInfoPtrs) {
+		return s_modelInfoPtrs;
+	}
+	if (g_saSym) {
+		if (auto* gotSlot = g_saSym->Abs<sa::CBaseModelInfo***>(addr::GOT_CModelInfo_ms_modelInfoPtrs)) {
+			if (*gotSlot) {
+				return *gotSlot;
+			}
+		}
+	}
+	return eng::as<sa::CBaseModelInfo**>(eng::Sym::CModelInfo_ms_modelInfoPtrs);
+}
+
+sa::CStreamingInfo* Patches::streamingInfoTable()
+{
+	if (s_streamingInfoTable) {
+		return s_streamingInfoTable;
+	}
+	if (g_saSym) {
+		if (auto* gotSlot = g_saSym->Abs<sa::CStreamingInfo**>(addr::GOT_CStreaming_ms_aInfoForModel)) {
+			return *gotSlot;
+		}
+	}
+	return nullptr;
+}
 void Patches::initBetterPoolsSize()
 {
 	spdlog::info("Initializing better pools size...");
@@ -95,8 +169,8 @@ void Patches::initBetterPoolsSize()
 
 #if VER_x32
 	setPool(eng::Sym::CPools_ms_pPtrNodeSingleLinkPool, 100000, 8);
-	setPool(eng::Sym::CPools_ms_pPtrNodeDoubleLinkPool, 20000, 12);
-	setPool(eng::Sym::CPools_ms_pEntryInfoNodePool,     20000, 20);
+	setPool(eng::Sym::CPools_ms_pPtrNodeDoubleLinkPool, 150000, 12);
+	setPool(eng::Sym::CPools_ms_pEntryInfoNodePool,     150000, 20);
 	setPool(eng::Sym::CPools_ms_pPedPool,               240,   1996);
 	setPool(eng::Sym::CPools_ms_pVehiclePool,           2000,  2604);
 	setPool(eng::Sym::CPools_ms_pBuildingPool,          20000, 60);
@@ -113,8 +187,8 @@ void Patches::initBetterPoolsSize()
 	setPool(eng::Sym::CPools_ms_pPedAttractorPool,      200,   236);
 #else
 	setPool(eng::Sym::CPools_ms_pPtrNodeSingleLinkPool, 100000, 16);   // 1200000/75000 = 16
-	setPool(eng::Sym::CPools_ms_pPtrNodeDoubleLinkPool, 20000,  24);   // 144000/6000 = 24
-	setPool(eng::Sym::CPools_ms_pEntryInfoNodePool,     20000,  40);   // 20000/500 = 40
+	setPool(eng::Sym::CPools_ms_pPtrNodeDoubleLinkPool, 150000, 24);   // expanded for large 0.3.DL custom maps
+	setPool(eng::Sym::CPools_ms_pEntryInfoNodePool,     150000, 40);   // expanded for large 0.3.DL custom maps
 	setPool(eng::Sym::CPools_ms_pPedPool,               240,    2504); // 350560/140 = 2504
 	setPool(eng::Sym::CPools_ms_pVehiclePool,           2000,   3176); // 349360/110 = 3176
 	setPool(eng::Sym::CPools_ms_pBuildingPool,          20000,  96);   // 1344000/14000 = 96
@@ -137,6 +211,7 @@ void Patches::apply()
 	spdlog::info("Applying patches...");
 
 	allocPlayers();
+	allocModelTables();
 
 	// ---- Boot-scope patches (active in both online & offline modes) ----
 	patches::registerNop("StartGameScreen.SkipMenuSwitchOff", "NOP Menu_SwitchOffToGame in OnNewGameCheck",
@@ -321,9 +396,4 @@ void Patches::apply()
 	// Initial online state for Session patches (exact parity with pre-F04 startup)
 	patches::set("CClock::Update", true);
 	patches::set("ToggleCJWalk", true);
-}
-
-void InstallVehicleEngineLightPatches()
-{
-	// ~
 }

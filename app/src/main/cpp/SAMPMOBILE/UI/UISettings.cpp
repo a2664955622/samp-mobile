@@ -81,10 +81,10 @@ void UISettings::Initialize(const ImVec2& display_size)
 
 	/* chat */
 	m_chatDispMesssages = Settings::chatstrings() + 1;
-	m_chatPos = Settings::chatpos();
-	m_chatItemSize = ImVec2(Settings::chatsize().x, Settings::chatsize().y / 10.0f);
+	m_chatPos = ImVec2(Settings::chatPosX(), Settings::chatPosY());
+	m_chatItemSize = ImVec2(Settings::chatSizeX(), Settings::chatSizeY() / 10.0f);
 	m_chatPos = m_chatPos * m_scaleFactor;
-	m_chatSize.x = Settings::chatsize().x;
+	m_chatSize.x = Settings::chatSizeX();
 	m_chatSize.y = m_chatItemSize.y * m_chatDispMesssages;
 	m_chatSize = m_chatSize * m_scaleFactor;
 	m_chatItemSize = m_chatItemSize * m_scaleFactor;
@@ -111,7 +111,7 @@ void UISettings::setChatStrings(int lines)
 	if (lines > 20) lines = 20;
 	Settings::setChatstrings(lines);
 	m_chatDispMesssages = lines + 1;
-	m_chatSize.x = Settings::chatsize().x * m_scaleFactor.x;
+	m_chatSize.x = Settings::chatSizeX() * m_scaleFactor.x;
 	m_chatSize.y = m_chatItemSize.y * m_chatDispMesssages;
 }
 
@@ -123,8 +123,8 @@ void UISettings::setFontSizeOffset(int offset)
 	float baseFont = Settings::fontsize() + static_cast<float>(offset) * 2.5f;
 	if (baseFont < 12.0f) baseFont = 12.0f;
 	m_fontSize = baseFont * m_scaleFactor.y;
-	float baseItemY = (Settings::chatsize().y / 10.0f) * (baseFont / Settings::fontsize());
-	m_chatItemSize = ImVec2(Settings::chatsize().x * m_scaleFactor.x, baseItemY * m_scaleFactor.y);
-	m_chatSize.x = Settings::chatsize().x * m_scaleFactor.x;
+	float baseItemY = (Settings::chatSizeY() / 10.0f) * (baseFont / Settings::fontsize());
+	m_chatItemSize = ImVec2(Settings::chatSizeX() * m_scaleFactor.x, baseItemY * m_scaleFactor.y);
+	m_chatSize.x = Settings::chatSizeX() * m_scaleFactor.x;
 	m_chatSize.y = m_chatItemSize.y * m_chatDispMesssages;
 }

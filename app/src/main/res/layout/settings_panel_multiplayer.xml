@@ -345,6 +345,116 @@
             </LinearLayout>
         </LinearLayout>
 
+        <!-- 卡片：0.3.DL 自定义模型缓存管理 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_10sdp"
+            android:background="@drawable/launcher_card"
+            android:orientation="vertical"
+            android:padding="@dimen/_12sdp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingEnd="@dimen/_8sdp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:tag="theme_accent_text"
+                        android:text="0.3.DL 自定义模型缓存"
+                        android:textColor="@color/launcher_accent"
+                        android:textSize="@dimen/_9ssp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tv_dl_cache_summary"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/_2sdp"
+                        android:text="正在统计 SAMP/cache/ 目录…"
+                        android:textColor="@color/launcher_text"
+                        android:textSize="@dimen/_8ssp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/_1sdp"
+                        android:text="支持导入 PC 端 0.3.DL 缓存 .zip 包或散装 0x*.dff / 0x*.txd（散装文件导入至 local/ 全服通用）"
+                        android:textColor="@color/launcher_text_dim"
+                        android:textSize="@dimen/_7ssp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/btn_dl_cache_import"
+                    android:tag="theme_accent_bg"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginEnd="@dimen/_5sdp"
+                    android:background="@drawable/launcher_btn_primary"
+                    android:gravity="center"
+                    android:paddingHorizontal="@dimen/_9sdp"
+                    android:text="导入缓存"
+                    android:textColor="@color/launcher_on_accent"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_dl_cache_refresh"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginEnd="@dimen/_5sdp"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:paddingHorizontal="@dimen/_8sdp"
+                    android:text="刷新"
+                    android:textColor="@color/launcher_text"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_dl_cache_clear_all"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/_24sdp"
+                    android:background="@drawable/launcher_btn_danger"
+                    android:gravity="center"
+                    android:paddingHorizontal="@dimen/_8sdp"
+                    android:text="清空全部"
+                    android:textColor="@color/launcher_danger"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/tv_dl_cache_empty"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_8sdp"
+                android:background="@drawable/ui_item_bg"
+                android:gravity="center"
+                android:padding="@dimen/_8sdp"
+                android:text="暂无已缓存的服务器自定义模型"
+                android:textColor="@color/launcher_text_dim"
+                android:textSize="@dimen/_7ssp"
+                android:visibility="gone" />
+
+            <LinearLayout
+                android:id="@+id/ll_dl_cache_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_8sdp"
+                android:orientation="vertical" />
+        </LinearLayout>
+
         <!-- 卡片：启动器主题配色 -->
         <LinearLayout
             android:layout_width="match_parent"

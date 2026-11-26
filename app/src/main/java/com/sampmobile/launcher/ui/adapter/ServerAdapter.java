@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import com.sampmobile.launcher.R;
+import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.LauncherFonts;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
 import com.sampmobile.launcher.utils.SampQuery;
@@ -457,7 +458,7 @@ public class ServerAdapter extends RecyclerView.Adapter<ServerAdapter.ViewHolder
         if (gen != generation) return true;
         SampQuery sampQuery = null;
         try {
-            String charset = activity.getSharedPreferences("samp_settings", Context.MODE_PRIVATE).getString("charset", "GBK");
+            String charset = ClientSettings.getCharsetForLauncher(activity);
             sampQuery = new SampQuery(model.server_host, Integer.parseInt(model.server_port), charset);
 
             String[] infos = sampQuery.getInfo();

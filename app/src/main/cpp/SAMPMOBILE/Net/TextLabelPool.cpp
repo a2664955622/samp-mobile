@@ -1,11 +1,20 @@
-#include "../Game/Game.h"
-#include "../UI/UI.h"
+#include "TextLabelPool.h"
 #include "NetGame.h"
+#include "RemotePlayer.h"
+#include "VehiclePool.h"
 #include "../Client.h"
 #include "../Settings.h"
+#include "../Game/Game.h"
+#include "../Game/PlayerPed.h"
+#include "../Game/Scripting.h"
+#include "../Game/Vehicle.h"
+#include "../Game/Util.h"
+#include "../UI/UI.h"
+#include "../UI/UISettings.h"
+#include "../UI/ImGuiRenderer.h"
+#include <encoding.h>
+#include <sstream>
 
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 CTextLabelPool::CTextLabelPool()
 {

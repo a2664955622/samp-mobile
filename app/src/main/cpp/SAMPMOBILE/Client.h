@@ -1,33 +1,7 @@
 #pragma once
 
 #include <jni.h>
-#include <thread>
 #include <string>
-#include <array>
-#include <vector>
-#include <mutex>
-#include <future>
-#include <sstream>
-#include <fstream>
-
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/android_sink.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/sinks/rotating_file_sink.h>
-
-#define IMGUI_DEFINE_MATH_OPERATORS
-#include <imgui.h>
-#include <encoding.h>
-#include <Memory.h>
-#include <Gloss.h>
-#include <SymUtils.h>
-#include <SA.h>
-#include <RenderWare/rw.h>
-#include <obfuscator.h>
-
-#include "Addr.h"
-#include "Game/Engine/Symbols.h"
-#include "Game/Engine/PatchRegistry.h"
 
 class Client {
 public:
@@ -54,4 +28,20 @@ private:
 	static int samp_netgame;
 };
 
+class UI;
+class Game;
+class NetGame;
+class PlayerTags;
+class AudioStream;
+class SnapShotHelper;
+class MaterialTextGenerator;
+class SymUtils;
+
+extern UI* pUI;
+extern Game* pGame;
+extern NetGame* pNetGame;
+extern PlayerTags* pPlayerTags;
+extern AudioStream* pAudioStream;
+extern SnapShotHelper* pSnapShotHelper;
+extern MaterialTextGenerator* pMaterialTextGenerator;
 extern SymUtils* g_saSym;

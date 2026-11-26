@@ -1,14 +1,19 @@
+#include "Chat.h"
+#include "Keyboard.h"
+#include "Scoreboard.h"
 #include "../UI.h"
+#include "../UISettings.h"
 #include "../../Client.h"
 #include "../../Game/Game.h"
+#include "../../Game/Util.h"
 #include "../../Net/NetGame.h"
 #include "../../Java/Java.h"
+#include <encoding.h>
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <cctype>
+#include <cstdarg>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 bool Chat::m_timestamp = false;
 

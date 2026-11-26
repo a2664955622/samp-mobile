@@ -37,7 +37,7 @@ public class ModManagerTest {
             fw.write("UserFlag=hello\n");
         }
 
-        ModManager.IniDoc doc = ModManager.IniDoc.load(ini);
+        IniDocument doc = IniDocument.load(ini);
         assertTrue(doc.has("Gameplay", "Fix210Crash"));
         assertEquals("1", doc.get("Gameplay", "Fix210Crash", "0"));
         assertEquals("hello", doc.get("Custom", "UserFlag", ""));
@@ -47,7 +47,7 @@ public class ModManagerTest {
         doc.set("Visual", "FixFogWall", "1");
         doc.save(ini);
 
-        ModManager.IniDoc reloaded = ModManager.IniDoc.load(ini);
+        IniDocument reloaded = IniDocument.load(ini);
         assertEquals("0", reloaded.get("Gameplay", "MultiTouch4", "1"));
         assertEquals("1", reloaded.get("Gameplay", "Fix210Crash", "0"));
         assertEquals("hello", reloaded.get("Custom", "UserFlag", ""));
@@ -56,7 +56,7 @@ public class ModManagerTest {
 
     @Test
     public void jpatchSafeCatalog_disablesKnownSampConflictingPatches() {
-        List<ModManager.JPatchOption> catalog = ModManager.buildKnownJPatchCatalog();
+        List<ModManager.JPatchOption> catalog = JPatchConfigManager.buildKnownJPatchCatalog();
         Map<String, ModManager.JPatchOption> byKey = new HashMap<>();
         for (ModManager.JPatchOption opt : catalog) {
             byKey.put(opt.key, opt);

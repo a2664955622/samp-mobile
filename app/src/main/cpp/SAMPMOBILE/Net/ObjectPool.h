@@ -5,8 +5,13 @@
 #include <mutex>
 #include <unordered_map>
 
-#define INVALID_OBJECT_ID    0xFFFF
+#include <Core/Vector.h>
+#include "NetTypes.h"
 
+namespace sa {
+class CEntity;
+}
+class CObject;
 class ImGuiRenderer;
 
 class CObjectPool {
@@ -34,6 +39,11 @@ public:
 	CObject* FindObjectFromGtaPtr(sa::CEntity* pGtaObject);
 
 	void ProcessMaterialText();
+
+	// 0.3.DL artwork lifecycle: upgrade fallback objects once custom models finish downloading,
+	// and revert live custom objects back to a vanilla model before unloading custom slots.
+	void RefreshCustomModels();
+	void RevertCustomModelsBeforeUnload();
 
 	// T15: SelectObject mode (RPC 27)
 	bool IsSelectState() const { return m_bSelectState.load(std::memory_order_acquire); }

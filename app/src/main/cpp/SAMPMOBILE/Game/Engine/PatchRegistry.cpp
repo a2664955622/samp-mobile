@@ -8,7 +8,6 @@
 #include <mutex>
 #include <unordered_map>
 
-extern SymUtils* g_saSym;
 
 namespace patches {
 

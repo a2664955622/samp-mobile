@@ -1,5 +1,11 @@
 #pragma once
 
+#include <cstdint>
+
+class ImGuiRenderer;
+struct RwV3d;
+struct RwTexture;
+
 class PlayerTags {
 public:
 	PlayerTags();

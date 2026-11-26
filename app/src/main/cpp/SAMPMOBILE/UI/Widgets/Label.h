@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Widget.h"
+
 class Label : public Widget {
 public:
 	Label(const std::string& text, const ImColor& color = ImColor(1.0f, 1.0f, 1.0f), bool outlined = false, float font_size = 0.0f);

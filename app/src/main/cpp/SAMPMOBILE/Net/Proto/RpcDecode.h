@@ -303,6 +303,8 @@ inline DecodeResult decodeOutboundRpc(int rpcId, const uint8_t* data, uint32_t b
 		case MenuQuitReq::kRpcId: return detail::decodeOne<MenuQuitReq>(data, bitLength, v);
 		case CameraTargetReply::kRpcId: return detail::decodeOne<CameraTargetReply>(data, bitLength, v);
 		case PickedUpWeaponPickupReq::kRpcId: return detail::decodeOne<PickedUpWeaponPickupReq>(data, bitLength, v);
+		case DlRequestDffReq::kRpcId: return detail::decodeOne<DlRequestDffReq>(data, bitLength, v);
+		case DlRequestTxdReq::kRpcId: return detail::decodeOne<DlRequestTxdReq>(data, bitLength, v);
 		case DlFinishDownloadReq::kRpcId: return detail::decodeOne<DlFinishDownloadReq>(data, bitLength, v);
 		default: return DecodeResult{};
 	}

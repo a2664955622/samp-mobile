@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Widget.h"
+
 class ProgressBar : public Widget {
 public:
 	ProgressBar(const ImColor& color_empty, const ImColor& color_filled, bool border = false);

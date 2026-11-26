@@ -1,8 +1,14 @@
-#include "../Game/Game.h"
+#include "PlayerBubblePool.h"
 #include "NetGame.h"
+#include "RemotePlayer.h"
+#include "../Client.h"
+#include "../Game/Game.h"
+#include "../Game/PlayerPed.h"
+#include "../Game/Util.h"
 #include "../UI/UI.h"
+#include "../UI/UISettings.h"
+#include <encoding.h>
 
-extern NetGame* pNetGame;
 
 CPlayerBubblePool::CPlayerBubblePool()
 {

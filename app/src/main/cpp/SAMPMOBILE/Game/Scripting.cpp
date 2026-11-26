@@ -1,5 +1,9 @@
+#include "Scripting.h"
 #include "Game.h"
+#include "Engine/Symbols.h"
 #include "../Client.h"
+#include <SA.h>
+#include <spdlog/spdlog.h>
 #include <atomic>
 #include <memory>
 

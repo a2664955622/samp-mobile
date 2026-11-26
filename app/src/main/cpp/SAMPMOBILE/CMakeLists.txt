@@ -14,7 +14,7 @@ include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/Deps/Opus/include
 )
 
-file(GLOB INCLUDE_FILES
+file(GLOB INCLUDE_FILES CONFIGURE_DEPENDS
         *.h
         Game/*.h
         Game/**/*.h
@@ -29,7 +29,7 @@ file(GLOB INCLUDE_FILES
 )
 
 # Core native client, ModLoader, and CleoEngine sources
-file(GLOB SOURCE_FILES
+file(GLOB SOURCE_FILES CONFIGURE_DEPENDS
         *.cpp
         Game/*.cpp
         Game/**/*.cpp

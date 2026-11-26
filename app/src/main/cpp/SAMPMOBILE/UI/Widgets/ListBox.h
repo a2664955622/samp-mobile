@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ScrollPanel.h"
+
 class ListBoxItem : public Widget {
 public:
 	ListBoxItem(bool selectable = true);

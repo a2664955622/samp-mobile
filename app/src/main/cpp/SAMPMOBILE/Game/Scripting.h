@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #define MAX_SCRIPT_VARS    18
 
 struct SCRIPT_COMMAND {

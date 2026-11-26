@@ -1,5 +1,11 @@
 #pragma once
 
+#include <cstdint>
+
+struct RwTexture;
+struct RwCamera;
+struct RwFrame;
+
 constexpr auto DEFAULT_PLATE_FONT = "Arial";
 constexpr auto DEFAULT_PLATE_TEXT = "XYZSR998";
 
@@ -8,8 +14,6 @@ enum {
 	DEFAULT_PLATE_TEXT_COLOR = 0xEE444470,
 	DEFAULT_PLATE_BG_COLOR = 0xFFBEB6A8,
 };
-
-#include <imgui.h>
 
 class MaterialTextGenerator {
 public:

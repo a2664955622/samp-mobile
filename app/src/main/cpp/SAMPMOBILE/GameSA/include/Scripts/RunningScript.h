@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Game/Engine/Symbols.h"
 #include "../Base.h"
 #include "../../../Memory/include/Memory.h"
 

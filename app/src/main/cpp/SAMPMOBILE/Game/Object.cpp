@@ -2,19 +2,32 @@
 // Created by ALYN on 2024/8/28.
 //
 
+#include "Object.h"
 #include "Game.h"
+#include "Common.h"
+#include "MaterialTextGenerator.h"
+#include "OobCollision.h"
+#include "ObjectUVAnim.h"
+#include "PlayerPed.h"
+#include "Scripting.h"
+#include "Util.h"
+#include "Vehicle.h"
+#include "Artwork/ArtworkCore.h"
+#include "Artwork/ArtworkManager.h"
+#include "Engine/Symbols.h"
 #include "../Net/NetGame.h"
+#include "../Net/RemotePlayer.h"
+#include "../Net/VehiclePool.h"
 #include "../Client.h"
 #include "RenderWare/rpuvanim.h"
 #include "Core/PtrNode.h"
+#include <SA.h>
+#include <spdlog/spdlog.h>
 #include <cmath>
 #include <strings.h>
 #include <unordered_map>
 #include <unordered_set>
 
-extern Game* pGame;
-extern NetGame* pNetGame;
-extern MaterialTextGenerator* pMaterialTextGenerator;
 
 RwTexture* g_blankTexture;
 
@@ -62,6 +75,11 @@ CObject::CObject(int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDraw
 	m_fMoveSpeed = 0.0f;
 	m_bNeedRotate = false;
 	m_iModel = iModel;
+	m_iServerModel = iModel;
+	m_bTimedModel = false;
+	m_timeOn = 0;
+	m_timeOff = 0;
+	m_bTimedHidden = false;
 	m_vecRotation = sa::CVector{0.0f, 0.0f, 0.0f};
 	m_matTarget = {};
 	m_quatStart = {};
@@ -72,6 +90,18 @@ CObject::CObject(int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDraw
 	m_dwMoveTick = 0;
 	m_bNoCameraCollision = false;
 	m_fDrawDistance = (std::isfinite(fDrawDistance) && fDrawDistance > 0.0f) ? fDrawDistance : 0.0f;
+
+	if (artwork::isCustomObjectId(iModel)) {
+		m_bTimedModel = artwork::ArtworkManager::instance().isTimedObject(iModel, m_timeOn, m_timeOff);
+		const int32_t slot = artwork::ArtworkManager::instance().ensureCustomObjectLoaded(iModel);
+		if (slot >= 0) {
+			iModel = slot;
+		} else {
+			const int32_t fallback = artwork::ArtworkManager::instance().resolveFallbackObjectModel(iModel);
+			spdlog::warn("CObject::CObject: custom object {} not ready/failed, using fallback {}", iModel, fallback);
+			iModel = fallback;
+		}
+	}
 
 	if (!IsValidModel(iModel)) {
 		spdlog::info("Object model {} is invalid, using default model.", iModel);
@@ -92,10 +122,14 @@ CObject::CObject(int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDraw
 		m_iModel = iModel;
 
 		EnsureRwObject();
+		ApplySampObjectPhysics();
 
+		// create_object may snap the spawn Z — re-assert the exact server
+		// position through the full Remove -> SetMatrix -> Add cycle so the
+		// repeat-sector records always match the final matrix
 		RwMatrix mat = m_entity->GetMatrix().ToRwMatrix();
 		mat.pos = vecPos;
-		m_entity->SetMatrix(mat);
+		UpdateMatrix(mat);
 		SetRotation(&vecRot);
 
 		// out-of-bounds and long-draw-distance entities may bypass the world's
@@ -113,16 +147,12 @@ CObject::CObject(int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDraw
 
 	for (int i = 0; i < MAX_MATERIALS; i++) {
 		memset(&m_Material[i], 0, sizeof(MATERIAL_OBJECT));
-		m_pLastObjectMaterialTexture[i] = nullptr;
-		m_dwLastObjectMaterialColor[i] = {};
-		m_LastObjectMaterialSurface[i] = {1.0f, 0.0f, 1.0f};
 	}
+	m_originalAtomicMaterials.clear();
 
 	m_bHasCustomObjectMaterial = false;
-	m_bAllowChangeObjectMaterial = false;
 	m_bObjectMaterialTextureChanged = false;
 	m_bObjectMaterialColorChanged = false;
-	m_uiLastObjectGeometry = 0;
 	m_pLastObjectMaterialRwObject = nullptr;
 
 	m_bForceRender = (vecPos.x > 3000.0f || vecPos.x < -3000.0f ||
@@ -133,12 +163,22 @@ CObject::CObject(int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDraw
 	m_iPinnedColSlot = -1;
 	m_dwLastColRequestTick = 0;
 	m_bColDiagLogged = false;
-	m_aiInjRect[0] = m_aiInjRect[1] = m_aiInjRect[2] = m_aiInjRect[3] = -1;
 
 	if (m_bForceRender && m_entity) {
 		spdlog::info("OOB object: model={} entity={:p} rwObj={:p} moving={:p}", iModel,
 				(void*) m_entity, (void*) m_entity->m_pRwObject,
 				(void*) m_entity->m_pMovingList);
+	}
+
+	if (m_bTimedModel && m_entity && pGame) {
+		int hour = 0;
+		int minute = 0;
+		pGame->GetWorldTime(&hour, &minute);
+		if (!artwork::isTimedObjectVisible(hour, m_timeOn, m_timeOff)) {
+			m_bTimedHidden = true;
+			m_entity->Remove();
+			SetCollisionChecking(false);
+		}
 	}
 
 	TryEnableUVAnim();
@@ -163,16 +203,6 @@ CObject::~CObject()
 
 	sa::CObject* pEntity = m_gtaId ? GamePool_Object_GetAt(m_gtaId) : nullptr;
 
-	// always balance the injection bookkeeping — RemoveFromRepeatSector
-	// re-verifies entity identity itself and falls back to just dropping
-	// the stale vector; skipping it when the slot was recycled would leak
-	// s_iOobInjectedTotal until the budget disables OOB injection
-	RemoveFromRepeatSector();
-
-	// the engine may already have recycled the slot — unlink our sector
-	// records only while the entity is provably still ours; if it's gone,
-	// its teardown removed the records too (they're properly linked) and
-	// touching the chain would free pool slots that were re-issued
 	if (pEntity && pEntity == m_entity && !IsEntityPlaceable(pEntity)) {
 		ScriptCommand(&destroy_object, m_gtaId);
 		if (GetModelRefCounts(m_iModel) == 0) {
@@ -188,10 +218,8 @@ CObject::~CObject()
 			}
 
 			memset(&m_Material[i], 0, sizeof(MATERIAL_OBJECT));
-			m_pLastObjectMaterialTexture[i] = 0;
-			m_dwLastObjectMaterialColor[i] = {};
 		}
-
+		m_originalAtomicMaterials.clear();
 		m_bHasCustomObjectMaterial = false;
 	}
 }
@@ -222,449 +250,48 @@ void CObject::EnsureRwObject()
 
 	spdlog::debug("EnsureRwObject: re-instancing atomic for object {} (model {})", m_gtaId, m_iModel);
 	CEntity::SetModelIndex(m_iModel);
+	// engine SetModelIndex may re-apply object.dat physics data — restore
+	// the SA-MP static-object configuration afterwards
+	ApplySampObjectPhysics();
 	UpdateRwMatrixAndFrame();
 }
 
 /**
- * Sector coords are floor(pos/50 + 60); CPhysical::Add rejects any bound
- * rect whose coord lands outside [-120,120] so out-of-bounds entities
- * never get records at all. ProcessCollisionSectorList and
- * CRenderer::ScanSectorList hash the RAW coord (&0xF) into the repeat
- * group — only the static-sector lookup clamps to [0,119]. Our injected
- * records must use the same raw coords the scanners hash with, or the
- * entity lands in a group nobody scans.
+ * PC SA-MP parity + static convergence for server-authoritative objects:
+ *  - m_nFlags bit31 (0x80000000) is PC SA-MP's SetBackendHighFlag(): the
+ *    hooked CPhysical::ProcessCollision early-outs on it, so SA-MP objects
+ *    never run their own (meaningless and interpolation-fighting) collision
+ *    sweep. PC sets this on every object at creation (object.cpp:748).
+ *  - physicalFlags bits 1-3 forced to the engine's own heavy-static-object
+ *    configuration (mass >= 99998 path in CObjectData::SetObjectData:
+ *    (flags & ~0xE) | 0xC = bDisableCollisionForce | bit3). Bit 3 selects
+ *    the 1-body path in CPhysical::ProcessCollisionSectorList — friction
+ *    scaled by the normal-impact impulse exactly like buildings — instead
+ *    of the 2-body path dynamic object.dat props get, where even a 1°
+ *    graze eats the FULL unscaled static friction and the object wakes up
+ *    (m_bIsStatic cleared) as a moving physics body. SA-MP object positions
+ *    are server-authoritative, so no server-visible behavior is lost.
+ * Idempotent; re-applied after every (re)creation since object.dat-driven
+ * setup may overwrite the flags.
  */
-static int RepeatSectorCoord(float f)
+void CObject::ApplySampObjectPhysics()
 {
-	return (int) floorf(f / 50.0f + 60.0f);
-}
-
-/** world bound sphere -> overlapped repeat-sector cell range (the same
- *  rect CPhysical::Add derives), with a safety bound so a pathological
- *  bound sphere can't drain the CEntryInfoNode pool. */
-static void ComputeRepeatSectorRect(sa::CPhysical* pEntity, int iRect[4])
-{
-	sa::CVector center = pEntity->GetPosition();
-	float fRadius = 5.0f;
-	sa::CBaseModelInfo* pModelInfo = GetModelInfoByID(pEntity->m_nModelIndex);
-	if (pModelInfo && pModelInfo->m_pColModel) {
-		auto& sph = pModelInfo->m_pColModel->m_boundSphere;
-		center = pEntity->GetMatrix() * sph.m_vecCenter;
-		if (sph.m_fRadius > fRadius) fRadius = sph.m_fRadius;
+	// offsets verified against both binaries: arm64 CPed::UpdatePosition
+	// reads contact+0x64 for the (flags & 0xC) == 0x4 clamp test, arm32
+	// (0x4a1cb4) reads contact+0x44 — the same word CObjectData::SetObjectData
+	// writes and ProcessCollisionSectorList branches on
+#if defined(__aarch64__) || defined(__x86_64__)
+	static_assert(offsetof(sa::CPhysical, m_nPhysicalFlags) == 0x64,
+		"physicalFlags must match the +0x64 read in arm64 CPed::UpdatePosition");
+#else
+	static_assert(offsetof(sa::CPhysical, m_nPhysicalFlags) == 0x44,
+		"physicalFlags must match the +0x44 read in arm32 CPed::UpdatePosition (0x4a1cb4)");
+#endif
+	if (!m_entity || IsEntityPlaceable(m_entity)) {
+		return;
 	}
-	iRect[0] = RepeatSectorCoord(center.x - fRadius);
-	iRect[1] = RepeatSectorCoord(center.y - fRadius);
-	iRect[2] = RepeatSectorCoord(center.x + fRadius);
-	iRect[3] = RepeatSectorCoord(center.y + fRadius);
-	int iCX = RepeatSectorCoord(center.x), iCY = RepeatSectorCoord(center.y);
-	if (iRect[2] - iRect[0] > 15) { iRect[0] = iCX - 7; iRect[2] = iCX + 8; }
-	if (iRect[3] - iRect[1] > 15) { iRect[1] = iCY - 7; iRect[3] = iCY + 8; }
-}
-
-/** Patches::initBetterPoolsSize replaces the stock pools at startup:
- *  CEntryInfoNode gets 20000 entries (not the stock 500), so full
- *  injection of a ~700-object OOB map (~6800 records) fits comfortably.
- *  The budget is a pure safety cap — engine Add/AddToMovingList never
- *  null-check nw() results, so if a pathological map ever pushed demand
- *  past the pool, the next engine Add would write through a null
- *  pointer. 19000 leaves ~1000 records of engine headroom. */
-static const int OOB_RECORD_BUDGET = 19000;
-static int s_iOobInjectedTotal = 0;
-
-/** bookkeeping clear for records engine teardown already freed — drop
- *  the budget charge without touching the pointers. */
-static void DropDeadInjection(std::vector<CEntryInfoNode*>& infos)
-{
-	s_iOobInjectedTotal -= (int) infos.size();
-	infos.clear();
-}
-
-/** link the entity into every repeat-sector group's entity-type sub-list
- *  (vehicles +0, peds +8, objects +16) covered by iRect — one pooled
- *  CPtrNodeDoubleLink plus a CEntryInfoNode on m_pCollisionList per cell,
- *  exactly as CPhysical::Add does, so engine teardown unlinks them the
- *  same way it does regular entities. */
-static void InjectIntoRepeatSectors(sa::CPhysical* pEntity, const int iRect[4],
-		std::vector<CEntryInfoNode*>& infos)
-{
-	constexpr size_t kPtrSize = sizeof(void*);
-	constexpr size_t kRepeatSectorSize = 3 * kPtrSize;
-	size_t uListOff;
-	switch (pEntity->m_nType) {
-		case sa::ENTITY_TYPE_VEHICLE: uListOff = 0; break;
-		case sa::ENTITY_TYPE_PED:     uListOff = kPtrSize; break;
-		case sa::ENTITY_TYPE_OBJECT:  uListOff = 2 * kPtrSize; break;
-		default: return;
-	}
-
-	auto pSectors = eng::addr(eng::Sym::CWorld_ms_aRepeatSectors);
-	if (!pSectors) return;
-
-	// cells 16 apart hash to the same group — dedup
-	uint32_t aSeenMask[8] = {};
-	for (int cy = iRect[1]; cy <= iRect[3]; ++cy) {
-		for (int cx = iRect[0]; cx <= iRect[2]; ++cx) {
-			int iGroup = ((cy & 0xF) << 4) | (cx & 0xF);
-			uint32_t uBit = 1u << (iGroup & 31);
-			if (aSeenMask[iGroup >> 5] & uBit) continue;
-			aSeenMask[iGroup >> 5] |= uBit;
-			if (s_iOobInjectedTotal >= OOB_RECORD_BUDGET) return;
-
-			auto** ppHead = reinterpret_cast<sa::CPtrNodeDoubleLink**>(
-					pSectors + static_cast<size_t>(iGroup) * kRepeatSectorSize + uListOff);
-			auto* pNode = eng::fn::CPtrNodeDoubleLink_OpNew<sa::CPtrNodeDoubleLink*>(
-					sizeof(sa::CPtrNodeDoubleLink));
-			auto* pInfo = eng::fn::CEntryInfoNode_OpNew<CEntryInfoNode*>(
-					sizeof(CEntryInfoNode));
-			if (!pNode || !pInfo) {
-				if (pNode) eng::fn::CPtrNodeDoubleLink_OpDelete( pNode);
-				if (pInfo) eng::fn::CEntryInfoNode_OpDelete( pInfo);
-				return;
-			}
-
-			pNode->m_item = pEntity;
-			pNode->m_next = *ppHead;
-			pNode->m_prev = nullptr;
-			if (*ppHead) (*ppHead)->m_prev = pNode;
-			*ppHead = pNode;
-
-			pInfo->m_pDoubleLinkList = reinterpret_cast<CPtrListDoubleLink*>(ppHead);
-			pInfo->m_pDoubleLink = reinterpret_cast<CPtrNodeDoubleLink*>(pNode);
-			pInfo->m_pRepeatSector = reinterpret_cast<CRepeatSector*>(pSectors + static_cast<size_t>(iGroup) * kRepeatSectorSize);
-			pInfo->m_pPrevious = nullptr;
-			pInfo->m_pNext = pEntity->m_pCollisionList.m_pNode;
-			if (pInfo->m_pNext) pInfo->m_pNext->m_pPrevious = pInfo;
-			pEntity->m_pCollisionList.m_pNode = pInfo;
-
-			++s_iOobInjectedTotal;
-			infos.push_back(pInfo);
-		}
-	}
-}
-
-/** unlink everything InjectIntoRepeatSectors added. Every record is
- *  re-verified on the entity's m_pCollisionList chain and must still
- *  point back at this entity — pool slots get re-issued, so a stale
- *  record could alias somebody else's live entry. */
-static void UnlinkFromRepeatSectors(sa::CPhysical* pEntity,
-		std::vector<CEntryInfoNode*>& infos)
-{
-	constexpr size_t kRepeatSectorSize = 3 * sizeof(void*);
-	uintptr_t pSectors = eng::addr(eng::Sym::CWorld_ms_aRepeatSectors);
-
-	for (CEntryInfoNode* pInfo : infos) {
-		CEntryInfoNode* pCur = pEntity->m_pCollisionList.m_pNode;
-		while (pCur && pCur != pInfo) pCur = pCur->m_pNext;
-		if (pCur != pInfo) continue;
-
-		// only records we created may be freed — a re-issued pool slot can
-		// alias a live engine record on this entity's own chain, and our
-		// records are the only ones pointing back into ms_aRepeatSectors
-		uintptr_t uRepeat = reinterpret_cast<uintptr_t>(pInfo->m_pRepeatSector);
-		if (!pSectors || uRepeat < pSectors || uRepeat >= pSectors + 256 * kRepeatSectorSize) continue;
-
-		auto* pNode = reinterpret_cast<sa::CPtrNodeDoubleLink*>(pInfo->m_pDoubleLink);
-		if (!pNode || pNode->m_item != pEntity) continue;
-		if (pNode->m_prev) pNode->m_prev->m_next = pNode->m_next;
-		else *reinterpret_cast<sa::CPtrNodeDoubleLink**>(pInfo->m_pDoubleLinkList) = pNode->m_next;
-		if (pNode->m_next) pNode->m_next->m_prev = pNode->m_prev;
-		eng::fn::CPtrNodeDoubleLink_OpDelete( pNode);
-
-		if (pInfo->m_pPrevious) pInfo->m_pPrevious->m_pNext = pInfo->m_pNext;
-		else pEntity->m_pCollisionList.m_pNode = pInfo->m_pNext;
-		if (pInfo->m_pNext) pInfo->m_pNext->m_pPrevious = pInfo->m_pPrevious;
-		eng::fn::CEntryInfoNode_OpDelete( pInfo);
-	}
-	s_iOobInjectedTotal -= (int) infos.size();
-	infos.clear();
-}
-
-static bool SectorRecordAlive(sa::CPhysical* pEntity, CEntryInfoNode* pInfo)
-{
-	for (CEntryInfoNode* pCur = pEntity->m_pCollisionList.m_pNode;
-			pCur; pCur = pCur->m_pNext) {
-		if (pCur == pInfo) return true;
-	}
-	return false;
-}
-
-/** CColStore streaming is position-driven: the quadtree only ever
- *  matches in-bounds positions, so a shared colModel on an OOB entity
- *  stays an empty shell — meaning ZERO collision, not a bound-sphere
- *  fallback (ProcessColModels early-outs on null m_pColData). The old
- *  GetBoundingBox gate made it worse: it refused to pin slots with no
- *  quadtree entry, which are exactly the slots this path exists for.
- *  The def array is 255 entries and always present, so AddRef /
- *  RemoveRef are safe on any valid slot id.
- *  The engine's own force-load recipe (LoadAllCollision /
- *  LoadAllBoundingBoxes) is RequestModel + LoadAllRequestedModels —
- *  the async channel starves col requests queued outside position
- *  matching, so we pump it synchronously, at most once a second across
- *  all OOB entities. */
-static uint32_t s_dwOobColPumpTick = 0;
-static std::unordered_set<int> s_oobColReloaded;
-
-static bool OobColDefLoaded(int iSlot)
-{
-	auto ppStore = eng::as<uintptr_t*>(eng::Sym::CColStore_ms_pColPool);
-	uintptr_t uStore = ppStore ? *ppStore : 0;
-	char* pDefs = uStore ? *reinterpret_cast<char**>(uStore) : nullptr;
-	return pDefs && pDefs[iSlot * 44 + 40];
-}
-
-static bool PinOobColSlot(sa::CColModel* pCM, int& iPinnedSlot)
-{
-	int iSlot = (pCM && !pCM->m_bIsSingleColDataAlloc)
-			? (int) pCM->m_nColSlot : -1;
-	if (iSlot <= 0 || iSlot >= 255) iSlot = -1;
-	if (iPinnedSlot == iSlot) return false;
-	if (iPinnedSlot >= 0) {
-		eng::fn::CColStore_RemoveRef( iPinnedSlot);
-	}
-	iPinnedSlot = -1;
-	if (iSlot >= 0) {
-		eng::fn::CColStore_AddRef( iSlot);
-		iPinnedSlot = iSlot;
-	}
-	return true;
-}
-
-static void RequestOobColSlot(sa::CColModel* pCM, int iPinnedSlot,
-		uint32_t& dwLastReqTick)
-{
-	if (!pCM || pCM->m_pColData || iPinnedSlot < 0) return;
-	uint32_t dwNow = GetTickCount();
-	if (dwNow - dwLastReqTick <= 500) return;
-	dwLastReqTick = dwNow;
-	// a "loaded" col file whose colData never showed up was parsed at a
-	// moment when binding skipped this model — binding only runs inside
-	// LoadCol, so force exactly one reload cycle to re-run it
-	if (OobColDefLoaded(iPinnedSlot)
-			&& s_oobColReloaded.insert(iPinnedSlot).second) {
-		eng::fn::CStreaming_RemoveModel(
-				25000 + iPinnedSlot);
-		spdlog::info("OOBCol: force reload slot={}", iPinnedSlot);
-	}
-	eng::fn::CStreaming_RequestModel(
-			25000 + iPinnedSlot, 0x18);
-	if (dwNow - s_dwOobColPumpTick > 1000) {
-		s_dwOobColPumpTick = dwNow;
-		eng::fn::CStreaming_LoadAllRequestedModels( true);
-	}
-}
-
-/** one-shot state dump when a pin lands on a slot — reads the CColDef
- *  (refcount @+38 / loaded flag @+40) via ms_pColPool's def array, and
- *  whether streaming has a file registered for 25000+slot at all. */
-static void LogOobColPin(int iModel, int iSlot)
-{
-	if (iSlot < 0) return;
-	int iRef = -1, iLoaded = -1, iMin = -1, iMax = -1;
-	auto ppStore = eng::as<uintptr_t*>(eng::Sym::CColStore_ms_pColPool);
-	uintptr_t uStore = ppStore ? *ppStore : 0;
-	char* pDefs = uStore ? *reinterpret_cast<char**>(uStore) : nullptr;
-	if (pDefs) {
-		char* pDef = pDefs + iSlot * 44;
-		iMin = (int) *reinterpret_cast<int16_t*>(pDef + 34);
-		iMax = (int) *reinterpret_cast<int16_t*>(pDef + 36);
-		iRef = (int) *reinterpret_cast<int16_t*>(pDef + 38);
-		iLoaded = (int) *reinterpret_cast<uint8_t*>(pDef + 40);
-	}
-	bool bInImg = eng::fn::CStreaming_IsObjectInCdImage( 25000 + iSlot);
-	spdlog::info("OOBCol: model={} pin slot={} ref={} loaded={} "
-			"range=[{},{}] inImg={}",
-			iModel, iSlot, iRef, iLoaded, iMin, iMax, (int) bInImg);
-}
-
-/**
- * Insert the entity into CWorld::ms_aRepeatSectors — the 16x16 coarse
- * grid ProcessCollisionSectorList scans — exactly as CPhysical::Add does
- * for in-bounds entities: for every sector cell the entity's bound box
- * overlaps, a pooled CPtrNodeDoubleLink in the entity-type sub-list
- * (vehicles +0, peds +8, objects +16) plus a CEntryInfoNode membership
- * record on m_pCollisionList, so engine teardown unlinks them the same
- * way it does regular entities. Multi-cell coverage matters: large
- * floor pieces are reachable from sectors their center isn't in.
- * Only runs while the object is genuinely out of bounds — in-bounds it
- * must leave sector placement to the engine.
- */
-void CObject::EnsureRepeatSector()
-{
-	bool bAlive = m_entity && GamePool_Object_GetAt(m_gtaId) == m_entity
-			&& !IsEntityPlaceable(m_entity);
-	bool bOob = false;
-	if (bAlive) {
-		const sa::CVector& p = m_entity->GetPosition();
-		bOob = p.x > 3000.0f || p.x < -3000.0f
-				|| p.y > 3000.0f || p.y < -3000.0f;
-	}
-	bool bWant = bOob && m_entity->m_pRwObject
-			&& m_AttachedVehicleID == INVALID_VEHICLE_ID
-			&& m_AttachedObjectID == INVALID_OBJECT_ID
-			&& m_AttachedPlayerID == INVALID_PLAYER_ID;
-	// engine passes (Remove/RemoveAndAdd/streaming) can strip our records
-	// at any time — if the first one is gone from m_pCollisionList, the
-	// whole set is stale and must be re-injected; never touch the stale
-	// records themselves (pool slots get re-issued to other entities)
-	bool bStale = bAlive && !m_aInjectedInfo.empty()
-			&& !SectorRecordAlive(m_entity, m_aInjectedInfo.front());
-	if (bStale) DropDeadInjection(m_aInjectedInfo);
-
-	// the GetBoundRect hook lets the engine's own Add succeed OOB — once
-	// the entity carries live records we didn't write, the engine owns
-	// this entity and manual injection would only duplicate them
-	bool bEngineOwns = bAlive && m_aInjectedInfo.empty()
-			&& m_entity->m_pCollisionList.m_pNode != nullptr;
-
-	int iRect[4] = {-1, -1, -1, -1};
-	if (bWant) ComputeRepeatSectorRect(m_entity, iRect);
-
-	if (!bStale && !memcmp(iRect, m_aiInjRect, sizeof(iRect))) return;
-	if (bAlive) UnlinkFromRepeatSectors(m_entity, m_aInjectedInfo);
-	else DropDeadInjection(m_aInjectedInfo);
-	if (bWant && !bEngineOwns) InjectIntoRepeatSectors(m_entity, iRect, m_aInjectedInfo);
-	memcpy(m_aiInjRect, iRect, sizeof(iRect));
-
-	if (!m_bDiagLogged && bWant) {
-		m_bDiagLogged = true;
-		sa::CBaseModelInfo* pModelInfo = GetModelInfoByID(m_iModel);
-		sa::CColModel* pColModel = pModelInfo ? pModelInfo->m_pColModel : nullptr;
-		sa::CCollisionData* pData = pColModel ? pColModel->m_pColData : nullptr;
-		const char* pEnt = reinterpret_cast<const char*>(m_entity);
-		uint32_t uPhysFlags = *reinterpret_cast<const uint32_t*>(pEnt + 100);
-		uint32_t uEntFlags = *reinterpret_cast<const uint32_t*>(pEnt + 40);
-		float fMass = *reinterpret_cast<const float*>(pEnt + 176);
-		uint32_t uMiKey = pModelInfo
-				? *reinterpret_cast<const uint32_t*>(
-						reinterpret_cast<const char*>(pModelInfo) + 8) : 0;
-		spdlog::info("OOBCol: model={} cells={} type={} usesCol={} mFlags={:#06x} miKey={:#010x} "
-				"colSlot={} singleAlloc={} colData={} vol={} "
-				"sph={} box={} ln={} tris={} boundR={:.2f} "
-				"eFlags={:#010x} pFlags={:#010x} mass={:.1f} injectedTotal={}",
-				m_iModel, (int) m_aInjectedInfo.size(), (int) m_entity->m_nType,
-				(int) m_entity->m_bUsesCollision,
-				pModelInfo ? (unsigned) pModelInfo->m_flags : 0u,
-				uMiKey,
-				pColModel ? (int) pColModel->m_nColSlot : -1,
-				pColModel ? (int) pColModel->m_bIsSingleColDataAlloc : -1,
-				pData ? 1 : 0,
-				pColModel ? (int) pColModel->m_bHasCollisionVolumes : -1,
-				pData ? (int) pData->m_nNumSpheres : 0,
-				pData ? (int) pData->m_nNumBoxes : 0,
-				pData ? (int) pData->m_nNumLines : 0,
-				pData ? (int) pData->m_nNumTriangles : 0,
-				pColModel ? pColModel->m_boundSphere.m_fRadius : 0.0f,
-				uEntFlags, uPhysFlags, fMass,
-				s_iOobInjectedTotal);
-	}
-}
-
-void CObject::RemoveFromRepeatSector()
-{
-	if (m_entity && !IsEntityPlaceable(m_entity)
-			&& GamePool_Object_GetAt(m_gtaId) == m_entity) {
-		UnlinkFromRepeatSectors(m_entity, m_aInjectedInfo);
-	} else {
-		DropDeadInjection(m_aInjectedInfo);
-	}
-	m_aiInjRect[0] = m_aiInjRect[1] = m_aiInjRect[2] = m_aiInjRect[3] = -1;
-}
-
-/**
- * Vehicles drive their own collision differently from peds: a ped's
- * CheckCollision scans the repeat-sector groups under its own position,
- * but a vehicle's ProcessCollision iterates its OWN m_pCollisionList
- * records and runs ProcessCollisionSectorList_SimpleCar on each recorded
- * sector. An OOB vehicle has no records (CPhysical::Add rejected it), so
- * it never collides — wrecks sink straight through injected floors.
- * Inject every OOB pool vehicle into the repeat sectors its bound sphere
- * covers; its own native physics step does the rest, exactly as for an
- * in-bounds vehicle.
- */
-struct OobVehicleSector {
-	int rect[4] = {-1, -1, -1, -1};
-	std::vector<CEntryInfoNode*> infos;
-	int pinnedColSlot = -1;
-	uint32_t lastColReqTick = 0;
-};
-static std::unordered_map<sa::CVehicle*, OobVehicleSector> s_oobVehSectors;
-
-void ProcessOobVehicleSectors()
-{
-	CVehiclePool* pVehiclePool = pNetGame ? pNetGame->GetVehiclePool() : nullptr;
-	if (!pVehiclePool) return;
-
-	std::unordered_map<sa::CVehicle*, bool> live;
-	for (int i = 0; i < MAX_VEHICLES; i++) {
-		CVehicle* pVeh = pVehiclePool->GetAt((VEHICLEID) i);
-		if (!pVeh || !pVeh->m_pVehicle || !pVeh->VerifyInstance()) continue;
-		sa::CVehicle* pEnt = pVeh->m_pVehicle;
-		live[pEnt] = true;
-
-		const sa::CVector& vp = pEnt->GetPosition();
-		// same strict bounds the objects use — the engine still owns
-		// sector placement in the 3000..3050 margin
-		bool bOob = vp.x < -3000.0f || vp.x > 3000.0f
-				|| vp.y < -3000.0f || vp.y > 3000.0f;
-		if (!bOob) {
-			// in-bounds vehicles belong to the engine's own sector
-			// machinery — our records would just fight its RemoveAndAdd
-			auto it = s_oobVehSectors.find(pEnt);
-			if (it != s_oobVehSectors.end()) {
-				UnlinkFromRepeatSectors(pEnt, it->second.infos);
-				if (it->second.pinnedColSlot >= 0) {
-					eng::fn::CColStore_RemoveRef(
-							it->second.pinnedColSlot);
-				}
-				s_oobVehSectors.erase(it);
-			}
-			continue;
-		}
-
-		auto& inj = s_oobVehSectors[pEnt];
-		int iRect[4];
-		ComputeRepeatSectorRect(pEnt, iRect);
-		// engine teardown can strip our records at any time — a dead
-		// record vector must not be unlinked, just re-injected
-		if (!inj.infos.empty() && !SectorRecordAlive(pEnt, inj.infos.front())) {
-			DropDeadInjection(inj.infos);
-		}
-		// engine-written records mean the GetBoundRect hook already let
-		// Add succeed for this vehicle — don't double-inject over them
-		bool bEngineOwns = inj.infos.empty()
-				&& pEnt->m_pCollisionList.m_pNode != nullptr;
-		if (!bEngineOwns
-				&& (inj.infos.empty() || memcmp(iRect, inj.rect, sizeof(iRect)) != 0)) {
-			UnlinkFromRepeatSectors(pEnt, inj.infos);
-			InjectIntoRepeatSectors(pEnt, iRect, inj.infos);
-			memcpy(inj.rect, iRect, sizeof(iRect));
-		}
-
-		// same position-streamed col problem as OOB objects: an unpinned
-		// vehicle colModel stays an empty shell — zero collision, not a
-		// bound-sphere fallback — so the car wades through geometry it
-		// should mesh-collide with
-		sa::CBaseModelInfo* pMI = GetModelInfoByID(pEnt->m_nModelIndex);
-		sa::CColModel* pCM = pMI ? pMI->m_pColModel : nullptr;
-		if (PinOobColSlot(pCM, inj.pinnedColSlot)) {
-			LogOobColPin(pEnt->m_nModelIndex, inj.pinnedColSlot);
-		}
-		RequestOobColSlot(pCM, inj.pinnedColSlot, inj.lastColReqTick);
-	}
-
-	// entities that died while injected had their records freed by engine
-	// teardown — drop the bookkeeping without touching the pointers
-	for (auto it = s_oobVehSectors.begin(); it != s_oobVehSectors.end();) {
-		if (live.count(it->first)) ++it;
-		else {
-			s_iOobInjectedTotal -= (int) it->second.infos.size();
-			if (it->second.pinnedColSlot >= 0) {
-				eng::fn::CColStore_RemoveRef(
-						it->second.pinnedColSlot);
-			}
-			it = s_oobVehSectors.erase(it);
-		}
-	}
+	m_entity->m_nFlags |= 0x80000000u;
+	m_entity->m_nPhysicalFlags = (m_entity->m_nPhysicalFlags & 0xFFFFFFF1u) | 0xCu;
 }
 
 void CObject::Detach()
@@ -782,7 +409,6 @@ void CObject::ApplyMoveSpeed()
 	}
 }
 
-static void ForEachObjectAtomic(RwObject* rwObj, RpAtomic* (*cb)(RpAtomic*, void*), void* data);
 RpAtomic* DriveUVAnimAtomicCB(RpAtomic* atomic, void* data);
 
 /**
@@ -794,11 +420,34 @@ void CObject::Process(float fElapsedTime)
 		return;
 	}
 
-	if (!m_entity->m_pRwObject) {
-		EnsureRwObject();
+	// Timed 0.3.DL custom objects (AddSimpleModelTimed): toggle visibility & collision by world hour.
+	if (m_bTimedModel && pGame) {
+		int hour = 0;
+		int minute = 0;
+		pGame->GetWorldTime(&hour, &minute);
+		const bool shouldBeVisible = artwork::isTimedObjectVisible(hour, m_timeOn, m_timeOff);
+		if (!shouldBeVisible) {
+			if (!m_bTimedHidden) {
+				m_bTimedHidden = true;
+				m_entity->Remove();
+				SetCollisionChecking(false);
+			}
+		} else if (m_bTimedHidden) {
+			m_bTimedHidden = false;
+			SetCollisionChecking(true);
+			m_entity->Add();
+			EnsureRwObject();
+			UpdateRwMatrixAndFrame();
+		}
 	}
 
-	UpdateUVAnim();
+	if (!m_bTimedHidden) {
+		if (!m_entity->m_pRwObject) {
+			EnsureRwObject();
+		}
+
+		UpdateUVAnim();
+	}
 
 	// keep the flag tracking the entity's actual position — previously only
 	// the constructor and TeleportTo set it, so an object carried across
@@ -810,7 +459,7 @@ void CObject::Process(float fElapsedTime)
 				|| pos.y > 3000.0f || pos.y < -3000.0f;
 	}
 
-	if (m_bForceRender && m_entity) {
+	if (!m_bTimedHidden && m_bForceRender && m_entity) {
 		// Col data is position-streamed: CColStore's quadtree matches
 		// col files to in-bounds positions only, so an OOB object's
 		// shared colModel stays an empty shell — and an empty shell is
@@ -982,16 +631,6 @@ void CObject::Process(float fElapsedTime)
 				|| pos.y > 3000.0f || pos.y < -3000.0f;
 	}
 
-	// inject LAST — the moving path above calls UpdateMatrix
-	// (CWorld::Remove/Add), which strips our sector records mid-tick, and
-	// CPhysical::Add rejects the OOB re-add; running the injection after it
-	// keeps the entity collidable through the next engine collision pass.
-	// Reached by attached objects too, so a fresh attach still unlinks
-	// stale records.
-	if (m_entity && m_entity->m_pRwObject
-			&& (m_bForceRender || !m_aInjectedInfo.empty())) {
-		EnsureRepeatSector();
-	}
 }
 
 /**
@@ -1048,10 +687,26 @@ void CObject::SetRotation(sa::CVector* vecRotation)
 		m_vecRotation.x = vecRotation->x;
 		m_vecRotation.y = vecRotation->y;
 		m_vecRotation.z = vecRotation->z;
-		if (m_bForceRender) {
+		if (m_bTimedHidden) {
+			m_entity->Remove();
+			SetCollisionChecking(false);
+		} else if (m_bForceRender) {
 			UpdateRwMatrixAndFrame();
 		}
 	}
+}
+
+void CObject::UpdateMatrix(RwMatrix matrix)
+{
+	if (!m_entity || !m_entity->m_matrix) {
+		return;
+	}
+	if (m_bTimedHidden) {
+		m_entity->SetMatrix(matrix);
+		UpdateRwMatrixAndFrame();
+		return;
+	}
+	CEntity::UpdateMatrix(matrix);
 }
 
 /**
@@ -1093,7 +748,138 @@ void CObject::TeleportTo(float fX, float fY, float fZ)
 		m_bForceRender = false;
 	}
 
+	if (m_bTimedHidden && m_entity && !IsEntityPlaceable(m_entity)) {
+		RwMatrix mat = m_entity->GetMatrix().ToRwMatrix();
+		mat.pos = sa::CVector{fX, fY, fZ};
+		m_entity->SetMatrix(mat);
+		UpdateRwMatrixAndFrame();
+		return;
+	}
+
 	CEntity::TeleportTo(fX, fY, fZ);
+}
+
+bool CObject::SwapGtaModel(int iNewGtaModel)
+{
+	if (!m_entity || !m_gtaId || GamePool_Object_GetAt(m_gtaId) != reinterpret_cast<sa::CObject*>(m_entity) || IsEntityPlaceable(m_entity)) {
+		return false;
+	}
+	if (!IsValidModel(iNewGtaModel)) {
+		iNewGtaModel = 18631;
+	}
+	if (m_iModel == iNewGtaModel) {
+		return true;
+	}
+
+	// Pre-load the replacement model BEFORE tearing down the live entity so a missing/unloadable
+	// model never destroys a working object.
+	if (pGame && !pGame->IsModelLoaded(iNewGtaModel)) {
+		pGame->RequestModel(iNewGtaModel);
+		pGame->LoadRequestedModels();
+		if (!pGame->IsModelLoaded(iNewGtaModel)) {
+			spdlog::warn("CObject::SwapGtaModel: target model {} failed to load; keeping model {}",
+				iNewGtaModel, m_iModel);
+			return false;
+		}
+	}
+
+	const sa::CVector pos = m_entity->GetPosition();
+	sa::CVector rot = m_vecRotation;
+
+	// Cleanly detach and destroy the old GTA entity before creating the replacement.
+	auto it = s_liveObjectByEntity.find(m_entity);
+	if (it != s_liveObjectByEntity.end() && it->second == this) {
+		s_liveObjectByEntity.erase(it);
+	}
+	if (m_iPinnedColSlot >= 0) {
+		eng::fn::CColStore_RemoveRef(m_iPinnedColSlot);
+		m_iPinnedColSlot = -1;
+	}
+
+	const int oldModel = m_iModel;
+	ScriptCommand(&destroy_object, m_gtaId);
+	if (pGame && GetModelRefCounts(oldModel) == 0) {
+		pGame->RemoveModel(oldModel, false);
+	}
+
+	m_entity = nullptr;
+	m_gtaId = 0;
+	m_pUVAnimRwObject = nullptr;
+	m_bUVAnimEnabled = false;
+	m_pLastObjectMaterialRwObject = nullptr;
+	m_originalAtomicMaterials.clear();
+	m_bColDiagLogged = false;
+
+	int createdModel = iNewGtaModel;
+	uint32_t dwRetID = 0;
+	ScriptCommand(&create_object, createdModel, pos.x, pos.y, pos.z, &dwRetID);
+	sa::CObject* pNewEntity = dwRetID ? GamePool_Object_GetAt(dwRetID) : nullptr;
+	bool swapped = (dwRetID != 0 && pNewEntity != nullptr);
+
+	// Failure recovery: never leave a half-dead CObject with m_entity == nullptr.
+	if (!swapped) {
+		const int recoveryModel = (!artwork::isInternalCustomSlot(oldModel) && IsValidModel(oldModel))
+			? oldModel : artwork::kFallbackObjectModelId;
+		spdlog::error("CObject::SwapGtaModel: create_object failed (serverModel={}, newModel={}); recovering with model {}",
+			m_iServerModel, iNewGtaModel, recoveryModel);
+		if (pGame && !pGame->IsModelLoaded(recoveryModel)) {
+			pGame->RequestModel(recoveryModel);
+			pGame->LoadRequestedModels();
+		}
+		dwRetID = 0;
+		ScriptCommand(&create_object, recoveryModel, pos.x, pos.y, pos.z, &dwRetID);
+		pNewEntity = dwRetID ? GamePool_Object_GetAt(dwRetID) : nullptr;
+		if (!dwRetID || !pNewEntity) {
+			return false;
+		}
+		createdModel = recoveryModel;
+	}
+
+	m_entity = pNewEntity;
+	m_gtaId = dwRetID;
+	m_iModel = createdModel;
+	s_liveObjectByEntity[m_entity] = this;
+
+	EnsureRwObject();
+	ApplySampObjectPhysics();
+	RwMatrix mat = m_entity->GetMatrix().ToRwMatrix();
+	mat.pos = pos;
+	UpdateMatrix(mat);
+	SetRotation(&rot);
+
+	if (m_bForceRender || m_fDrawDistance > 250.0f) {
+		UpdateRwMatrixAndFrame();
+	}
+
+	if (m_byteMoving & 1) {
+		m_entity->m_nFlags &= 0xFFFFFFF7;
+	}
+
+	if (artwork::isInternalCustomSlot(createdModel)) {
+		m_bTimedModel = artwork::ArtworkManager::instance().isTimedObject(m_iServerModel, m_timeOn, m_timeOff);
+		if (m_bTimedModel && pGame) {
+			int hour = 0;
+			int minute = 0;
+			pGame->GetWorldTime(&hour, &minute);
+			m_bTimedHidden = !artwork::isTimedObjectVisible(hour, m_timeOn, m_timeOff);
+		} else {
+			m_bTimedHidden = false;
+		}
+	} else {
+		m_bTimedModel = false;
+		m_bTimedHidden = false;
+	}
+	if (m_bTimedHidden) {
+		m_entity->Remove();
+		SetCollisionChecking(false);
+	}
+
+	TryEnableUVAnim();
+	RefreshCustomMaterials();
+	if (m_bHasCustomObjectMaterial) {
+		TryChangeToCustomObjectMaterial();
+	}
+	return swapped;
 }
 
 /**
@@ -1315,7 +1101,11 @@ void CObject::SetMaterial(int iModel, uint8_t byteMaterialIndex, char* txdname, 
 		return;
 	}
 
-	if (iModel > 0 && (!IsValidModel(iModel) || !txdname || !txdname[0] || !texturename || !texturename[0])) {
+	if (artwork::isCustomModelId(iModel)) {
+		if (!texturename || !texturename[0]) {
+			return;
+		}
+	} else if (iModel > 0 && (!IsValidModel(iModel) || !txdname || !txdname[0] || !texturename || !texturename[0])) {
 		return;
 	}
 
@@ -1325,11 +1115,22 @@ void CObject::SetMaterial(int iModel, uint8_t byteMaterialIndex, char* txdname, 
 	}
 	m_Material[byteMaterialIndex].pMaterialTexture = nullptr;
 	m_Material[byteMaterialIndex].bTextGenAttempts = 0;
+	m_Material[byteMaterialIndex].iCustomTextureModel = 0;
+	m_Material[byteMaterialIndex].szCustomTextureName[0] = '\0';
 
 	bool bIsNoneTex = (txdname && strcasecmp(txdname, "none") == 0)
 			|| (texturename && strcasecmp(texturename, "none") == 0);
 
-	if (iModel > 0) {
+	if (artwork::isCustomModelId(iModel)) {
+		if (!bIsNoneTex) {
+			m_Material[byteMaterialIndex].iCustomTextureModel = iModel;
+			std::snprintf(m_Material[byteMaterialIndex].szCustomTextureName,
+				sizeof(m_Material[byteMaterialIndex].szCustomTextureName), "%s", texturename);
+			m_Material[byteMaterialIndex].pMaterialTexture =
+				artwork::ArtworkManager::instance().findTextureInCustomModel(iModel, texturename);
+		}
+	}
+	else if (iModel > 0) {
 		if (!bIsNoneTex) {
 			if (!pGame->IsModelLoaded(iModel)) {
 				pGame->RequestModel(iModel);
@@ -1362,6 +1163,39 @@ void CObject::SetMaterial(int iModel, uint8_t byteMaterialIndex, char* txdname, 
 	m_bHasCustomObjectMaterial = true;
 }
 
+void CObject::RefreshCustomMaterials()
+{
+	if (!m_bHasCustomObjectMaterial) {
+		return;
+	}
+	for (int i = 0; i < MAX_MATERIALS; ++i) {
+		if (m_Material[i].iType == MATERIAL_TYPE_TEXTURE
+			&& !m_Material[i].pMaterialTexture
+			&& artwork::isCustomModelId(m_Material[i].iCustomTextureModel)
+			&& m_Material[i].szCustomTextureName[0] != '\0') {
+			m_Material[i].pMaterialTexture = artwork::ArtworkManager::instance().findTextureInCustomModel(
+				m_Material[i].iCustomTextureModel, m_Material[i].szCustomTextureName);
+		}
+	}
+}
+
+void CObject::ReleaseCustomMaterialsBeforeUnload()
+{
+	if (!m_bHasCustomObjectMaterial) {
+		return;
+	}
+	ChangeToOriginalObjectMaterial();
+	for (int i = 0; i < MAX_MATERIALS; ++i) {
+		if (m_Material[i].iType == MATERIAL_TYPE_TEXTURE
+			&& artwork::isCustomModelId(m_Material[i].iCustomTextureModel)
+			&& m_Material[i].pMaterialTexture
+			&& m_Material[i].pMaterialTexture != g_blankTexture) {
+			RwTextureDestroy(m_Material[i].pMaterialTexture);
+			m_Material[i].pMaterialTexture = nullptr;
+		}
+	}
+}
+
 void CObject::SetMaterialText(uint8_t byteMaterialIndex, uint8_t byteMaterialSize, const char* szFontName, uint8_t byteFontSize, uint8_t byteFontBold, uint32_t dwFontColor, uint32_t dwBackgroundColor, uint8_t byteAlign, const char* szText)
 {
 	spdlog::debug("CObject::SetMaterialText({}, {}, {}, {}, {}, 0x{:X}, 0x{:X}, {}, {}).", byteMaterialIndex, byteMaterialSize, szFontName ? szFontName : "", byteFontSize, byteFontBold, dwFontColor, dwBackgroundColor, byteAlign, szText ? szText : "");
@@ -1379,6 +1213,8 @@ void CObject::SetMaterialText(uint8_t byteMaterialIndex, uint8_t byteMaterialSiz
 			RwTextureDestroy(m_Material[byteMaterialIndex].pMaterialTexture);
 		}
 		m_Material[byteMaterialIndex].pMaterialTexture = nullptr;
+		m_Material[byteMaterialIndex].iCustomTextureModel = 0;
+		m_Material[byteMaterialIndex].szCustomTextureName[0] = '\0';
 
 		m_Material[byteMaterialIndex].TextInfo.byteMaterialSize = byteMaterialSize;
 
@@ -1483,457 +1319,6 @@ void CObject::ProcessMaterialText()
  * data, link the matrix slots to the UVAnim extension matrices, and switch
  * the atomic to the MatFX pipeline so the engine drives the animation.
  */
-static std::unordered_set<RpMaterial*> s_uvAnimUpdatedMaterialsThisFrame;
-static float s_fUVAnimFrameDt = 0.016f;
-static uint32_t s_dwUVAnimLastTick = 0;
-
-void BeginUVAnimFrame()
-{
-	s_uvAnimUpdatedMaterialsThisFrame.clear();
-	uint32_t dwNow = GetTickCount();
-	if (s_dwUVAnimLastTick == 0) {
-		s_dwUVAnimLastTick = dwNow;
-		s_fUVAnimFrameDt = 0.016f;
-		return;
-	}
-	float dt = (dwNow - s_dwUVAnimLastTick) / 1000.0f;
-	s_dwUVAnimLastTick = dwNow;
-	if (std::isfinite(dt) && dt > 0.0f) {
-		s_fUVAnimFrameDt = dt > 0.1f ? 0.1f : dt;
-	}
-	else {
-		s_fUVAnimFrameDt = 0.016f;
-	}
-}
-
-static void ForEachObjectAtomic(RwObject* rwObj, RpAtomic* (*cb)(RpAtomic*, void*), void* data)
-{
-	if (!rwObj || !cb) {
-		return;
-	}
-
-	uint8_t type = *(uint8_t*) rwObj;
-	if (type == 1 /*rpATOMIC*/) {
-		cb(reinterpret_cast<RpAtomic*>(rwObj), data);
-	}
-	else if (type == 2 /*rpCLUMP*/) {
-		eng::fn::RpClumpForAllAtomics<RpClump*>(
-				reinterpret_cast<RpClump*>(rwObj), cb, data);
-	}
-	else if (rwObj->parent) {
-		auto parent = reinterpret_cast<RwFrame*>(rwObj->parent);
-		RwFrameForAllObjects(parent, reinterpret_cast<RpAtomicCallBack*>(cb), data);
-	}
-}
-
-RpMaterial* EnableUVAnimMaterialCB(RpMaterial* material, void* data)
-{
-	if (!material) {
-		return material;
-	}
-
-	bool bHasUVAnim = eng::fn::RpMaterialUVAnimExists( material);
-	if (!bHasUVAnim) {
-		return material;
-	}
-
-	if (data) {
-		*(bool*) data = true;
-	}
-
-	// Ensure material texture uses WRAP addressing so scrolling UVs tile seamlessly.
-	if (material->texture) {
-		RwTextureSetAddressingMacro(material->texture, rwTEXTUREADDRESSWRAP);
-	}
-
-	// If the material uses MatFX UV transform (5 = UVTRANSFORM, 6 = DUALUVTRANSFORM),
-	// link its matrix slots to ext->uv[0..1] updated by DriveUVAnimMaterialCB.
-	int32_t iEffects = eng::fn::RpMatFXMaterialGetEffects( material);
-	if (iEffects == 5 /*rpMATFXEFFECTUVTRANSFORM*/ || iEffects == 6 /*rpMATFXEFFECTDUALUVTRANSFORM*/) {
-		auto* pUVAnimGlobals = eng::as<RpUVAnimMaterialGlobalVars*>(eng::Sym::RpUVAnimMaterialGlobals);
-		if (pUVAnimGlobals) {
-			auto* ext = (RpUVAnimMaterialExtension*) ((char*) material + pUVAnimGlobals->engineOffset);
-			if (ext->uv[0] || ext->uv[1]) {
-				eng::fn::RpMatFXMaterialSetUVTransformMatrices( material, ext->uv[0], ext->uv[1]);
-			}
-		}
-	}
-
-	return material;
-}
-
-RpAtomic* EnableUVAnimAtomicCB(RpAtomic* atomic, void* data)
-{
-	if (atomic && *(uint8_t*) atomic == 1 /*rpATOMIC*/ && atomic->geometry) {
-		bool bHasUVAnimMaterial = false;
-		eng::fn::RpGeometryForAllMaterials<RpGeometry*>( atomic->geometry, (RpMaterial* (*)(RpMaterial*, void*)) EnableUVAnimMaterialCB, &bHasUVAnimMaterial);
-		if (!bHasUVAnimMaterial) {
-			return atomic;
-		}
-
-		if (data) {
-			auto* pObj = reinterpret_cast<CObject*>(data);
-			pObj->m_bUVAnimEnabled = true;
-
-			static std::unordered_set<int> s_loggedModels;
-			if (s_loggedModels.size() < 24 && s_loggedModels.insert(pObj->GetModelIndex()).second) {
-				spdlog::debug("UVAnim: enabled for object model {} (atomic={:p}, pipeline={:p})",
-						pObj->GetModelIndex(), (void*) atomic, (void*) atomic->pipeline);
-			}
-		}
-		// Do NOT switch atomic->pipeline here: switching an already-instanced
-		// CustomBuilding atomic to MatFX triggers vertex re-instancing on a
-		// geometry whose morphTarget->verts has been freed (SIGSEGV at +0x3d4).
-		// Instead, CustomPipeRenderCB / rxOpenGLDefaultAllInOneRenderCB hooks
-		// apply ext->uv[0] via emu_SetTextureMatrixEnabled directly.
-	}
-
-	return atomic;
-}
-
-RpMaterial* DriveUVAnimMaterialCB(RpMaterial* material, void* data)
-{
-	if (!material) {
-		return material;
-	}
-
-	// Multiple object instances of the same model share one RpMaterial —
-	// advance each material at most once per game frame.
-	if (!s_uvAnimUpdatedMaterialsThisFrame.insert(material).second) {
-		return material;
-	}
-
-	if (!eng::fn::RpMaterialUVAnimExists( material)) {
-		return material;
-	}
-
-	auto* pUVAnimGlobals = eng::as<RpUVAnimMaterialGlobalVars*>(eng::Sym::RpUVAnimMaterialGlobals);
-	if (!pUVAnimGlobals) {
-		return material;
-	}
-
-	auto* ext = (RpUVAnimMaterialExtension*) ((char*) material + pUVAnimGlobals->engineOffset);
-	if (!ext->uv[0] && !ext->uv[1]) {
-		return material;
-	}
-
-	// War Drum's mobile port gates RtAnimInterpolatorAddAnimTime behind
-	// Set360UVAnimHack (default false), and enabling it hits an infinite loop
-	// in RtAnimInterpolatorAddAnimTime on multi-keyframe DFFs (e.g. 19620/19797)
-	// plus RpUVAnimParamKeyFrameApply has a 64-bit struct offset bug (+12 vs +16).
-	// Step and evaluate UV keyframes directly in a bounded, crash-proof loop.
-	//
-	// RenderWare interpolator typeIDs (verified from libGTASA.so):
-	//   0x1c0 (448) = _rpUVAnimLinearInterpolatorInfo (uv[6])
-	//   0x1c1 (449) = _rpUVAnimParamInterpolatorInfo  (theta, s0, s1, skew, x, y)
-	constexpr int32_t kUVAnimTypeLinear = 0x1c0;
-	constexpr int32_t kUVAnimTypeParam  = 0x1c1;
-	constexpr float kPi    = 3.14159265358979323846f;
-	constexpr float kTwoPi = 6.28318530717958647692f;
-
-	bool bChanWritten[RP_UVANIM_APPLIEDCHANNELS] = {false, false};
-
-	for (int slot = 0; slot < RP_UVANIM_MAXSLOTS; ++slot) {
-		RtAnimInterpolator* interp = ext->interp[slot];
-		if (!interp || !interp->pCurrentAnim) {
-			continue;
-		}
-		RtAnimAnimation* anim = interp->pCurrentAnim;
-		if (!anim->pFrames || anim->numFrames < 2 || anim->duration <= 0.0001f || !std::isfinite(anim->duration)) {
-			continue;
-		}
-
-		// Advance and wrap currentTime strictly inside [0, duration)
-		float curTime = interp->currentTime;
-		if (!std::isfinite(curTime) || curTime < 0.0f) {
-			curTime = 0.0f;
-		}
-		curTime = std::fmod(curTime + s_fUVAnimFrameDt, anim->duration);
-		if (curTime < 0.0f || !std::isfinite(curTime)) {
-			curTime = 0.0f;
-		}
-		interp->currentTime = curTime;
-
-		int32_t typeID = anim->interpInfo ? anim->interpInfo->typeID : kUVAnimTypeParam;
-		if (typeID != kUVAnimTypeLinear && typeID != kUVAnimTypeParam) {
-			continue;
-		}
-
-		const auto* kfs = reinterpret_cast<const RpUVAnimKeyFrame*>(anim->pFrames);
-		int count = anim->numFrames;
-		if (count > 1024) {
-			count = 1024;
-		}
-
-		int numNodes = interp->numNodes;
-		if (numNodes < 1) {
-			numNodes = 1;
-		}
-		if (numNodes > RP_UVANIM_MAXSLOTS) {
-			numNodes = RP_UVANIM_MAXSLOTS;
-		}
-		if (numNodes > count) {
-			numNodes = 1;
-		}
-
-		// For multi-node animations (e.g. dual-channel waterfalls), classify
-		// each keyframe's owning node via validated prevFrame back-links.
-		int8_t nodeOf[1024];
-		if (numNodes > 1) {
-			const uintptr_t baseAddr = reinterpret_cast<uintptr_t>(kfs);
-			const size_t stride = sizeof(RpUVAnimKeyFrame);
-			for (int k = 0; k < count; ++k) {
-				if (k < numNodes) {
-					nodeOf[k] = static_cast<int8_t>(k);
-				}
-				else {
-					int8_t owner = 0;
-					const uintptr_t prevAddr = reinterpret_cast<uintptr_t>(kfs[k].prevFrame);
-					if (prevAddr >= baseAddr && prevAddr < baseAddr + static_cast<size_t>(k) * stride
-							&& ((prevAddr - baseAddr) % stride) == 0) {
-						int prevIdx = static_cast<int>((prevAddr - baseAddr) / stride);
-						owner = nodeOf[prevIdx];
-					}
-					nodeOf[k] = owner;
-				}
-			}
-		}
-
-		const auto* customData = reinterpret_cast<const _rpUVAnimCustomData*>(anim->customData);
-
-		for (int node = 0; node < numNodes; ++node) {
-			uint32_t chan = customData ? customData->nodeToUVChannelMap[node] : 0u;
-			if (chan >= RP_UVANIM_APPLIEDCHANNELS) {
-				continue;
-			}
-			RwMatrix* dst = ext->uv[chan];
-			if (!dst) {
-				continue;
-			}
-
-			// Find bracketing keyframe pair for this node using strict upper bound
-			// so step/duplicate timestamps (e.g. LightBar1 0.500/0.500) switch cleanly.
-			int idx1 = -1;
-			int idx2 = -1;
-			int prevNodeIdx = -1;
-			for (int k = 0; k < count; ++k) {
-				if (numNodes > 1 && nodeOf[k] != node) {
-					continue;
-				}
-				if (prevNodeIdx >= 0) {
-					float t1 = kfs[prevNodeIdx].time;
-					float t2 = kfs[k].time;
-					if (curTime >= t1 && curTime < t2) {
-						idx1 = prevNodeIdx;
-						idx2 = k;
-						break;
-					}
-				}
-				prevNodeIdx = k;
-			}
-			if (idx1 < 0) {
-				// curTime is either before first keyframe or at/past last keyframe
-				int firstNodeIdx = -1;
-				for (int k = 0; k < count; ++k) {
-					if (numNodes == 1 || nodeOf[k] == node) {
-						firstNodeIdx = k;
-						break;
-					}
-				}
-				if (firstNodeIdx < 0) {
-					continue;
-				}
-				if (curTime < kfs[firstNodeIdx].time) {
-					idx1 = firstNodeIdx;
-					idx2 = firstNodeIdx;
-				}
-				else {
-					idx1 = prevNodeIdx;
-					idx2 = prevNodeIdx;
-				}
-			}
-
-			const RpUVAnimKeyFrame& kf1 = kfs[idx1];
-			const RpUVAnimKeyFrame& kf2 = kfs[idx2];
-
-			float span = kf2.time - kf1.time;
-			float alpha = (span > 0.00001f) ? ((curTime - kf1.time) / span) : 0.0f;
-			if (alpha < 0.0f) alpha = 0.0f;
-			if (alpha > 1.0f) alpha = 1.0f;
-
-			float rx = 1.0f, ry = 0.0f;
-			float ux = 0.0f, uy = 1.0f;
-			float tx = 0.0f, ty = 0.0f;
-
-			if (typeID == kUVAnimTypeLinear) {
-				float uv[6];
-				for (int j = 0; j < 6; ++j) {
-					uv[j] = kf1.data.linear.uv[j] + (kf2.data.linear.uv[j] - kf1.data.linear.uv[j]) * alpha;
-				}
-				rx = uv[0]; ry = uv[1];
-				ux = uv[2]; uy = uv[3];
-				tx = uv[4]; ty = uv[5];
-			}
-			else {
-				// Parametric keyframe (matches RpUVAnimParamKeyFrameInterpolate + Apply):
-				//   M = Base(s0, skew, s1, x, y) * T(-0.5, -0.5) * R_z(theta) * T(+0.5, +0.5)
-				float dTheta = kf2.data.param.theta - kf1.data.param.theta;
-				if (dTheta > kPi) {
-					dTheta -= kTwoPi;
-				}
-				else if (dTheta < -kPi) {
-					dTheta += kTwoPi;
-				}
-				float theta = kf1.data.param.theta + dTheta * alpha;
-				float s0   = kf1.data.param.s0   + (kf2.data.param.s0   - kf1.data.param.s0)   * alpha;
-				float s1   = kf1.data.param.s1   + (kf2.data.param.s1   - kf1.data.param.s1)   * alpha;
-				float skew = kf1.data.param.skew + (kf2.data.param.skew - kf1.data.param.skew) * alpha;
-				float px   = kf1.data.param.x    + (kf2.data.param.x    - kf1.data.param.x)    * alpha;
-				float py   = kf1.data.param.y    + (kf2.data.param.y    - kf1.data.param.y)    * alpha;
-
-				float c = std::cos(theta);
-				float s = std::sin(theta);
-				rx = s0 * c - skew * s;
-				ry = s0 * s + skew * c;
-				ux = -s1 * s;
-				uy =  s1 * c;
-				tx = (px - 0.5f) * c - (py - 0.5f) * s + 0.5f;
-				ty = (px - 0.5f) * s + (py - 0.5f) * c + 0.5f;
-			}
-
-			if (!bChanWritten[chan]) {
-				dst->right.x = rx;
-				dst->right.y = ry;
-				dst->right.z = 0.0f;
-				dst->up.x = ux;
-				dst->up.y = uy;
-				dst->up.z = 0.0f;
-				dst->at.x = 0.0f;
-				dst->at.y = 0.0f;
-				dst->at.z = 1.0f;
-				dst->pos.x = tx;
-				dst->pos.y = ty;
-				dst->pos.z = 0.0f;
-				// Clear rwMATRIXINTERNALIDENTITY (0x20000) so _rpMatFXOpenGLUVAnimRender uploads it
-				dst->flags = 0;
-				bChanWritten[chan] = true;
-			}
-			else {
-				// Compose multiple slots targeting the same UV channel: dst = dst * slotMat
-				float arx = dst->right.x, ary = dst->right.y;
-				float aux = dst->up.x,    auy = dst->up.y;
-				float atx = dst->pos.x,   aty = dst->pos.y;
-				dst->right.x = arx * rx + ary * ux;
-				dst->right.y = arx * ry + ary * uy;
-				dst->up.x    = aux * rx + auy * ux;
-				dst->up.y    = aux * ry + auy * uy;
-				dst->pos.x   = atx * rx + aty * ux + tx;
-				dst->pos.y   = atx * ry + aty * uy + ty;
-				dst->flags = 0;
-			}
-		}
-	}
-
-	if (bChanWritten[0] || bChanWritten[1]) {
-		// Guard against SIGSEGV: RpMatFXMaterialSetUVTransformMatrices dereferences
-		// material's MatFX extension without a null check — only call when MatFX UV
-		// transform effect (5 or 6) is present.
-		int32_t iEffects = eng::fn::RpMatFXMaterialGetEffects( material);
-		if (iEffects == 5 /*rpMATFXEFFECTUVTRANSFORM*/ || iEffects == 6 /*rpMATFXEFFECTDUALUVTRANSFORM*/) {
-			eng::fn::RpMatFXMaterialSetUVTransformMatrices(
-					material, ext->uv[0], ext->uv[1]);
-		}
-	}
-	return material;
-}
-
-/*
- * CObject::PreRender is self-contained and does not run CEntity::PreRender's
- * MaterialUpdateUVAnimCB driver, so nothing advances the animation for game
- * objects. Drive UV-animated materials per frame from CObject::Process and
- * CPlayerPed::ProcessAttachedObjects.
- */
-RpAtomic* DriveUVAnimAtomicCB(RpAtomic* atomic, void* data)
-{
-	if (atomic && *(uint8_t*) atomic == 1 /*rpATOMIC*/ && atomic->geometry) {
-		eng::fn::RpGeometryForAllMaterials<RpGeometry*>(
-				atomic->geometry, (RpMaterial* (*)(RpMaterial*, void*)) DriveUVAnimMaterialCB, nullptr);
-	}
-
-	return atomic;
-}
-
-RwMatrix* FindAtomicUVAnimMatrix(RpAtomic* atomic, bool* outHasDualUV)
-{
-	if (outHasDualUV) {
-		*outHasDualUV = false;
-	}
-	if (!atomic || *(uint8_t*) atomic != 1 /*rpATOMIC*/ || !atomic->geometry) {
-		return nullptr;
-	}
-	RpGeometry* geo = atomic->geometry;
-	if (!geo->matList.materials || geo->matList.numMaterials <= 0) {
-		return nullptr;
-	}
-	auto* pUVAnimGlobals = eng::as<RpUVAnimMaterialGlobalVars*>(eng::Sym::RpUVAnimMaterialGlobals);
-	if (!pUVAnimGlobals) {
-		return nullptr;
-	}
-	int count = geo->matList.numMaterials;
-	if (count > 64) count = 64;
-	RwMatrix* firstUv = nullptr;
-	for (int i = 0; i < count; ++i) {
-		RpMaterial* mat = geo->matList.materials[i];
-		if (!mat) continue;
-		if (!eng::fn::RpMaterialUVAnimExists( mat)) {
-			continue;
-		}
-		auto* ext = (RpUVAnimMaterialExtension*) ((char*) mat + pUVAnimGlobals->engineOffset);
-		RwMatrix* uv = ext->uv[0] ? ext->uv[0] : ext->uv[1];
-		if (uv && (uv->flags & 0x20000) == 0) {
-			if (!firstUv) {
-				firstUv = uv;
-			}
-			if (outHasDualUV) {
-				int32_t iEffects = eng::fn::RpMatFXMaterialGetEffects( mat);
-				if (iEffects == 6 /*rpMATFXEFFECTDUALUVTRANSFORM*/) {
-					*outHasDualUV = true;
-				}
-			}
-			else {
-				return firstUv;
-			}
-		}
-	}
-	return firstUv;
-}
-
-void CObject::TryEnableUVAnim()
-{
-	if (!m_entity || !m_entity->m_pRwObject) {
-		m_pUVAnimRwObject = nullptr;
-		m_bUVAnimEnabled = false;
-		return;
-	}
-
-	if (m_pUVAnimRwObject == m_entity->m_pRwObject) {
-		return;
-	}
-
-	m_pUVAnimRwObject = m_entity->m_pRwObject;
-	m_bUVAnimEnabled = false;
-	ForEachObjectAtomic(m_entity->m_pRwObject, EnableUVAnimAtomicCB, this);
-}
-
-void CObject::UpdateUVAnim()
-{
-	TryEnableUVAnim();
-
-	if (m_bUVAnimEnabled && m_entity && m_entity->m_pRwObject) {
-		ForEachObjectAtomic(m_entity->m_pRwObject, DriveUVAnimAtomicCB, this);
-	}
-}
-
 void CObject::TryChangeToCustomObjectMaterial()
 {
 	if (m_bHasCustomObjectMaterial) {
@@ -1982,19 +1367,20 @@ RpAtomic* StoreOriginalMaterialObjectCB(RpAtomic* result, void* data)
 	if (result && pObject && *(uint8_t*) result == 1) {
 		RpGeometry* geometry = result->geometry;
 		if (geometry) {
-			pObject->m_uiLastObjectGeometry = geometry->flags;
-
+			CObject::AtomicMaterialBackup backup{};
+			backup.atomic = result;
+			backup.geomFlags = geometry->flags;
 			int count = geometry->matList.numMaterials;
 			RpMaterial** materials = geometry->matList.materials;
 			if (count >= 1 && materials) {
-				for (int i = 0; i < count; i++) {
-					if (i >= MAX_MATERIALS) break;
+				for (int i = 0; i < count && i < MAX_MATERIALS; i++) {
 					if (!materials[i]) continue;
-					pObject->m_pLastObjectMaterialTexture[i] = materials[i]->texture;
-					pObject->m_dwLastObjectMaterialColor[i] = *(RwRGBA*) &materials[i]->color;
-					pObject->m_LastObjectMaterialSurface[i] = materials[i]->surfaceProps;
+					backup.textures[i] = materials[i]->texture;
+					backup.colors[i] = *(RwRGBA*) &materials[i]->color;
+					backup.surfaces[i] = materials[i]->surfaceProps;
 				}
 			}
+			pObject->m_originalAtomicMaterials.push_back(backup);
 		}
 	}
 
@@ -2007,25 +1393,29 @@ RpAtomic* ChangeOriginalMaterialObjectCB(RpAtomic* result, void* data)
 	if (result && pObject && *(uint8_t*) result == 1) {
 		RpGeometry* geometry = result->geometry;
 		if (geometry) {
-			int count = geometry->matList.numMaterials;
-			RpMaterial** materials = geometry->matList.materials;
-			if (count >= 1 && materials) {
-				geometry->flags = pObject->m_uiLastObjectGeometry;
-
-				for (int i = 0; i < count; i++) {
-					if (i >= MAX_MATERIALS) break;
-					if (!materials[i]) continue;
-					if (pObject->m_Material[i].pMaterialTexture && materials[i]->texture != pObject->m_pLastObjectMaterialTexture[i]) {
-						materials[i]->texture = pObject->m_pLastObjectMaterialTexture[i];
-					}
-					if (pObject->m_bObjectMaterialColorChanged && pObject->m_Material[i].dwMaterialColor) {
-						materials[i]->color = *(RwRGBA*) &pObject->m_dwLastObjectMaterialColor[i];
-						materials[i]->surfaceProps = pObject->m_LastObjectMaterialSurface[i];
+			const CObject::AtomicMaterialBackup* backup = nullptr;
+			for (const auto& entry : pObject->m_originalAtomicMaterials) {
+				if (entry.atomic == result) {
+					backup = &entry;
+					break;
+				}
+			}
+			if (backup) {
+				int count = geometry->matList.numMaterials;
+				RpMaterial** materials = geometry->matList.materials;
+				if (count >= 1 && materials) {
+					geometry->flags = backup->geomFlags;
+					for (int i = 0; i < count && i < MAX_MATERIALS; i++) {
+						if (!materials[i]) continue;
+						if (pObject->m_Material[i].pMaterialTexture && materials[i]->texture != backup->textures[i]) {
+							materials[i]->texture = backup->textures[i];
+						}
+						if (pObject->m_bObjectMaterialColorChanged && pObject->m_Material[i].dwMaterialColor) {
+							materials[i]->color = *(RwRGBA*) &backup->colors[i];
+							materials[i]->surfaceProps = backup->surfaces[i];
+						}
 					}
 				}
-
-				pObject->m_bObjectMaterialTextureChanged = false;
-				pObject->m_bObjectMaterialColorChanged = false;
 			}
 		}
 	}
@@ -2040,6 +1430,7 @@ void CObject::ChangeToCustomObjectMaterial()
 	}
 
 	if (m_pLastObjectMaterialRwObject != m_entity->m_pRwObject) {
+		m_originalAtomicMaterials.clear();
 		ForEachObjectAtomic(m_entity->m_pRwObject, StoreOriginalMaterialObjectCB, this);
 		m_pLastObjectMaterialRwObject = m_entity->m_pRwObject;
 	}
@@ -2053,6 +1444,8 @@ void CObject::ChangeToOriginalObjectMaterial()
 		if (m_bObjectMaterialTextureChanged || m_bObjectMaterialColorChanged) {
 			if (m_entity && m_entity->m_pRwObject && m_pLastObjectMaterialRwObject == m_entity->m_pRwObject) {
 				ForEachObjectAtomic(m_entity->m_pRwObject, ChangeOriginalMaterialObjectCB, this);
+				m_bObjectMaterialTextureChanged = false;
+				m_bObjectMaterialColorChanged = false;
 			}
 		}
 	}

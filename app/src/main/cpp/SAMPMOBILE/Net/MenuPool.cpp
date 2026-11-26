@@ -1,15 +1,18 @@
-#include "../Game/Game.h"
-#include "../UI/UI.h"
+#include "MenuPool.h"
 #include "NetGame.h"
 #include "Proto/RpcOutbound.h"
-
+#include "../Client.h"
+#include "../Game/Game.h"
+#include "../Game/Util.h"
+#include "../UI/UI.h"
+#include "../UI/UISettings.h"
+#include <RakNet/RakClientInterface.h>
+#include <RakNet/SAMP/SAMPRPC.h>
 #include <encoding.h>
-
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <cmath>
 
-extern NetGame* pNetGame;
-extern UI* pUI;
 
 std::string CMenuPool::formatMenuText(const std::string& raw, const char* resetHex)
 {

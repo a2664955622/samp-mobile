@@ -1,5 +1,10 @@
 #pragma once
 
+#include "../Widget.h"
+#include "../Widgets/ProgressBar.h"
+
+class Image;
+
 class SplashScreen : public Widget {
 public:
 	SplashScreen();

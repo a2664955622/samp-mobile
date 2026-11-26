@@ -1,12 +1,14 @@
 #pragma once
 
-#include "../Net/NetGame.h"
+#include "../Net/NetTypes.h"
 
 #include "Header.h"
 #include "Stream.h"
 
 #include <unordered_map>
 #include <array>
+
+struct RwTexture;
 
 class SpeakerList {
 	SpeakerList() = delete;

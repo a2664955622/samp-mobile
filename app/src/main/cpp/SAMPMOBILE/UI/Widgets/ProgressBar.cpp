@@ -1,4 +1,6 @@
-#include "../UI.h"
+#include "ProgressBar.h"
+#include "../ImGuiRenderer.h"
+#include "../UISettings.h"
 
 ProgressBar::ProgressBar(const ImColor& color_empty, const ImColor& color_filled, bool border)
 {

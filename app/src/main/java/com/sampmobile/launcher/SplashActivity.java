@@ -1,19 +1,13 @@
 package com.sampmobile.launcher;
 
 import android.Manifest;
-import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
-import android.content.ServiceConnection;
 import android.opengl.GLSurfaceView;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Looper;
-import android.os.Message;
-import android.os.Messenger;
-import android.os.RemoteException;
 import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
@@ -31,6 +25,7 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 import pub.devrel.easypermissions.EasyPermissions;
+import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.Logcat;
 import com.sampmobile.launcher.utils.Utils;
 
@@ -51,28 +46,10 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
         };
     }
 
-    public IncomingHandler mInHandler;
-    public Messenger mMessenger;
-    public Messenger mService;
-    private boolean mBound;
     private boolean mAppStarted = false;
     private final Handler mStartHandler = new Handler(Looper.getMainLooper());
     GLSurfaceView glSurfaceView;
-
     Logcat logcat;
-
-    private final ServiceConnection mConnection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(@NonNull ComponentName componentName, @NonNull IBinder service) {
-            mService = new Messenger(service);
-            checkUpdate();
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName componentName) {
-            mService = null;
-        }
-    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -85,9 +62,6 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
 
         logcat = new Logcat(this);
         logcat.start();
-
-        mInHandler = new IncomingHandler();
-        mMessenger = new Messenger(mInHandler);
 
         glSurfaceView = findViewById(R.id.surface);
         glSurfaceView.setRenderer(this);
@@ -122,13 +96,6 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
     protected void onDestroy() {
         mStartHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
-        if (mBound) {
-            mBound = false;
-            try {
-                unbindService(mConnection);
-            } catch (IllegalArgumentException ignored) {
-            }
-        }
         if (logcat != null) {
             logcat.stop();
             logcat = null;
@@ -160,7 +127,6 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
             return;
         }
         if (!Utils.isOnline(this)) {
-            // dialog
             new AlertDialog.Builder(this)
                     .setTitle("没有网络连接！")
                     .setMessage("请连接网络后重试。")
@@ -173,12 +139,7 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
                                 .setTitle(R.string.offline_mode)
                                 .setMessage("确定要以单机模式启动游戏吗？")
                                 .setPositiveButton("是", (dialog2, which2) -> {
-                                    getSharedPreferences("samp_settings", Context.MODE_PRIVATE)
-                                            .edit()
-                                            .putBoolean("offline_mode", true)
-                                            .commit();
-                                    Utils.saveSettings(this);
-                                    // start game
+                                    ClientSettings.prepareOfflineLaunch(this);
                                     try {
                                         Intent intent = new Intent(this, com.sampmobile.game.SAMP.class);
                                         intent.putExtra("extra_check", "sampmobile1337");
@@ -199,10 +160,10 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
         }
 
         mAppStarted = true;
-        getSharedPreferences("samp_settings", Context.MODE_PRIVATE).edit().putString("files_type", "full").apply();
+        ClientSettings.ensureExists(this);
         mStartHandler.postDelayed(() -> {
-            if (isFinishing() || isDestroyed() || mBound) return;
-            mBound = bindService(new Intent(this, UpdateService.class), mConnection, Context.BIND_AUTO_CREATE);
+            if (isFinishing() || isDestroyed()) return;
+            startMain();
         }, 2500);
     }
 
@@ -240,14 +201,6 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
             type = Utils.GPUType.ETC;
         }
 
-        /*if (extensions.contains("pvr")) {
-            type = Utils.GPUType.PVR;
-        } else if (extensions.contains("dxt")) {
-            type = Utils.GPUType.DXT;
-        } else {
-            type = Utils.GPUType.ETC;
-        }*/
-
         Utils.GPU_TYPE = type;
         Log.i("SplashActivity", "GPU_TYPE: " + Utils.GPU_TYPE.name());
 
@@ -265,93 +218,10 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
 
     @Override
     public void onSurfaceChanged(GL10 gl10, int i, int i1) {
-
     }
 
     @Override
     public void onDrawFrame(GL10 gl10) {
-
-    }
-
-    public void checkUpdate() {
-        // Log.i("SplashActivity", "checkUpdate");
-
-        Message obtain = Message.obtain(null, 0);
-        obtain.replyTo = mMessenger;
-
-        try {
-            if (mService != null) {
-                mService.send(obtain);
-            }
-        } catch (RemoteException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private class IncomingHandler extends Handler {
-        @Override
-        public void handleMessage(Message message) {
-            if (isFinishing() || isDestroyed()) {
-                return;
-            }
-            int i = message.what;
-            if (i == 4) {
-                UpdateActivity.UpdateStatus updateStatus;
-                try {
-                    updateStatus = UpdateActivity.UpdateStatus.valueOf(message.getData().getString("status", ""));
-                } catch (IllegalArgumentException e) {
-                    return;
-                }
-                if (updateStatus == UpdateActivity.UpdateStatus.Undefined) {
-                    Message obtain = Message.obtain(null, 5);
-                    obtain.replyTo = mMessenger;
-                    Messenger messenger = mService;
-                    if (messenger == null) return;
-                    try {
-                        messenger.send(obtain);
-                    } catch (RemoteException e) {
-                        e.printStackTrace();
-                    }
-                } else if (updateStatus == UpdateActivity.UpdateStatus.CheckUpdate) {
-                    Message obtain2 = Message.obtain(null, 4);
-                    obtain2.replyTo = mMessenger;
-                    Messenger messenger = mService;
-                    if (messenger == null) return;
-                    try {
-                        messenger.send(obtain2);
-                    } catch (RemoteException e2) {
-                        e2.printStackTrace();
-                    }
-                }
-            } else if (i == 5) {
-                UpdateActivity.GameStatus gameStatus;
-                try {
-                    gameStatus = UpdateActivity.GameStatus.valueOf(message.getData().getString("status", ""));
-                } catch (IllegalArgumentException e) {
-                    return;
-                }
-                Log.i("SplashActivity", "gameStatus = " + gameStatus);
-
-                if (gameStatus == UpdateActivity.GameStatus.GameFilesUpdateRequired) {
-                    try {
-                        new AlertDialog.Builder(SplashActivity.this)
-                                .setTitle("更新：").setMessage("游戏文件需要更新！")
-                                .setPositiveButton("更新", (dialog, which) -> {
-                                    Intent intent = new Intent(SplashActivity.this, UpdateActivity.class);
-                                    intent.putExtra("mode", UpdateActivity.UpdateMode.GameUpdate.name());
-                                    startActivity(intent);
-                                    finish();
-                                }).setNegativeButton("否", (dialog, which) -> {
-                                    startMain();
-                                }).setCancelable(false).show();
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-                } else {
-                    startMain();
-                }
-            }
-        }
     }
 
     @Override

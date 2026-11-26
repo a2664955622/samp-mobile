@@ -5,6 +5,9 @@
 #include "Placeable.h"
 #include "Core/MatrixLinkList.h"
 #include "../../Client.h"
+#include "../../Game/Engine/PatchRegistry.h"
+#include "../../Game/Engine/Symbols.h"
+#include <Memory.h>
 
 namespace sa {
 void (* CPlaceable_InitMatrixArray)();

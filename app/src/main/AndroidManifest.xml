@@ -52,20 +52,10 @@
 
         </provider>
 
-        <service
-            android:name="com.sampmobile.launcher.UpdateService"
-            android:enabled="true"
-            android:exported="false"
-            android:stopWithTask="false" />
-
         <activity
             android:name="com.sampmobile.launcher.MainActivity"
             android:screenOrientation="landscape"
             android:windowSoftInputMode="adjustPan" />
-
-        <activity
-            android:name="com.sampmobile.launcher.UpdateActivity"
-            android:screenOrientation="landscape" />
 
         <activity
             android:name="com.sampmobile.launcher.SplashActivity"

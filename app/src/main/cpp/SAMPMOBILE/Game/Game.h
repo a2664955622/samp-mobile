@@ -1,33 +1,15 @@
 #pragma once
 
-#include <SA.h>
-
-#include "Common.h"
-#include "Aimstuff.h"
-#include "Camera.h"
-#include "Entity.h"
-#include "Vehicle.h"
-#include "Object.h"
-#include "PlayerPed.h"
-#include "Actor.h"
-#include "Animation.h"
-#include "Hooks.h"
-#include "Pad.h"
-#include "Patches.h"
-#include "Font.h"
-#include "TextDraw.h"
-#include "Scripting.h"
-#include "Util.h"
-#include "RadarColors.h"
-#include "SnapShotHelper.h"
-#include "MaterialTextGenerator.h"
-#include "RemoveBuilding.h"
 #include <atomic>
-#include "RGBA.h"
-#include "../Java/EditObject.h"
-
+#include <cstdint>
 #include <string>
 
+#include <Core/Vector.h>
+
+class CCamera;
+class CObject;
+class CPlayerPed;
+class CVehicle;
 class ImGuiRenderer;
 
 class Game {
@@ -70,7 +52,7 @@ public:
 
 	void DrawGangZone(float fPos[], uint32_t dwColor, bool bFullMap);
 
-	uint32_t CreatePickup(int iModel, int iType, float fX, float fY, float fZ, int* pdwindex);
+	uint32_t CreatePickup(int iModel, int iType, float fX, float fY, float fZ, int* pdwindex, int* pEffectiveModel = nullptr);
 	uint32_t CreateWeaponPickup(int iModel, int iAmmo, float fX, float fY, float fZ);
 	CObject* NewObject(int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDrawDistance);
 	CPlayerPed* NewPlayer(int iSkin, float fX, float fY, float fZ, float fRotation, bool unk, bool bIsNPC);
@@ -90,24 +72,8 @@ public:
 	bool IsAnimationLoaded(const char* szAnimLib);
 	void RequestAnimation(const char* szAnimLib);
 
-	CCamera* GetCamera()
-	{
-		if (m_gameCamera == nullptr) {
-			m_gameCamera = new CCamera();
-		}
-		return m_gameCamera;
-	}
-
-	CPlayerPed* FindPlayerPed()
-	{
-		if (m_gamePlayer == nullptr) {
-			if (!GamePool_FindPlayerPed()) {
-				return nullptr;
-			}
-			m_gamePlayer = new CPlayerPed();
-		}
-		return m_gamePlayer;
-	}
+	CCamera* GetCamera();
+	CPlayerPed* FindPlayerPed();
 
 	static bool IsGamePaused();
 	void DisableAutoAim();
@@ -126,15 +92,15 @@ public:
 	void MakeRaceCheckpoint();
 	void DisableRaceCheckpoint();
 
-	void EnableGameInput(bool enable) { m_gameInput.store(enable, std::memory_order_release); };
+	void EnableGameInput(bool enable) { m_gameInput.store(enable, std::memory_order_release); }
 	[[nodiscard]] bool IsGameInputEnabled() const { return m_gameInput.load(std::memory_order_acquire); }
 
 	void ToggleCJWalk(bool bUseCJWalk);
 
-	void EnableCheckpoints(bool enable) { m_checkpointsEnabled = enable; };
+	void EnableCheckpoints(bool enable) { m_checkpointsEnabled = enable; }
 	[[nodiscard]] bool AreCheckpointsEnabled() const { return m_checkpointsEnabled; }
 
-	void EnableRaceCheckpoints(bool enable) { m_raceCheckpointsEnabled = enable; };
+	void EnableRaceCheckpoints(bool enable) { m_raceCheckpointsEnabled = enable; }
 	[[nodiscard]] bool AreRaceCheckpointsEnabled() const { return m_raceCheckpointsEnabled; }
 
 	// GameText containing characters the engine font cannot render is

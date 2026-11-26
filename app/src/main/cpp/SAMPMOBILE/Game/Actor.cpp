@@ -2,17 +2,26 @@
 // Created by ALYN on 11-Jan-25.
 //
 
+#include "Actor.h"
 #include "Game.h"
+#include "Scripting.h"
+#include "Util.h"
+#include "Artwork/ArtworkCore.h"
+#include "Artwork/ArtworkManager.h"
 #include "../Client.h"
+#include <SA.h>
+#include <spdlog/spdlog.h>
 
-extern Game* pGame;
 
-CActor::CActor(int iSkin, float fX, float fY, float fZ, float fAngle)
+CActor::CActor(int iSkin, float fX, float fY, float fZ, float fAngle, int iCustomSkin)
 {
-	spdlog::info("CActor::CActor({}, {}, {}, {}, {})", iSkin, fX, fY, fZ, fAngle);
+	spdlog::info("CActor::CActor({}, {}, {}, {}, {}, custom={})", iSkin, fX, fY, fZ, fAngle, iCustomSkin);
 	m_actor = nullptr;
 	m_gtaId = 0;
 	m_invulnerable = false;
+	m_iFallbackSkin = iSkin;
+	m_iServerSkin = artwork::isCustomSkinId(iCustomSkin) ? iCustomSkin : iSkin;
+	iSkin = ResolveEffectivePedSkin(iSkin, iCustomSkin);
 
 	if (!IsValidPedModel(iSkin)) {
 		spdlog::error("CActor::CActor: Invalid skin model: {}", iSkin);
@@ -154,4 +163,35 @@ void CActor::SetFacingAngle(float fAngle)
 		m_actor->m_fAimingRotation = rad;
 		ScriptCommand(&set_actor_z_angle, m_gtaId, fAngle);
 	}
+}
+
+bool CActor::RefreshCustomSkin()
+{
+	if (!m_actor || GamePool_Ped_GetAt(m_gtaId) != m_actor) {
+		return false;
+	}
+	if (!artwork::isCustomSkinId(m_iServerSkin) || artwork::isInternalCustomSlot(m_actor->m_nModelIndex)) {
+		return false;
+	}
+	const int32_t slot = artwork::ArtworkManager::instance().ensureCustomSkinLoaded(m_iServerSkin);
+	if (slot >= 0 && IsValidPedModel(static_cast<uint>(slot))) {
+		SetModelIndex(static_cast<uint>(slot));
+		return true;
+	}
+	return false;
+}
+
+void CActor::RevertCustomSkinBeforeUnload()
+{
+	if (!m_actor || GamePool_Ped_GetAt(m_gtaId) != m_actor) {
+		return;
+	}
+	if (!artwork::isInternalCustomSlot(m_actor->m_nModelIndex)) {
+		return;
+	}
+	const uint fallback = (m_iFallbackSkin >= 0 && !artwork::isInternalCustomSlot(m_iFallbackSkin)
+		&& IsValidPedModel(static_cast<uint>(m_iFallbackSkin)))
+		? static_cast<uint>(m_iFallbackSkin)
+		: 0u;
+	SetModelIndex(fallback);
 }

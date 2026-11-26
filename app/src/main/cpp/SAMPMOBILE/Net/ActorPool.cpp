@@ -1,8 +1,12 @@
+#include "ActorPool.h"
+#include "../Client.h"
 #include "../Game/Game.h"
+#include "../Game/Util.h"
 #include "NetGame.h"
 #include "../UI/UI.h"
+#include "../UI/SAMPWidgets/Chat.h"
+#include <spdlog/spdlog.h>
 
-extern UI* pUI;
 
 CActorPool::CActorPool()
 {
@@ -33,7 +37,8 @@ void CActorPool::New(NEW_ACTOR* pNewActor)
 			pNewActor->vecPos.x,
 			pNewActor->vecPos.y,
 			pNewActor->vecPos.z,
-			pNewActor->fAngle);
+			pNewActor->fAngle,
+			pNewActor->iCustomSkin);
 
 	if (!pActor || !pActor->m_actor) {
 		delete pActor;

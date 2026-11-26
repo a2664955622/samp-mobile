@@ -1,11 +1,12 @@
 #include "../Client.h"
 #include "../Game/Game.h"
+#include "../Game/Object.h"
 #include "../Net/NetGame.h"
+#include <SA.h>
 
 #include "StreamAtObject.h"
 #include "StreamInfo.h"
 
-extern NetGame* pNetGame;
 
 StreamAtObject::StreamAtObject(const uint32_t color, std::string name,
 		const float distance, const WORD objectId) noexcept

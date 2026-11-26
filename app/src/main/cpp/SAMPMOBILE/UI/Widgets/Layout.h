@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Widget.h"
+
 enum class Orientation {
 	HORIZONTAL,
 	VERTICAL

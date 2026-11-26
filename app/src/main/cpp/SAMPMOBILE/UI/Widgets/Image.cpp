@@ -1,5 +1,6 @@
-#include "../UI.h"
-#include "../../Game/Game.h"
+#include "Image.h"
+#include "../ImGuiRenderer.h"
+#include "../../Game/Util.h"
 
 Image::Image(const std::string& arch_name, const std::string& name)
 {

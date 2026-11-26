@@ -1,20 +1,29 @@
 #include "Settings.h"
+#include "SettingsContract.h"
 #include "Client.h"
+#include "ClientSubsystems.h"
+#include "Addr.h"
+#include "Game/Engine/Symbols.h"
+#include "Game/Engine/PatchRegistry.h"
 #include "Game/Game.h"
+#include "Game/PlayerPed.h"
+#include "Game/TouchWidgets.h"
+#include "Game/Util.h"
 #include "Enums/WidgetIDs.h"
-#include <bass.h>
-#include <opus.h>
-#include "Voice/PluginConfig.h"
-#include "Voice/Playback.h"
-#include "Voice/Record.h"
 
+#include <arpa/inet.h>
+#include <RakNet/SocketLayer.h>
+#include <SA.h>
+#include <SymUtils.h>
+#include <spdlog/spdlog.h>
 #include <rapidjson/document.h>
 #include <rapidjson/filereadstream.h>
 #include <rapidjson/filewritestream.h>
 #include <rapidjson/prettywriter.h>
 #include <algorithm>
-
-extern Game* pGame;
+#include <cstddef>
+#include <cstdio>
+#include <vector>
 
 bool Settings::m_initialized = false;
 
@@ -25,8 +34,8 @@ char Settings::m_pass[64] = "";
 
 // settings
 char Settings::m_nick[30] = "samp_player";
-int Settings::m_sampversion = 0;
-bool Settings::m_newinterface = false;
+char Settings::m_sampVersionName[16] = "0.3.7";
+int Settings::m_sampNetgameVersion = 0xFD9;
 bool Settings::m_systemkeyboard = true;
 bool Settings::m_timestamp = false;
 bool Settings::m_fastconnect = false;
@@ -35,8 +44,10 @@ bool Settings::m_displayfps = false;
 int Settings::m_fpslimit = 0; // Default 0 = Unlimited (无限制)
 int Settings::m_chatstrings = 8;
 float Settings::m_fontsize = 25.0f;
-ImVec2 Settings::m_chatpos = ImVec2(100.0f, 20.0f);
-ImVec2 Settings::m_chatsize = ImVec2(360.0f, 110.0f);
+float Settings::m_chatPosX = 100.0f;
+float Settings::m_chatPosY = 20.0f;
+float Settings::m_chatSizeX = 360.0f;
+float Settings::m_chatSizeY = 110.0f;
 char Settings::m_charset[16] = "GBK";
 bool Settings::m_modloader = false;
 bool Settings::m_aml = false;
@@ -121,6 +132,16 @@ bool Settings::m_audiomsg = true;    // /audiomsg
 bool Settings::m_logurls = false;    // /logurls
 bool Settings::m_shownametagstatus = true; // /nametagstatus
 
+char* Settings::ip()
+{
+	struct in_addr ipv4{};
+	if (inet_pton(AF_INET, m_host, &ipv4) == 1) {
+		return m_host;
+	}
+	char* resolved = (char*) SocketLayer::Instance()->DomainNameToIP(m_host);
+	return resolved ? resolved : m_host;
+}
+
 void Settings::initialize()
 {
 	spdlog::info("Initializing settings...");
@@ -199,7 +220,19 @@ void Settings::initialize()
 
 	const auto& s = clientObj["settings"];
 	readStringFrom(s, "nick_name", m_nick, sizeof(m_nick));
-	m_sampversion = readIntFrom(s, "samp_version", 0, 0, 3);
+	{
+		settings_contract::SampVersionSpec ver = settings_contract::kSampVersions[0];
+		if (s.HasMember("samp_version")) {
+			if (s["samp_version"].IsString()) {
+				ver = settings_contract::parseSampVersion(s["samp_version"].GetString());
+			}
+			else if (s["samp_version"].IsInt()) {
+				ver = settings_contract::parseSampVersionLegacyInt(s["samp_version"].GetInt());
+			}
+		}
+		snprintf(m_sampVersionName, sizeof(m_sampVersionName), "%s", ver.id);
+		m_sampNetgameVersion = ver.netgameVersion;
+	}
 	m_systemkeyboard = readBoolFrom(s, "system_keyboard", true);
 	m_timestamp = readBoolFrom(s, "timestamp", false);
 	m_fastconnect = readBoolFrom(s, "fast_connect", false);
@@ -208,10 +241,10 @@ void Settings::initialize()
 	m_fpslimit = readIntFrom(s, "fps_limit", 0, 0, 250);
 	m_chatstrings = readIntFrom(s, "chat_strings", 8, 4, 24);
 	m_fontsize = readFloatFrom(s, "font_size", 25.0f, 10.0f, 60.0f);
-	m_chatpos.x = static_cast<float>(readIntFrom(s, "chat_posx", 100, 0, 4096));
-	m_chatpos.y = static_cast<float>(readIntFrom(s, "chat_posy", 20, 0, 4096));
-	m_chatsize.x = static_cast<float>(readIntFrom(s, "chat_sizex", 360, 64, 4096));
-	m_chatsize.y = static_cast<float>(readIntFrom(s, "chat_sizey", 110, 32, 4096));
+	m_chatPosX = static_cast<float>(readIntFrom(s, "chat_posx", 100, 0, 4096));
+	m_chatPosY = static_cast<float>(readIntFrom(s, "chat_posy", 20, 0, 4096));
+	m_chatSizeX = static_cast<float>(readIntFrom(s, "chat_sizex", 360, 64, 4096));
+	m_chatSizeY = static_cast<float>(readIntFrom(s, "chat_sizey", 110, 32, 4096));
 	readStringFrom(s, "charset", m_charset, sizeof(m_charset));
 
 	auto readBoolOpt = [&](const char* key, bool def) -> bool {
@@ -219,6 +252,12 @@ void Settings::initialize()
 	};
 	auto readIntOpt = [&](const char* key, int def, int minV, int maxV) -> int {
 		return readIntFrom(s, key, def, minV, maxV);
+	};
+	auto readEnumOpt = [&](const char* key, auto parseStrFn, auto parseIntFn, int def) -> int {
+		if (!s.HasMember(key)) return def;
+		if (s[key].IsString()) return parseStrFn(s[key].GetString());
+		if (s[key].IsInt()) return parseIntFn(s[key].GetInt());
+		return def;
 	};
 
 	m_modloader = readBoolOpt("modloader", false);
@@ -238,7 +277,7 @@ void Settings::initialize()
 	m_carreflections = readIntOpt("gta_car_reflections", 2, 0, 3);
 	m_trafficmode = readIntOpt("gta_traffic_mode", 2, 0, 2);
 	m_brightness = readIntOpt("gta_brightness", 60, 0, 100);
-	m_aspectratio = readIntOpt("aspect_ratio", 0, 0, 5);
+	m_aspectratio = readEnumOpt("aspect_ratio", settings_contract::parseAspectRatio, settings_contract::parseAspectRatioLegacyInt, 0);
 	m_framelimiter = readBoolOpt("frame_limiter", false);
 
 	m_camsensx = readIntOpt("cam_sens_x", 50, 1, 100);
@@ -273,7 +312,7 @@ void Settings::initialize()
 	m_voicevolume = readIntOpt("voice_volume", 100, 0, 100);
 	m_voicemicenable = readBoolOpt("voice_mic_enable", true);
 	m_voicemicvolume = readIntOpt("voice_mic_volume", 75, 0, 100);
-	m_voicemicmode = readIntOpt("voice_mic_mode", 0, 0, 1);
+	m_voicemicmode = readEnumOpt("voice_mic_mode", settings_contract::parseVoiceMicMode, settings_contract::parseVoiceMicModeLegacyInt, 0);
 	m_voicebalancer = readBoolOpt("voice_balancer", false);
 	m_voicefilter = readBoolOpt("voice_filter", true);
 	m_voicespeakerlist = readBoolOpt("voice_speaker_list", true);
@@ -282,29 +321,23 @@ void Settings::initialize()
 	m_showgtahud = readBoolOpt("show_gta_hud", true);
 	m_showradar = readBoolOpt("show_radar", true);
 	m_radartapmap = readBoolOpt("radar_tap_map", true);
-	m_crosshairstyle = readIntOpt("crosshair_style", 0, 0, 4);
+	m_crosshairstyle = readEnumOpt("crosshair_style", settings_contract::parseCrosshairStyle, settings_contract::parseCrosshairStyleLegacyInt, 0);
 	m_showdeathwindow = readBoolOpt("show_death_window", true);
 	m_shownametags = readBoolOpt("show_nametags", true);
 	m_shownametagweapon = readBoolOpt("show_nametag_weapon", false);
 	m_nametagsize = readIntOpt("nametag_size", 100, 50, 150);
 	m_textlabelsize = readIntOpt("textlabel_size", 100, 50, 150);
-	m_fontfamily = readIntOpt("font_family", 0, 0, 2);
+	m_fontfamily = readEnumOpt("font_family", settings_contract::parseFontFamily, settings_contract::parseFontFamilyLegacyInt, 0);
 	m_showbuttonpanel = readBoolOpt("show_button_panel", true);
 	m_showscreenshotbtn = readBoolOpt("show_screenshot_btn", true);
 	m_gtasubtitles = readBoolOpt("gta_subtitles", true);
 	m_chatshadow = readBoolOpt("chat_shadow", true);
-	m_screenshotmode = readIntOpt("screenshot_mode", 0, 0, 1);
+	m_screenshotmode = readEnumOpt("screenshot_mode", settings_contract::parseScreenshotMode, settings_contract::parseScreenshotModeLegacyInt, 0);
 
-	// Sync voice chat settings into PluginConfig immediately
-	PluginConfig::SetSoundEnable(m_voice);
-	PluginConfig::SetSoundVolume(m_voicevolume);
-	PluginConfig::SetSoundBalancer(m_voicebalancer);
-	PluginConfig::SetSoundFilter(m_voicefilter);
-	PluginConfig::SetMicroEnable(m_voice && m_voicemicenable);
-	PluginConfig::SetMicroVolume(m_voicemicvolume);
+	ClientSubsystems::onSettingsLoaded();
 
 	spdlog::info("host {} port {}", m_host, m_port);
-	spdlog::info("nick_name {} samp_version {} charset {}", m_nick, m_sampversion, m_charset);
+	spdlog::info("nick_name {} samp_version {} (0x{:X}) charset {}", m_nick, m_sampVersionName, m_sampNetgameVersion, m_charset);
 	spdlog::info("mods: modloader={} aml={} jpatch={} cleo={} monet={}",
 			m_modloader, m_aml, m_jpatch, m_cleo, m_monet);
 	spdlog::info("gta: vfx={} res={} dd={} shd={} refl={} traf={} bri={} ar={} fps={} freeCam={}",
@@ -467,13 +500,7 @@ void Settings::applyToGtaEngine(bool bInGameReady)
 		*pLodDist = 0.875f + ((float) m_drawdistance * 0.875f * 0.01f);
 	}
 
-	// Sync voice settings to Playback & Record
-	Playback::SetSoundEnable(m_voice);
-	Playback::SetSoundVolume(m_voicevolume);
-	Playback::SetSoundBalancer(m_voicebalancer);
-	Playback::SetSoundFilter(m_voicefilter);
-	Record::SetMicroEnable(m_voice && m_voicemicenable);
-	Record::SetMicroVolume(m_voicemicvolume);
+	ClientSubsystems::onSettingsApplied();
 
 	if (bInGameReady) {
 		uintptr_t* widgets = GetTouchWidgets();

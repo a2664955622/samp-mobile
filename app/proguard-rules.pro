@@ -9,8 +9,6 @@
 # omp-cef 浏览器层：CefManager 的类名/方法名被 JNI 直接按字符串查找
 -keep class com.sampmobile.game.ui.cef.* { *; }
 
--keep class com.sampmobile.launcher.utils.SignatureChecker { *; }
-
 # for minify
 -dontwarn javax.servlet.**
 -dontwarn org.conscrypt.**

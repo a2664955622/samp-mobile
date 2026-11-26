@@ -1,4 +1,5 @@
 #include <dlfcn.h>
+#include <spdlog/spdlog.h>
 
 #include "bass.h"
 #include "../../Client.h"

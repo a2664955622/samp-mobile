@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <string>
-#include <imgui.h>
 
 class ImGuiRenderer;
 
@@ -17,13 +16,17 @@ public:
 	// Called from CText::Get hook; returns custom .fxt / dynamic 0ADF GXT wide string or nullptr
 	static uint16_t* getCustomGxt(const char* key);
 
-	// Called from AND_TouchEvent_hook (when no modal SAMP dialog/keyboard is open).
+	// Called from InputArbiter when no higher-priority modal UI is open.
 	// Returns true if CLEO menu UI consumed the touch event.
 	static bool handleTouch(int type, int num, int x, int y, float screenW, float screenH);
 
-	// Called from UI::drawList() to draw built-in CLEO .csi launcher menu or script 0DF2 menu
-	static void renderMenu(ImGuiRenderer* renderer, const ImVec2& displaySize);
+	// Called from ClientSubsystems::onUiRender() to draw built-in CLEO .csi launcher menu or script 0DF2 menu
+	static void renderMenu(ImGuiRenderer* renderer, float displayW, float displayH);
 
 	// Toggle built-in CLEO .csi script menu (invoked by /cleo chat command)
 	static void toggleMenu();
+
+	// Query / dismiss active CLEO menu overlay (for unified modal/back arbitration)
+	static bool isMenuOpen();
+	static bool dismissMenu();
 };

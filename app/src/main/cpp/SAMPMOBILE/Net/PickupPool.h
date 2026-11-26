@@ -1,5 +1,7 @@
 #pragma once
 
+#include "NetTypes.h"
+
 #pragma pack(push, 1)
 typedef struct _PICKUP {
 	int iModel;
@@ -27,6 +29,8 @@ public:
 	void Destroy(int iPickup);
 	void DestroyWeaponByOwner(PLAYERID owner);
 	void PickedUp(int dwGTAId);
+	void RefreshCustomModels();
+	void DestroyCustomModelsBeforeUnload();
 
 private:
 	int GetIDFromGTAId(int dwGTAId);
@@ -34,6 +38,7 @@ private:
 public:
 	uintptr_t m_dwHnd[MAX_PICKUPS];
 	int m_dwGTAId[MAX_PICKUPS];
+	int m_effectiveModel[MAX_PICKUPS];
 	uint32_t m_cooldownUntilMs[MAX_PICKUPS];
 	DROPPED_WEAPON m_droppedWeapon[MAX_PICKUPS];
 	PICKUP m_Pickups[MAX_PICKUPS];

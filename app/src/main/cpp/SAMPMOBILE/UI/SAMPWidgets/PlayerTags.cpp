@@ -1,11 +1,19 @@
+#include "PlayerTags.h"
+#include "DeathWindow.h"
 #include "../UI.h"
+#include "../UISettings.h"
+#include "../../Client.h"
 #include "../../Game/Game.h"
+#include "../../Game/PlayerPed.h"
+#include "../../Game/Scripting.h"
+#include "../../Game/Vehicle.h"
+#include "../../Game/Util.h"
 #include "../../Net/NetGame.h"
+#include "../../Net/RemotePlayer.h"
 #include "../../Settings.h"
+#include <encoding.h>
+#include <SA.h>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 PlayerTags::PlayerTags()
 {

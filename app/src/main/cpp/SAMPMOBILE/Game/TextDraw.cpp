@@ -1,13 +1,20 @@
-//
-// Created by ALYN on 2024/8/30.
-//
-#include <sstream>
+#include "TextDraw.h"
+#include "Font.h"
 #include "Game.h"
+#include "RGBA.h"
+#include "SnapShotHelper.h"
+#include "Util.h"
+#include "Artwork/ArtworkCore.h"
+#include "Artwork/ArtworkManager.h"
+#include "Engine/Symbols.h"
+#include "../Client.h"
 #include "../UI/UI.h"
+#include "../UI/UISettings.h"
+#include <encoding.h>
+#include <SA.h>
+#include <spdlog/spdlog.h>
+#include <sstream>
 
-extern UI* pUI;
-extern Game* pGame;
-extern SnapShotHelper* pSnapShotHelper;
 
 extern RwTexture* TextDrawTexture[];
 
@@ -64,6 +71,8 @@ CTextDraw::CTextDraw(TEXT_DRAW_TRANSMIT* pTextDrawTransmit, const char* szText)
 	m_rectArea.top = 0.0f;
 	m_bHovered = false;
 	m_dwHoverColor = 0;
+	m_bUsesCustomAsset = false;
+	m_bPendingCustomAsset = false;
 }
 
 CTextDraw::~CTextDraw()
@@ -138,9 +147,27 @@ void CTextDraw::LoadTexture()
 		}
 
 		if (m_TextDrawData.iTextureSlot != -1) {
-			RwTexture* tex = LoadTextureFromTxd(txdname, texturename);
-			if (!tex && strcasecmp(texturename, rawTextureName) != 0) {
-				tex = LoadTextureFromTxd(txdname, rawTextureName);
+			RwTexture* tex = nullptr;
+			m_bUsesCustomAsset = false;
+			m_bPendingCustomAsset = false;
+			// 0.3.DL custom TXD sprite syntax: "mdl<modelId>:<texname>" (e.g. "mdl-2001:sign")
+			if (strncasecmp(txdname, "mdl", 3) == 0 && txdname[3] != '\0') {
+				char* endPtr = nullptr;
+				const long parsedId = strtol(txdname + 3, &endPtr, 10);
+				if (endPtr && *endPtr == '\0') {
+					const int32_t customId = static_cast<int32_t>(parsedId);
+					if (artwork::isCustomObjectId(customId) || artwork::isCustomSkinId(customId)) {
+						m_bUsesCustomAsset = true;
+						tex = artwork::ArtworkManager::instance().findTextureInCustomModel(customId, rawTextureName);
+						m_bPendingCustomAsset = (tex == nullptr);
+					}
+				}
+			}
+			if (!tex && !m_bUsesCustomAsset) {
+				tex = LoadTextureFromTxd(txdname, texturename);
+				if (!tex && strcasecmp(texturename, rawTextureName) != 0) {
+					tex = LoadTextureFromTxd(txdname, rawTextureName);
+				}
 			}
 			TextDrawTexture[m_TextDrawData.iTextureSlot] = tex;
 		}
@@ -439,8 +466,34 @@ void CTextDraw::SnapshotProcess()
 
 	RwTexture* snapshot = nullptr;
 
+	// 0.3.DL custom model preview (16-bit wire ID: negative objects arrive as uint16 two's complement)
+	const int32_t wireModel = artwork::decodeWireModelId16(m_TextDrawData.wModelID);
+	if (artwork::isCustomSkinId(wireModel)) {
+		m_bUsesCustomAsset = true;
+		const int32_t slot = artwork::ArtworkManager::instance().ensureCustomSkinLoaded(wireModel);
+		const bool ready = (slot >= 0 && IsValidPedModel(static_cast<uint>(slot)));
+		m_bPendingCustomAsset = !ready;
+		const int pedModel = ready ? slot : artwork::ArtworkManager::instance().resolveFallbackSkinModel(wireModel);
+		snapshot = pSnapShotHelper->CreatePedSnapShot(
+				pedModel,
+				m_TextDrawData.dwBackgroundColor,
+				&m_TextDrawData.vecRot,
+				m_TextDrawData.fZoom);
+	}
+	else if (artwork::isCustomObjectId(wireModel)) {
+		m_bUsesCustomAsset = true;
+		const int32_t slot = artwork::ArtworkManager::instance().ensureCustomObjectLoaded(wireModel);
+		const bool ready = (slot >= 0 && IsValidModel(slot));
+		m_bPendingCustomAsset = !ready;
+		const int objModel = ready ? slot : artwork::ArtworkManager::instance().resolveFallbackObjectModel(wireModel);
+		snapshot = pSnapShotHelper->CreateObjectSnapShot(
+				objModel,
+				m_TextDrawData.dwBackgroundColor,
+				&m_TextDrawData.vecRot,
+				m_TextDrawData.fZoom);
+	}
 	// PED MODEL
-	if (IsValidPedModel(m_TextDrawData.wModelID)) {
+	else if (IsValidPedModel(m_TextDrawData.wModelID)) {
 		if (!IsExistInfoForModel(m_TextDrawData.wModelID)) {
 			m_TextDrawData.wModelID = 0;
 		}
@@ -499,4 +552,39 @@ void CTextDraw::SnapshotProcess()
 			eng::fn::RwTextureDestroy(snapshot);
 		}
 	}
+}
+
+void CTextDraw::RefreshCustomAsset()
+{
+	if (!m_bUsesCustomAsset || !m_bPendingCustomAsset) {
+		return;
+	}
+	if (m_TextDrawData.dwStyle == 4) {
+		if (m_TextDrawData.iTextureSlot != -1) {
+			DestroyTextDrawTexture(m_TextDrawData.iTextureSlot);
+			m_TextDrawData.iTextureSlot = -1;
+		}
+		m_TextDrawData.iTextureSlot = GetFreeTextDrawTextureSlot();
+		if (m_TextDrawData.iTextureSlot != -1) {
+			LoadTexture();
+		}
+	} else if (m_TextDrawData.dwStyle == 5) {
+		if (m_TextDrawData.iTextureSlot != -1) {
+			DestroyTextDrawTexture(m_TextDrawData.iTextureSlot);
+			m_TextDrawData.iTextureSlot = -1;
+		}
+		// Next SnapshotProcess() tick will re-render the now-loaded custom model.
+	}
+}
+
+void CTextDraw::ReleaseCustomAssetBeforeUnload()
+{
+	if (!m_bUsesCustomAsset) {
+		return;
+	}
+	if (m_TextDrawData.iTextureSlot != -1) {
+		DestroyTextDrawTexture(m_TextDrawData.iTextureSlot);
+		m_TextDrawData.iTextureSlot = -1;
+	}
+	m_bPendingCustomAsset = true;
 }

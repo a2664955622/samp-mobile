@@ -1,5 +1,7 @@
 #pragma once
 
+#include <bass.h>
+
 class Playback {
 	Playback() = delete;
 	~Playback() = delete;

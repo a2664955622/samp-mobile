@@ -1,4 +1,5 @@
-#include "../UI.h"
+#include "ScrollPanel.h"
+#include "../ImGuiRenderer.h"
 
 ScrollPanel::ScrollPanel()
 {

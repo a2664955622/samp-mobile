@@ -1,8 +1,15 @@
+#include "NetStats.h"
 #include "../UI.h"
+#include "../UISettings.h"
 #include "../../Client.h"
 #include "../../Game/Game.h"
+#include "../../Game/PlayerPed.h"
+#include "../../Game/Vehicle.h"
+#include "../../Game/Util.h"
 #include "../../Net/NetGame.h"
+#include "../../Net/VehiclePool.h"
 
+#include <RakNet/RakClientInterface.h>
 #include <RakNet/RakNetStatistics.h>
 #include <cstdio>
 #include <cstring>
@@ -10,9 +17,6 @@
 #include <string>
 #include <unistd.h>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 namespace {
 

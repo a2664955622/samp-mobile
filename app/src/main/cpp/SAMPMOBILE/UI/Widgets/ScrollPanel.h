@@ -1,5 +1,7 @@
 #pragma once
 
+#include "../Widget.h"
+
 class ScrollPanel : public Widget {
 public:
 	ScrollPanel();

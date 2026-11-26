@@ -1,5 +1,11 @@
 #pragma once
 
+#include "NetTypes.h"
+#include "LocalPlayer.h"
+
+class CPlayerPed;
+class CVehicle;
+
 #define PLAYER_STATE_NONE            0
 #define PLAYER_STATE_ONFOOT            17
 #define PLAYER_STATE_PASSENGER        18
@@ -57,7 +63,7 @@ public:
 	uint32_t GetPlayerColorAsARGB();
 
 	void Process();
-	bool Spawn(uint8_t byteTeam, int iSkin, sa::CVector* vecPos, float fRotation, uint32_t dwColor, uint8_t byteFightingStyle);
+	bool Spawn(uint8_t byteTeam, int iSkin, sa::CVector* vecPos, float fRotation, uint32_t dwColor, uint8_t byteFightingStyle, int iCustomSkin = 0);
 	void Remove();
 	void HandleDeath();
 	void WeaponSyncCheck(uint8_t netCurrentWeapon);

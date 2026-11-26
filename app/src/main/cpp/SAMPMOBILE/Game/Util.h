@@ -1,6 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <sys/types.h>
+#include <SA.h>
+#include <RenderWare/rw.h>
 
 uint32_t GetTickCount();
 
@@ -26,7 +30,6 @@ sa::CVehicle* GamePool_Vehicle_GetAt(int iID);
 int GetVehicleSubtype(sa::CVehicle* pGtaVehicle);
 
 sa::CBaseModelInfo* GetModelInfoByID(int iModelID);
-uint32_t ModelInfoGetFlags(int iModelID);
 uint16_t ModelInfoGetReferenceCount(int iModelID);
 bool IsExistInfoForModel(int iModelID);
 bool IsValidModel(int iModelID);
@@ -37,7 +40,6 @@ int GetModelRefCounts(int iModel);
 RwObject* GetModelRWObject(uint modelID);
 
 RwTexture* LoadTextureFromTxd(const char* txdname, const char* texturename);
-bool AddTxdToSlot(const char* szTxdName);
 
 float FloatOffset(float f1, float f2);
 float DegToRad(float fDegress);
@@ -94,25 +96,7 @@ bool IsEntityPlaceable(sa::CEntity* pEntity);
 
 void CalcScreenCoors(const RwV3d* In, RwV3d* pResult, float pScaleX, float pScaleY, bool ClipFarPlane, bool ClipNearPlane);
 
-// widget fix
-enum eWidgetState {
-	STATE_NONE,
-	STATE_DISABLED
-};
-
-extern uintptr_t* g_pWidgets;
-
-// Resolves the live CTouchInterface::m_pWidgets pointer from libGTASA.so's GOT
-// slot (and updates g_pWidgets). Must be used instead of caching once at boot
-// because AML plugins like libSAUtils64.so redirect the GOT slot to an expanded
-// pNewWidgets array after Hooks::install().
-uintptr_t* GetTouchWidgets();
-
-eWidgetState ProcessFixedWidget(uintptr_t pWidget);
-
-void FixTouchWidgetLayout();
-
-void EnsureTouchWidgetsCreated();
+#include "TouchWidgets.h"
 
 void ProcessLineOfSight(sa::CVector* vecStart, sa::CVector* vecEnd, sa::CColPoint* colPoint, sa::CEntity** refEntityPtr,
 		bool bCheckBuildings, bool bCheckVehicles, int bCheckPeds, bool bCheckObjects, bool bCheckDummies, bool bSeeThroughStuff, bool bIgnoreSomeObjectsForCamera, bool bShootThroughStuff);

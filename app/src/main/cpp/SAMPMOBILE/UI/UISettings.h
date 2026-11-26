@@ -1,5 +1,10 @@
 #pragma once
 
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
+#endif
+#include <imgui.h>
+
 class UISettings {
 public:
 	static void Initialize(const ImVec2& display_size);

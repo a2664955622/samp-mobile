@@ -1302,21 +1302,53 @@ struct DlModelReset {
 	}
 };
 
-// RPC 183 (server -> client, 0.3.DL): Custom model download URL
+// RPC 183 (server -> client, 0.3.DL): Custom model download command (HTTP URL / Abort / Direct)
 struct DlModelUrl {
 	static constexpr int kRpcId = rpc::kDlModelUrl;
 	static constexpr uint8_t kVersionMask = kVer03DL;
 	static constexpr const char* kName = "DlModelUrl";
+
+	static constexpr uint8_t kKindAbort = 0;
+	static constexpr uint8_t kKindDirectChunk = 1;
+	static constexpr uint8_t kKindDirectFinish = 2;
+	static constexpr uint8_t kKindDirectBegin = 5;
+	static constexpr uint8_t kKindUrlRedirect = 6;
 
 	uint8_t kind = 0;
 	uint8_t fileType = 0;
 	uint32_t fileChecksum = 0;
 	std::string downloadLink;
 
+	// Direct-chunk fields (kind == 1, legacy 0.3.DL server fallback)
+	uint8_t chunkStage = 0;
+	uint32_t chunkUnpackedLen = 0;
+	std::vector<uint8_t> chunkData;
+
 	template <typename S>
 	bool serialize(S& s, ProtoVersion)
 	{
-		return s.u8(kind) && s.u8(fileType) && s.u32(fileChecksum) && s.dynStr8(downloadLink);
+		if (!s.u8(kind)) return false;
+		if (kind == kKindUrlRedirect) {
+			return s.u8(fileType) && s.u32(fileChecksum) && s.dynStr8(downloadLink);
+		}
+		if (kind == kKindDirectBegin) {
+			return s.u8(fileType) && s.u32(fileChecksum);
+		}
+		if (kind == kKindAbort || kind == kKindDirectFinish) {
+			return s.ok();
+		}
+		if (kind == kKindDirectChunk) {
+			if (!s.u8(chunkStage) || !s.u32(chunkUnpackedLen)) return false;
+			uint32_t len = static_cast<uint32_t>(chunkData.size());
+			if (!s.u32(len)) return false;
+			if (len > 4096u) return false;
+			if constexpr (S::kReading) {
+				chunkData.resize(len);
+			}
+			if (len > 0 && !s.bytes(chunkData.data(), len)) return false;
+			return s.ok();
+		}
+		return false;
 	}
 };
 

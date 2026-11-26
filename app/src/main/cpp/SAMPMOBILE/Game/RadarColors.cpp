@@ -1,4 +1,7 @@
+#include "RadarColors.h"
 #include "../Client.h"
+#include "../Net/NetTypes.h"
+#include <cstring>
 
 static constexpr int kRadarColorTableLen = 1000;
 static constexpr int kRadarColorSlots    = 1004; // MAX_PLAYERS

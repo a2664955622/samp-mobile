@@ -2,15 +2,22 @@
 // Created by ALYN on 2024/8/15.
 //
 
-#include "Game.h"
-#include "../Net/NetGame.h"
-#include "../UI/UI.h"
-#include "../Client.h"
 #include "Entity.h"
+#include "Camera.h"
+#include "Game.h"
+#include "Common.h"
+#include "PlayerPed.h"
+#include "Scripting.h"
+#include "Util.h"
+#include "Engine/Symbols.h"
+#include "../Net/NetGame.h"
+#include "../Net/LocalPlayer.h"
+#include "../UI/UI.h"
+#include "../UI/SAMPWidgets/Chat.h"
+#include "../Client.h"
+#include <SA.h>
+#include <spdlog/spdlog.h>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 void CEntity::Add()
 {
@@ -71,22 +78,17 @@ void CEntity::TeleportTo(float fX, float fY, float fZ)
 {
 	// spdlog::info("CEntity::TeleportTo({}, {}, {})", fX, fY, fZ);
 
-	RwMatrix mat;
-
 	if (m_entity && !IsEntityPlaceable(m_entity)) {
 		uint16_t modelIndex = m_entity->m_nModelIndex;
 		if (modelIndex != TRAIN_PASSENGER_LOCO &&
 				modelIndex != TRAIN_FREIGHT_LOCO &&
 				modelIndex != TRAIN_TRAM) {
-			if (fX > 3000.0f || fX < -3000.0f || fY > 3000.0f || fY < -3000.0f) {
-				mat = m_entity->GetMatrix().ToRwMatrix();
-				mat.pos = sa::CVector{fX, fY, fZ};
-				m_entity->SetMatrix(mat);
-				UpdateRwMatrixAndFrame();
-			}
-			else {
-				Memory::callFunction(*(void**) (*(uintptr_t*) m_entity + 15 * sizeof(void*)), m_entity, fX, fY, fZ, 0);
-			}
+			// engine Teleport is a clean CWorld::Remove -> matrix write ->
+			// UpdateRwFrame -> CWorld::Add cycle; with the hooked
+			// CPhysical::Add accepting any coordinate it works uniformly
+			// in-bounds and out-of-bounds (no more matrix-only OOB bypass
+			// leaving stale sector records behind)
+			Memory::callFunction(*(void**) (*(uintptr_t*) m_entity + 15 * sizeof(void*)), m_entity, fX, fY, fZ, 0);
 		}
 		else {
 			ScriptCommand(&put_train_at, m_gtaId, fX, fY, fZ);

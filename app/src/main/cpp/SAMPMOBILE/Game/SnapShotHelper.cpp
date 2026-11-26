@@ -1,7 +1,14 @@
+#include "SnapShotHelper.h"
+#include "Actor.h"
 #include "Game.h"
+#include "Util.h"
+#include "Vehicle.h"
+#include "Engine/Symbols.h"
+#include "../Client.h"
+#include <SA.h>
+#include <spdlog/spdlog.h>
 #include <GLES2/gl2.h>
 
-extern Game* pGame;
 
 SnapShotHelper::SnapShotHelper()
 {

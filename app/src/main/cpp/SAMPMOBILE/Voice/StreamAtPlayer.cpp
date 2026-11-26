@@ -1,12 +1,14 @@
 #include "../Client.h"
 #include "../Game/Game.h"
+#include "../Game/PlayerPed.h"
 #include "../Net/NetGame.h"
+#include "../Net/RemotePlayer.h"
+#include <SA.h>
 
 #include "StreamAtPlayer.h"
 
 #include "StreamInfo.h"
 
-extern NetGame* pNetGame;
 
 StreamAtPlayer::StreamAtPlayer(const uint32_t color, std::string name,
 		const float distance, const PLAYERID playerId) noexcept

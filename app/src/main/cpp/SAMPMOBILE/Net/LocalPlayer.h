@@ -1,5 +1,13 @@
 #pragma once
 
+#include <cstddef>
+#include <Core/Vector.h>
+#include <Core/Quaternion.h>
+#include "NetTypes.h"
+
+class CPlayerPed;
+class CVehicle;
+
 #define SPECTATE_TYPE_NONE                        0
 #define SPECTATE_TYPE_PLAYER                    1
 #define SPECTATE_TYPE_VEHICLE                    2
@@ -30,9 +38,6 @@
 #define BULLET_HIT_TYPE_VEHICLE                    2
 #define BULLET_HIT_TYPE_OBJECT                    3
 #define BULLET_HIT_TYPE_PLAYER_OBJECT            4
-
-#define INVALID_PLAYER_ID    0xFFFF
-#define NO_TEAM 0xFF
 
 enum eSurfingMode {
 	SURFING_MODE_NONE,

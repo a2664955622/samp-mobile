@@ -1,6 +1,5 @@
 package com.sampmobile.game;
 
-import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
@@ -14,11 +13,11 @@ import com.rockstargames.gtasa.GTASA;
 import java.io.File;
 import java.util.Objects;
 
+import com.sampmobile.game.ui.GameInputArbiter;
 import com.sampmobile.game.ui.UI;
 import com.sampmobile.game.ui.cef.CefManager;
+import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.ModManager;
-import com.sampmobile.launcher.utils.SignatureChecker;
-import com.sampmobile.launcher.utils.Utils;
 
 @Obfuscate
 public class SAMP extends GTASA {
@@ -51,17 +50,19 @@ public class SAMP extends GTASA {
         System.loadLibrary("SAMPMOBILE");
     }
 
-    private void loadModLibraries() {
-        android.content.SharedPreferences prefs = getSharedPreferences("samp_settings", Context.MODE_PRIVATE);
-        boolean amlEnabled = prefs.getBoolean("aml_scripts", false);
-        boolean jpatchEnabled = prefs.getBoolean("jpatch_enabled", false);
-        boolean monetEnabled = prefs.getBoolean("monet_scripts", false);
+    private void loadModLibraries(ClientSettings settings) {
+        boolean amlEnabled = settings.isAmlEnabled();
+        boolean jpatchEnabled = settings.isJPatchEnabled();
+        boolean monetEnabled = settings.isMonetEnabled();
 
         ModManager.ensureDirectories(this);
 
         if (amlEnabled || jpatchEnabled) {
             // Sync JPatch .so enabled/disabled filename before AML scans mods/
             ModManager.syncJPatchBinaryState(this, jpatchEnabled);
+            if (jpatchEnabled) {
+                ModManager.enforceJPatchTouchSafety(this);
+            }
             ModManager.prepareAmlConfig(this);
 
             if (!sAmlLoaded) {
@@ -140,44 +141,36 @@ public class SAMP extends GTASA {
             cinfo.delete();
         }
 
-        ui = new UI(this);
+        // Single cross-process source of truth: read SAMP/settings.json only (zero SharedPreferences in :game).
+        ClientSettings settings = ClientSettings.readGameSnapshot(this);
+
+        ui = new UI(this, settings);
         ui.initializeUI();
 
         // omp-cef 浏览器层：装上 DecorView，服务端 CreateBrowser 事件到达时可立即建窗
         CefManager.install(this);
 
-        // check signature
-        if (!SignatureChecker.isSignatureValid(this, getPackageName())) {
-            Log.e("SplashActivity", "No remake idiot!");
-            finish();
-            return;
-        } else {
-            Log.i("SplashActivity", "Using original client!");
-        }
-
-        // Ensure SAMP/settings.json matches SharedPreferences (even on offline or direct launches)
-        Utils.saveSettings(this);
-        getSharedPreferences("samp_settings", Context.MODE_PRIVATE)
-                .edit()
-                .putBoolean("open_hud_edit_on_start", false)
-                .commit();
-
         String gameDir = extDir.toString().concat("/");
         Log.i(TAG, "Game directory: " + gameDir);
 
         try {
-            initializeSAMP(ui, gameDir, getSharedPreferences("samp_settings", Context.MODE_PRIVATE).getBoolean("offline_mode", false));
+            initializeSAMP(ui, gameDir, settings.isOfflineMode());
         } catch (UnsatisfiedLinkError e) {
             Log.e(TAG, e.getMessage() != null ? e.getMessage() : "UnsatisfiedLinkError in initializeSAMP");
+        }
+
+        // Consume one-shot HUD editor flag only after native Settings::initialize() has captured it.
+        if (settings.isOpenHudEditOnStart()) {
+            ClientSettings.consumeOpenHudEditOnStart(this);
         }
 
         // Load optional mod frameworks AFTER initializeSAMP (so our crash handler,
         // logger, hooks, and ModLoader are ready) and BEFORE onCreate returns
         // (so surfaceCreated / NVEventAppMain has not started yet).
-        loadModLibraries();
+        loadModLibraries(settings);
 
         // fullscreen
-        if (getSharedPreferences("samp_settings", Context.MODE_PRIVATE).getBoolean("fullscreen", false)) {
+        if (settings.isFullscreen()) {
             if (Build.VERSION.SDK_INT >= 30) {
                 getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS;
             } else if (Build.VERSION.SDK_INT >= 28) {
@@ -186,15 +179,29 @@ public class SAMP extends GTASA {
         }
     }
 
-    private boolean mConsumedBackKey = false;
+    private final GameInputArbiter inputArbiter = new GameInputArbiter(new GameInputArbiter.Host() {
+        @Override
+        public UI getUi() {
+            return ui;
+        }
+
+        @Override
+        public void cancelAllNativeTouches() {
+            SAMP.this.cancelAllNativeTouches();
+        }
+
+        @Override
+        public void dispatchHardwareKeyToNative(int keyCode, boolean isDown) {
+            try {
+                onHardwareKeyEvent(keyCode, isDown);
+            } catch (UnsatisfiedLinkError ignored) {
+            }
+        }
+    });
 
     @Override
     public void onBackPressed() {
-        // 页面正在接管输入时，返回键先把焦点还给游戏（不销毁页面——生命周期属于服务端）
-        if (CefManager.onBackPressed()) {
-            return;
-        }
-        if (ui != null && ui.onBackPressed()) {
+        if (inputArbiter.onBackPressed()) {
             return;
         }
         super.onBackPressed();
@@ -202,16 +209,7 @@ public class SAMP extends GTASA {
 
     @Override
     public boolean dispatchKeyEvent(android.view.KeyEvent event) {
-        // 按键上行（PressKey）：必须在 super 之前，否则被输入法/WebView 消费掉就看不到。
-        CefManager.handleKeyEvent(event);
-
-        // BACK 在页面持有焦点时可能被 Chromium 自己吃掉，Activity.onKeyDown 就收不到、
-        // onBackPressed 也不会被调用。所以在派发进视图树之前截住：先释放页面焦点，
-        // 把手势交还给游戏；页面本身留给服务端销毁。
-        if (event.getKeyCode() == android.view.KeyEvent.KEYCODE_BACK
-                && event.getAction() == android.view.KeyEvent.ACTION_UP
-                && CefManager.isAnyBrowserFocused()
-                && CefManager.onBackPressed()) {
+        if (inputArbiter.onDispatchKeyEvent(event)) {
             return true;
         }
         return super.dispatchKeyEvent(event);
@@ -219,81 +217,56 @@ public class SAMP extends GTASA {
 
     @Override
     public boolean onKeyDown(int keyCode, android.view.KeyEvent event) {
-        if (keyCode == android.view.KeyEvent.KEYCODE_BACK) {
-            if (event.getRepeatCount() == 0 && ui != null && ui.onBackPressed()) {
-                mConsumedBackKey = true;
-                return true;
-            }
-            if (mConsumedBackKey) {
-                return true;
-            }
-        }
-        // CEF 页面持有焦点时不要把按键喂给引擎（否则会同时触发游戏动作）
-        if (ui != null && !ui.isInputFocused() && !CefManager.isAnyBrowserFocused()) {
-            try {
-                onHardwareKeyEvent(keyCode, true);
-            } catch (UnsatisfiedLinkError ignored) {
-            }
+        if (inputArbiter.onKeyDown(keyCode, event)) {
+            return true;
         }
         return super.onKeyDown(keyCode, event);
     }
 
     @Override
     public boolean onKeyUp(int keyCode, android.view.KeyEvent event) {
-        if (keyCode == android.view.KeyEvent.KEYCODE_BACK && mConsumedBackKey) {
-            mConsumedBackKey = false;
+        if (inputArbiter.onKeyUp(keyCode, event)) {
             return true;
-        }
-        // 保留本地修复：Java 输入框弹出时不吞 keyUp（防卡键），仅在 CEF 页面持有焦点时阻断
-        if (ui != null && !CefManager.isAnyBrowserFocused()) {
-            try {
-                onHardwareKeyEvent(keyCode, false);
-            } catch (UnsatisfiedLinkError ignored) {
-            }
         }
         return super.onKeyUp(keyCode, event);
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (ui != null) {
-            if (ui.onTouchEvent(event)) {
-                cancelAllNativeTouches();
-                return true;
-            }
-            if (ui.isDialogVisible()) {
-                return true;
-            }
+        if (inputArbiter.onActivityTouchEvent(event)) {
+            return true;
         }
+
+        final int action = event.getActionMasked();
+        final int numEvents = event.getPointerCount();
+        final int actionIdx = event.getActionIndex();
+        final int pointerId = (actionIdx >= 0 && actionIdx < numEvents) ? event.getPointerId(actionIdx) : -1;
 
         int x1 = 0, y1 = 0, x2 = 0, y2 = 0, x3 = 0, y3 = 0, x4 = 0, y4 = 0;
         int presentMask = 0;
-        int numEvents = event.getPointerCount();
 
         for (int i = 0; i < numEvents; i++) {
-            int pointerId = event.getPointerId(i);
+            int pid = event.getPointerId(i);
 
-            if (pointerId == 0) {
+            if (pid == 0) {
                 x1 = (int) event.getX(i);
                 y1 = (int) event.getY(i);
                 presentMask |= (1 << 0);
-            } else if (pointerId == 1) {
+            } else if (pid == 1) {
                 x2 = (int) event.getX(i);
                 y2 = (int) event.getY(i);
                 presentMask |= (1 << 1);
-            } else if (pointerId == 2) {
+            } else if (pid == 2) {
                 x3 = (int) event.getX(i);
                 y3 = (int) event.getY(i);
                 presentMask |= (1 << 2);
-            } else if (pointerId == 3) {
+            } else if (pid == 3) {
                 x4 = (int) event.getX(i);
                 y4 = (int) event.getY(i);
                 presentMask |= (1 << 3);
             }
         }
 
-        int pointerId = event.getPointerId(event.getActionIndex());
-        int action = event.getActionMasked();
         int packedPointer = (pointerId & 0xFF) | (presentMask << 8);
 
         try {
@@ -301,7 +274,11 @@ public class SAMP extends GTASA {
         } catch (UnsatisfiedLinkError e) {
             e.printStackTrace();
         }
-        return super.onTouchEvent(event);
+        // Do NOT chain to super.onTouchEvent(event): NvEventQueueActivity.onTouchEvent
+        // pushes a duplicate legacy 2-finger multiTouchEvent() into libGTASA.so's native
+        // NVEvent queue, which conflicts with our 4-finger pipeline and third-party AML
+        // touch plugins (e.g. JPatch MultiTouch4).
+        return true;
     }
 
     public void cancelAllNativeTouches() {
@@ -310,78 +287,6 @@ public class SAMP extends GTASA {
         } catch (UnsatisfiedLinkError ignored) {
         }
     }
-
-/*
-    @Override
-    public boolean onTouchEvent(MotionEvent event) {
-        if (getSharedPreferences("samp_settings", Context.MODE_PRIVATE).getInt("game_version", 0) == 0) {
-            if (ui != null) {
-                ui.onTouchEvent(event);
-            }
-
-            int x1 = 0, y1 = 0, x2 = 0, y2 = 0, x3 = 0, y3 = 0, x4 = 0, y4 = 0;
-            int numEvents = event.getPointerCount();
-
-            for (int i = 0; i < numEvents; i++) {
-                int pointerId = event.getPointerId(i);
-
-                if (pointerId == 0) {
-                    x1 = (int) event.getX(i);
-                    y1 = (int) event.getY(i);
-                } else if (pointerId == 1) {
-                    x2 = (int) event.getX(i);
-                    y2 = (int) event.getY(i);
-                } else if (pointerId == 2) {
-                    x3 = (int) event.getX(i);
-                    y3 = (int) event.getY(i);
-                } else if (pointerId == 3) {
-                    x4 = (int) event.getX(i);
-                    y4 = (int) event.getY(i);
-                }
-            }
-
-            int pointerId = event.getPointerId(event.getActionIndex());
-            int action = event.getActionMasked();
-
-            try {
-                multiTouchEvent4Ex(action, pointerId, x1, y1, x2, y2, x3, y3, x4, y4);
-            } catch (UnsatisfiedLinkError e) {
-                e.printStackTrace();
-            }
-            return super.onTouchEvent(event);
-        }
-        // arz version
-        else {
-            int pointerCount = event.getPointerCount();
-            int i = 0;
-            int i2 = 0;
-            int i3 = 0;
-            int i4 = 0;
-            int i5 = 0;
-            int i6 = 0;
-            int i7 = 0;
-            int i8 = 0;
-            for (int i9 = 0; i9 < pointerCount; i9++) {
-                int pointerId = event.getPointerId(i9);
-                if (pointerId == 0) {
-                    i = (int) event.getX(i9);
-                    i2 = (int) event.getY(i9);
-                } else if (pointerId == 1) {
-                    i3 = (int) event.getX(i9);
-                    i4 = (int) event.getY(i9);
-                } else if (pointerId == 2) {
-                    i5 = (int) event.getX(i9);
-                    i6 = (int) event.getY(i9);
-                } else if (pointerId == 3) {
-                    i7 = (int) event.getX(i9);
-                    i8 = (int) event.getY(i9);
-                }
-            }
-            multiTouchEvent4(event.getActionMasked(), event.getPointerId(event.getActionIndex()), i, i2, i3, i4, i5, i6, i7, i8, event);
-            return true;
-        }
-    }
-*/
 
     @Override
     protected void onNewIntent(android.content.Intent intent) {
@@ -415,16 +320,14 @@ public class SAMP extends GTASA {
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus) {
-            cancelAllNativeTouches();
+            inputArbiter.onWindowFocusLost();
         }
     }
 
     @Override
     public void onPause() {
         Log.i(TAG, "**** onPause");
-        // 切后台：收起输入法并让出游戏输入，否则回来时焦点还在页面上、摇杆失效
-        CefManager.releaseAllFocus();
-        cancelAllNativeTouches();
+        inputArbiter.onActivityPause();
         super.onPause();
     }
 

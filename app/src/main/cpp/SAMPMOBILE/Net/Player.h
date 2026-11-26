@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstring>
+#include "NetTypes.h"
+
 class CRemotePlayer;
 class CPlayer {
 public:

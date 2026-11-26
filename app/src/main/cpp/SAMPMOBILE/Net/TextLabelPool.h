@@ -1,6 +1,10 @@
 #pragma once
 
-#include "../UI/ImGuiRenderer.h"
+#include <cstdint>
+#include <Core/Vector.h>
+#include "NetTypes.h"
+
+class ImGuiRenderer;
 
 #pragma pack(push, 1)
 typedef struct _TEXT_LABEL {

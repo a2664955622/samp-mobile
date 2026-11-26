@@ -1,10 +1,13 @@
+#include "DeathWindow.h"
+#include "Scoreboard.h"
 #include "../UI.h"
+#include "../UISettings.h"
+#include "../../Client.h"
+#include "../../Game/Common.h"
 #include "../../Game/Game.h"
 #include "../../Net/NetGame.h"
+#include <encoding.h>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 /* DeathWindow */
 

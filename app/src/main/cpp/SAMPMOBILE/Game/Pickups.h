@@ -5,6 +5,13 @@
 #ifndef SAMPMOBILE_PICKUPS_H
 #define SAMPMOBILE_PICKUPS_H
 
+#include <cstdint>
+#include <Base.h>
+#include <Camera.h>
+#include <Core/Vector.h>
+#include <Core/Vector2D.h>
+#include "Engine/Symbols.h"
+
 class Pickups {
 public:
 	static void installHooks();

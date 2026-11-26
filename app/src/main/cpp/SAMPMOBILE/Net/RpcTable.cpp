@@ -11,7 +11,6 @@
 #include <atomic>
 #include <iterator>
 
-extern NetGame* pNetGame;
 
 namespace {
 

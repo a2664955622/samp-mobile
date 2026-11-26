@@ -1,11 +1,14 @@
 #pragma once
 
+#include <Core/Vector.h>
+#include "NetTypes.h"
 #include "../Game/Actor.h"
 
 #pragma pack(push, 1)
 typedef struct _NEW_ACTOR {
 	PLAYERID ActorID;
 	int iSkin;
+	int iCustomSkin;
 	sa::CVector vecPos;
 	float fAngle;
 	float fHealth;

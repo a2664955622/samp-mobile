@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Game/Engine/Symbols.h"
 #include "../../Memory/include/Memory.h"
 #include "RenderWare/rwcore.h"
 #include "../../Game/Common.h"

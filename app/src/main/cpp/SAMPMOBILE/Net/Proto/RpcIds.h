@@ -166,9 +166,11 @@ inline constexpr int kScrSetPlayerShopName = 33;
 inline constexpr int kScrPlayCrimeReport = 112;
 inline constexpr int kScrSetPlayerVirtualWorld = 48;
 
-// 0.3.DL artwork / custom models handshake (T30)
+// 0.3.DL artwork / custom models protocol
 inline constexpr int kDlModelRequest = 179;
 inline constexpr int kDlModelReset = 180;
+inline constexpr int kDlRequestDff = 181;
+inline constexpr int kDlRequestTxd = 182;
 inline constexpr int kDlModelUrl = 183;
 inline constexpr int kDlFinishDownload = 184;
 inline constexpr int kDlDownloadCompleted = 185;

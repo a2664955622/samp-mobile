@@ -1,4 +1,8 @@
+#include "SplashScreen.h"
 #include "../UI.h"
+#include "../UISettings.h"
+#include "../Widgets/Image.h"
+#include "../Widgets/ProgressBar.h"
 
 SplashScreen::SplashScreen()
 {

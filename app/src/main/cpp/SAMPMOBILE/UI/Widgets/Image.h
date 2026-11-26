@@ -1,5 +1,9 @@
 #pragma once
 
+#include "../Widget.h"
+
+struct RwTexture;
+
 class Image : public Widget {
 public:
 	Image(const std::string& arch_name, const std::string& name);

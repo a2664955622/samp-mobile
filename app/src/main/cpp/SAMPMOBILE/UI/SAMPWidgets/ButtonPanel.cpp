@@ -1,18 +1,33 @@
+#include "ButtonPanel.h"
+#include "Chat.h"
+#include "Keyboard.h"
+#include "NetStats.h"
+#include "Scoreboard.h"
+#include "VoiceButton.h"
 #include "../UI.h"
+#include "../UISettings.h"
+#include "../Widgets/Button.h"
+#include "../Widgets/Layout.h"
+#include "../../Client.h"
+#include "../../InputArbiter.h"
 #include "../../Game/Game.h"
 #include "../../Game/Hooks.h"
+#include "../../Game/Pad.h"
+#include "../../Game/PlayerPed.h"
+#include "../../Game/Util.h"
+#include "../../Game/Common.h"
 #include "../../Net/NetGame.h"
+#include "../../Net/LocalPlayer.h"
+#include "../../Net/MenuPool.h"
+#include "../../Net/VehiclePool.h"
+#include "../../Game/Vehicle.h"
 #include "../../Settings.h"
 #include "../../Java/Java.h"
-#include "../../Java/EditObject.h"
 
 #include <cstring>
 
 /* ButtonPanel */
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 /* layout metrics in 640x480 design space, scaled to the display in
  * performLayout(). The panel anchors itself to the bottom edge center:
@@ -91,7 +106,7 @@ ButtonPanel::ButtonPanel()
 	});
 
 	m_esc->setCallback([]() {
-		ButtonPanel::dismissTopModal();
+		InputArbiter::dismissTopNativeModal();
 	});
 
 	m_tab->setCallback([]() {
@@ -443,38 +458,6 @@ void ButtonPanel::draw(ImGuiRenderer* renderer)
 	Widget::draw(renderer);
 }
 
-void ButtonPanel::dismissTopModal()
-{
-	if (pUI && pUI->keyboard() && pUI->keyboard()->visible()) {
-		pUI->keyboard()->hide();
-		return;
-	}
-	if (pUI && pUI->scoreboard() && pUI->scoreboard()->visible()) {
-		pUI->scoreboard()->setVisible(false);
-		return;
-	}
-	if (pNetGame) {
-		if (CMenuPool* pMenuPool = pNetGame->GetMenuPool(); pMenuPool && pMenuPool->IsVisible()) {
-			pMenuPool->ExitMenu();
-			return;
-		}
-	}
-	if (EditObject::m_visible) {
-		EditObject::exitEdit();
-		return;
-	}
-	if (pNetGame) {
-		if (CObjectPool* pObjPool = pNetGame->GetObjectPool(); pObjPool && pObjPool->IsSelectState()) {
-			pObjPool->SetSelectState(false);
-			return;
-		}
-		if (CTextDrawPool* pTdPool = pNetGame->GetTextDrawPool(); pTdPool && pTdPool->GetState()) {
-			pTdPool->SetSelectState(false, 0, true);
-			return;
-		}
-	}
-}
-
 void ButtonPanel::handleHardwareKey(int androidKeyCode, bool isDown)
 {
 	if (!Settings::kmEnabled()) {
@@ -568,7 +551,7 @@ void ButtonPanel::handleHardwareKey(int androidKeyCode, bool isDown)
 
 		case 111: // KEYCODE_ESCAPE
 			if (isDown) {
-				dismissTopModal();
+				InputArbiter::dismissTopNativeModal();
 			}
 			break;
 
@@ -609,8 +592,13 @@ void ButtonPanel::handleHardwareKey(int androidKeyCode, bool isDown)
 			break;
 
 		case 31: // KEYCODE_C
-			if (isDown) {
-				LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = true;
+			if (inVeh) {
+				if (isDown) {
+					LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = true;
+				}
+			}
+			else {
+				NotifyLocalHardwareCrouchKey(isDown);
 			}
 			break;
 

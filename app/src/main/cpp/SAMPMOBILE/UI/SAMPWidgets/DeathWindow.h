@@ -1,5 +1,9 @@
 #pragma once
 
+#include <cstdint>
+#include <list>
+#include "../Widget.h"
+
 struct DeathWindowStruct {
 	std::string playerName;
 	unsigned int playercolor;

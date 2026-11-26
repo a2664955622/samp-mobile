@@ -2,36 +2,24 @@
 
 #define DEBUG_GUI 0
 
-#include <atomic>
+#include <cstdint>
 #include <deque>
 #include <mutex>
-#include <encoding.h>
+#include <string>
 
-#include "../Settings.h"
 #include "ImGuiWrapper.h"
-#include "UISettings.h"
-
 #include "Widget.h"
-#include "Widgets/Layout.h"
-#include "Widgets/Label.h"
-#include "Widgets/Button.h"
-#include "Widgets/Image.h"
-#include "Widgets/ProgressBar.h"
-#include "Widgets/ScrollPanel.h"
-#include "Widgets/ListBox.h"
-#include "Widgets/EditBox.h"
 
-#include "SAMPWidgets/PlayerTags.h"
-#include "SAMPWidgets/Keyboard.h"
-#include "SAMPWidgets/SplashScreen.h"
-#include "SAMPWidgets/Chat.h"
-#include "SAMPWidgets/Spawn.h"
-#include "SAMPWidgets/ButtonPanel.h"
-#include "SAMPWidgets/VoiceButton.h"
-#include "SAMPWidgets/Scoreboard.h"
-#include "SAMPWidgets/DebugLabels.h"
-#include "SAMPWidgets/DeathWindow.h"
-#include "SAMPWidgets/NetStats.h"
+class SplashScreen;
+class Chat;
+class Spawn;
+class Keyboard;
+class ButtonPanel;
+class Scoreboard;
+class VoiceButton;
+class DebugLabels;
+class DeathWindow;
+class NetStats;
 
 class UI : public Widget, public ImGuiWrapper {
 public:
@@ -70,10 +58,7 @@ public:
 		return y * displaySize().y * (1.0f / 1080.0f);
 	}
 
-	float GetFontSize()
-	{
-		return UISettings::fontSize();
-	}
+	float GetFontSize();
 
 	virtual void touchEvent(const ImVec2& pos, TouchType type) override;
 
@@ -81,7 +66,6 @@ public:
 	void enqueueTouchEvent(const ImVec2& pos, TouchType type, bool isCancel = false, int pointerId = 0);
 	void processPendingTouchEvents();
 	void updateTouchSnapshot();
-	bool isModalOpenSnapshot() const { return m_snapModalOpen.load(std::memory_order_acquire); }
 	bool isButtonPanelHitSnapshot(const ImVec2& pos) const;
 	ImVec2 displaySizeSnapshot() const;
 
@@ -111,7 +95,6 @@ private:
 
 	mutable std::mutex m_touchMutex;
 	std::deque<PendingTouch> m_pendingTouches;
-	std::atomic<bool> m_snapModalOpen{false};
 	bool m_snapButtonPanelVisible = false;
 	ImVec2 m_snapButtonPanelPos{0.0f, 0.0f};
 	ImVec2 m_snapButtonPanelSize{0.0f, 0.0f};

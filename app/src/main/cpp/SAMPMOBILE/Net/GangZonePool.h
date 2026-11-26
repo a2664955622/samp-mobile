@@ -1,5 +1,7 @@
 #pragma once
 
+#include "NetTypes.h"
+
 typedef struct _GANG_ZONE {
 	float fPos[4];
 	uint32_t dwColor;

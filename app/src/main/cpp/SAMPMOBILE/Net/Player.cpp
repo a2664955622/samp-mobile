@@ -1,6 +1,7 @@
-#include "../Game/Game.h"
-#include "NetGame.h"
 #include "Player.h"
+#include "RemotePlayer.h"
+#include "NetGame.h"
+#include "../Game/Game.h"
 
 CPlayer::CPlayer(const char* szPlayerName, bool bIsNPC)
 {

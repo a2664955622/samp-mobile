@@ -135,9 +135,9 @@ tasks.register("verifyGtasaAssets") {
                     "Missing proprietary GTA:SA v2.10 runtime files (not distributed in this repository):\n" +
                     list + "\n\n" +
                     "Pull from a connected device/emulator with GTA:SA v2.10 installed (recommended):\n" +
-                    "  python tools/prepare_gtasa.py --from-adb\n" +
+                    "  python tools/engine/prepare_gtasa.py --from-adb\n" +
                     "Or extract locally from your own GTA:SA Android v2.10 APK:\n" +
-                    "  python tools/prepare_gtasa.py --apk dist/gtasa_2.10.apk\n" +
+                    "  python tools/engine/prepare_gtasa.py --apk dist/gtasa_2.10.apk\n" +
                     "(For compile-only dry runs without packaging a playable APK, pass -PskipGtasaCheck=true.)"
             )
         }

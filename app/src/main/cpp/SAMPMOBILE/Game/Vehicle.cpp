@@ -2,19 +2,66 @@
 // Created by ALYN on 2024/8/15.
 //
 
+#include "Vehicle.h"
+#include "Common.h"
 #include "Game.h"
+#include "MaterialTextGenerator.h"
+#include "PlayerPed.h"
+#include "Scripting.h"
+#include "Util.h"
+#include "Hooks/HookDomains.h"
 #include "VehicleComponentTable.h"
+#include "Engine/Symbols.h"
 #include "../Client.h"
 #include "../UI/UI.h"
+#include "../UI/SAMPWidgets/Chat.h"
 #include "../Net/NetGame.h"
+#include "../Net/VehiclePool.h"
+#include <SA.h>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cmath>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
-extern MaterialTextGenerator* pMaterialTextGenerator;
+void CVehicle::ApplyEngineStatus(bool state)
+{
+	if (m_pVehicle && VerifyInstance()) {
+		m_pVehicle->SetEngineStatus(state);
+	}
+}
+
+int CVehicle::GetEngineState()
+{
+	if (m_pVehicle && VerifyInstance()) {
+		return m_pVehicle->GetEngineStatus();
+	}
+	return 0;
+}
+
+void CVehicle::SetSirenOn(uint8_t state)
+{
+	if (m_pVehicle && VerifyInstance()) {
+		m_pVehicle->m_nVehicleFlags.bSirenOrAlarm = state;
+	}
+}
+
+bool CVehicle::IsSirenOn()
+{
+	return m_pVehicle && VerifyInstance() && m_pVehicle->m_nVehicleFlags.bSirenOrAlarm;
+}
+
+void CVehicle::SetAlarmState(uint16_t wAlarmState)
+{
+	if (m_pVehicle && VerifyInstance()) {
+		m_pVehicle->m_nAlarmState = wAlarmState;
+	}
+}
+
+uint16_t CVehicle::GetAlarmState()
+{
+	return (m_pVehicle && VerifyInstance()) ? m_pVehicle->m_nAlarmState : 0;
+}
+
 
 static sa::CVehicle* pCreatedTrain = nullptr;
 
@@ -69,7 +116,6 @@ CVehicle::CVehicle(int iType, float fX, float fY, float fZ, float fRotation, boo
 			}
 		}
 
-		extern bool g_bCreatingSirenVehicle;
 		g_bCreatingSirenVehicle = bSiren;
 		ScriptCommand(&create_car, iType, fX, fY, fZ, &dwRetID);
 		g_bCreatingSirenVehicle = false;
@@ -669,7 +715,6 @@ void CVehicle::DetachTrailer()
 	if (m_pTrailer) {
 		if (m_gtaId && VerifyInstance()) {
 			if (m_pTrailer->m_pVehicle && GamePool_Vehicle_GetAt(m_pTrailer->m_gtaId) == m_pTrailer->m_pVehicle) {
-				extern bool g_bIntentionalTrailerDetach;
 				g_bIntentionalTrailerDetach = true;
 				ScriptCommand(&detach_trailer_from_cab, m_pTrailer->m_gtaId, m_gtaId);
 				g_bIntentionalTrailerDetach = false;
@@ -856,7 +901,6 @@ void CVehicle::AttachTrailer()
 {
 	if (m_pTrailer && VerifyInstance() &&
 			m_pTrailer->m_pVehicle && GamePool_Vehicle_GetAt(m_pTrailer->m_gtaId) == m_pTrailer->m_pVehicle) {
-		extern bool g_bIntentionalTrailerDetach;
 		g_bIntentionalTrailerDetach = true;
 		ScriptCommand(&put_trailer_on_cab, m_pTrailer->m_gtaId, m_gtaId);
 		g_bIntentionalTrailerDetach = false;

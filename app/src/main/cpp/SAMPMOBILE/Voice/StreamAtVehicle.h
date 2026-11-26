@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../Net/NetGame.h"
+#include "../Net/NetTypes.h"
 
 #include "LocalStream.h"
 #include "Channel.h"

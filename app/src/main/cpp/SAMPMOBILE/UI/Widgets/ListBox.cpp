@@ -1,4 +1,6 @@
-#include "../UI.h"
+#include "ListBox.h"
+#include "../ImGuiRenderer.h"
+#include "../UISettings.h"
 
 /* ListBox */
 

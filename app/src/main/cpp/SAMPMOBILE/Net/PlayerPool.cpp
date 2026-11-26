@@ -1,8 +1,32 @@
-#include "../Game/Game.h"
-#include "../Game/RadarColors.h"
+#include "PlayerPool.h"
+#include "Player.h"
+#include "LocalPlayer.h"
+#include "RemotePlayer.h"
+#include "PlayerBubblePool.h"
 #include "NetGame.h"
+#include "../Client.h"
+#include "../Game/Game.h"
+#include "../Game/PlayerPed.h"
+#include "../Game/RadarColors.h"
 
-extern NetGame* pNetGame;
+void CPlayerPool::SetPlayerName(PLAYERID PlayerID, const char* szPlayerName)
+{
+	if (PlayerID < MAX_PLAYERS && m_bPlayerSlotState[PlayerID] && m_pPlayers[PlayerID]) {
+		m_pPlayers[PlayerID]->SetPlayerName(szPlayerName);
+	}
+}
+
+CRemotePlayer* CPlayerPool::GetAt(PLAYERID playerId)
+{
+	if (playerId >= MAX_PLAYERS ||
+			m_bPlayerSlotState[playerId] == false ||
+			m_pPlayers[playerId] == nullptr) {
+		return nullptr;
+	}
+
+	return m_pPlayers[playerId]->m_pRemotePlayer;
+}
+
 
 CPlayerPool::CPlayerPool()
 {

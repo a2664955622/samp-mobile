@@ -1,5 +1,12 @@
 #pragma once
 
+#include <cstdint>
+#include "../Widget.h"
+#include "../Widgets/Image.h"
+
+class Button;
+class Layout;
+
 class ButtonPanel : public Widget {
 public:
 	ButtonPanel();
@@ -17,7 +24,6 @@ public:
 	uint16_t heldLR() const { return m_heldLR; }
 	uint16_t heldUD() const { return m_heldUD; }
 	void handleHardwareKey(int androidKeyCode, bool isDown);
-	static void dismissTopModal();
 
 private:
 	void recomputeHeldAxes();

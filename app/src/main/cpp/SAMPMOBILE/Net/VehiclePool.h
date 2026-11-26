@@ -1,8 +1,13 @@
 #pragma once
 
 #include <unordered_map>
+#include <Core/Vector.h>
+#include "NetTypes.h"
 
-#define INVALID_VEHICLE_ID    0xFFFF
+namespace sa {
+class CVehicle;
+}
+class CVehicle;
 
 #pragma pack(push, 1)
 typedef struct _NEW_VEHICLE {

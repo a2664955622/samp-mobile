@@ -2,23 +2,38 @@
 #include "Client.h"
 #include "Settings.h"
 #include "UI/UI.h"
+#include "UI/UISettings.h"
+#include "UI/SAMPWidgets/Chat.h"
+#include "UI/SAMPWidgets/DeathWindow.h"
+#include "UI/SAMPWidgets/DebugLabels.h"
+#include "UI/SAMPWidgets/NetStats.h"
 #include "Java/Java.h"
 #include "Game/Game.h"
 #include "Game/Hooks.h"
+#include "Game/PlayerPed.h"
+#include "Game/Scripting.h"
+#include "Game/Vehicle.h"
+#include "Game/Util.h"
+#include "Game/Engine/PatchRegistry.h"
 #include "Net/NetGame.h"
 #include "Net/NetCap.h"
+#include "Net/LocalPlayer.h"
+#include "Net/VehiclePool.h"
 #include "Net/RpcTable.h"
 #include "Net/Proto/Sync.h"
 #include "Game/AudioStream.h"
 #include "Game/CleoEngine.h"
 
+#include <RakNet/RakClientInterface.h>
+#include <RakNet/PacketEnumerations.h>
+#include <RakNet/SAMP/SAMPRPC.h>
+#include <SA.h>
+#include <encoding.h>
+#include <spdlog/spdlog.h>
+#include <fstream>
 #include <thread>
 #include <cstdlib>
 
-extern UI* pUI;
-extern NetGame* pNetGame;
-extern Game* pGame;
-extern AudioStream* pAudioStream;
 
 void cmdQuit(const std::string& params)
 {

@@ -1,5 +1,6 @@
-#include "../UI.h"
 #include "Button.h"
+#include "../ImGuiRenderer.h"
+#include "../UISettings.h"
 
 Button::Button(const std::string& caption, float font_size)
 {

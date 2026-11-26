@@ -2,19 +2,19 @@
 // Created by ALYN on 2024/8/25.
 //
 #include "Java.h"
-#include "EditObject.h"
-#include "../../Client.h"
-#include "../../UI/UI.h"
-#include "../../Game/Game.h"
-#include "../../Net/NetGame.h"
+#include "../Client.h"
+#include "../InputArbiter.h"
+#include "../UI/UI.h"
+#include "../UI/SAMPWidgets/ButtonPanel.h"
+#include "../UI/SAMPWidgets/Chat.h"
+#include "../Net/NetGame.h"
+#include "../Game/Artwork/ArtworkManager.h"
 
-#include <chrono>
+#include <spdlog/spdlog.h>
 #include <deque>
 #include <mutex>
 #include <string>
 
-extern UI* pUI;
-extern NetGame* pNetGame;
 
 namespace {
 struct PendingDialogResp {
@@ -33,17 +33,6 @@ std::mutex g_jniInputMutex;
 std::deque<std::string> g_pendingKeyboardSends;
 std::deque<PendingDialogResp> g_pendingDialogResponses;
 std::deque<PendingHardwareKey> g_pendingHardwareKeys;
-std::atomic<bool> g_javaDialogVisible{false};
-std::atomic<bool> g_javaKeyboardVisible{false};
-std::atomic<int64_t> g_javaKeyboardClosedMs{0};
-std::atomic<bool> g_nativeModalActive{false};
-std::atomic<bool> g_pendingBackCancel{false};
-
-int64_t nowSteadyMs()
-{
-	return std::chrono::duration_cast<std::chrono::milliseconds>(
-			std::chrono::steady_clock::now().time_since_epoch()).count();
-}
 
 inline void clearJniException(JNIEnv* env, const char* where)
 {
@@ -55,41 +44,9 @@ inline void clearJniException(JNIEnv* env, const char* where)
 }
 }
 
-bool Java::isJavaDialogVisible()
-{
-	return g_javaDialogVisible.load(std::memory_order_acquire);
-}
-
-bool Java::isJavaKeyboardVisible()
-{
-	return g_javaKeyboardVisible.load(std::memory_order_acquire);
-}
-
-bool Java::isRadarSuppressedByKeyboard()
-{
-	if (g_javaKeyboardVisible.load(std::memory_order_acquire)) {
-		return true;
-	}
-	int64_t closedAt = g_javaKeyboardClosedMs.load(std::memory_order_acquire);
-	if (closedAt > 0) {
-		int64_t delta = nowSteadyMs() - closedAt;
-		if (delta >= 0 && delta < 250) {
-			return true;
-		}
-	}
-	return false;
-}
-
-void Java::setNativeModalActive(bool active)
-{
-	g_nativeModalActive.store(active, std::memory_order_release);
-}
-
 void Java::processPendingInputs()
 {
-	if (g_pendingBackCancel.exchange(false, std::memory_order_acq_rel)) {
-		ButtonPanel::dismissTopModal();
-	}
+	InputArbiter::processPendingBackDismiss();
 
 	std::deque<std::string> kbQueue;
 	std::deque<PendingDialogResp> dlgQueue;
@@ -168,6 +125,18 @@ Java::Java(JNIEnv* env, jobject sampObj, jobject uiObj)
 
 	m_exitGame = env->GetMethodID(uiClass, "exitGame", "()V");
 	clearJniException(env, "GetMethodID(exitGame)");
+
+	if (jclass dlClass = env->FindClass("com/sampmobile/game/ArtworkDownloader")) {
+		m_artworkDownloaderClass = static_cast<jclass>(env->NewGlobalRef(dlClass));
+		m_artworkEnqueue = env->GetStaticMethodID(m_artworkDownloaderClass, "enqueue",
+			"(IIILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;J)V");
+		clearJniException(env, "GetStaticMethodID(ArtworkDownloader.enqueue)");
+		m_artworkCancelAll = env->GetStaticMethodID(m_artworkDownloaderClass, "cancelAll", "(I)V");
+		clearJniException(env, "GetStaticMethodID(ArtworkDownloader.cancelAll)");
+		env->DeleteLocalRef(dlClass);
+	} else {
+		clearJniException(env, "FindClass(ArtworkDownloader)");
+	}
 
 	env->DeleteLocalRef(sampClass);
 	env->DeleteLocalRef(uiClass);
@@ -353,18 +322,56 @@ void Java::exitGame()
 	clearJniException(env, "exitGame");
 }
 
-
-const std::string EXPECTED_SIGNATURE(OBFUSCATE("89cb277c5cd1a90145acb3c2a89cea995bfbd3b3e5ebe2b180d2248efc4aa041"));
-
-extern "C" JNIEXPORT jboolean JNICALL Java_com_sampmobile_launcher_utils_SignatureChecker_nativeCheckSignature(JNIEnv* env, jclass clazz, jstring computedSignature)
+void Java::startArtworkDownload(int32_t generation, int32_t fileType, uint32_t crc,
+	const std::string& url, const std::string& fallbackUrl,
+	const std::string& tempPath, const std::string& finalPath, uint32_t expectedSize)
 {
-	if (!env || !computedSignature) return JNI_TRUE;
-	const char* computedSignatureCStr = env->GetStringUTFChars(computedSignature, nullptr);
-	if (computedSignatureCStr) {
-		std::string computedSignatureStr(computedSignatureCStr);
-		env->ReleaseStringUTFChars(computedSignature, computedSignatureCStr);
+	JNIEnv* env = getEnv();
+	if (!env || !m_artworkDownloaderClass || !m_artworkEnqueue) {
+		artwork::ArtworkManager::instance().notifyWorkerFinished(
+			generation, static_cast<uint8_t>(fileType), crc, false,
+			artwork::DownloadFailureKind::Unsupported, "JNI downloader unavailable");
+		return;
 	}
-	return JNI_TRUE;
+	jstring jUrl = env->NewStringUTF(url.c_str());
+	jstring jFallback = fallbackUrl.empty() ? nullptr : env->NewStringUTF(fallbackUrl.c_str());
+	jstring jTmp = env->NewStringUTF(tempPath.c_str());
+	jstring jDst = env->NewStringUTF(finalPath.c_str());
+	if (!jUrl || (!fallbackUrl.empty() && !jFallback) || !jTmp || !jDst) {
+		if (jUrl) env->DeleteLocalRef(jUrl);
+		if (jFallback) env->DeleteLocalRef(jFallback);
+		if (jTmp) env->DeleteLocalRef(jTmp);
+		if (jDst) env->DeleteLocalRef(jDst);
+		clearJniException(env, "startArtworkDownload(NewStringUTF)");
+		artwork::ArtworkManager::instance().notifyWorkerFinished(
+			generation, static_cast<uint8_t>(fileType), crc, false,
+			artwork::DownloadFailureKind::TransientNet, "JNI string alloc failed");
+		return;
+	}
+	env->CallStaticVoidMethod(m_artworkDownloaderClass, m_artworkEnqueue,
+		static_cast<jint>(generation),
+		static_cast<jint>(fileType),
+		static_cast<jint>(crc),
+		jUrl,
+		jFallback,
+		jTmp,
+		jDst,
+		static_cast<jlong>(expectedSize));
+	clearJniException(env, "startArtworkDownload");
+	env->DeleteLocalRef(jUrl);
+	if (jFallback) env->DeleteLocalRef(jFallback);
+	env->DeleteLocalRef(jTmp);
+	env->DeleteLocalRef(jDst);
+}
+
+void Java::cancelArtworkDownloads(int32_t newGeneration)
+{
+	JNIEnv* env = getEnv();
+	if (!env || !m_artworkDownloaderClass || !m_artworkCancelAll) {
+		return;
+	}
+	env->CallStaticVoidMethod(m_artworkDownloaderClass, m_artworkCancelAll, static_cast<jint>(newGeneration));
+	clearJniException(env, "cancelArtworkDownloads");
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_SAMP_initializeSAMP(JNIEnv* env, jobject sampObj, jobject uiObj, jstring gameDir, jboolean isOffline)
@@ -381,16 +388,16 @@ extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_SAMP_initializeSAMP(J
 
 extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_ui_UI_setJavaDialogVisible(JNIEnv* env, jobject obj, jboolean visible)
 {
-	g_javaDialogVisible.store(visible == JNI_TRUE, std::memory_order_release);
+	(void) env;
+	(void) obj;
+	InputArbiter::setJavaDialogVisible(visible == JNI_TRUE);
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_ui_UI_setJavaKeyboardVisible(JNIEnv* env, jobject obj, jboolean visible)
 {
-	bool isVis = (visible == JNI_TRUE);
-	bool wasVis = g_javaKeyboardVisible.exchange(isVis, std::memory_order_acq_rel);
-	if (wasVis && !isVis) {
-		g_javaKeyboardClosedMs.store(nowSteadyMs(), std::memory_order_release);
-	}
+	(void) env;
+	(void) obj;
+	InputArbiter::setJavaKeyboardVisible(visible == JNI_TRUE);
 }
 
 extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_ui_UI_keyboardSend(JNIEnv* env, jobject obj, jbyteArray str)
@@ -442,11 +449,65 @@ extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_SAMP_onHardwareKeyEve
 
 extern "C" JNIEXPORT jboolean JNICALL Java_com_sampmobile_game_ui_UI_handleNativeBackPressed(JNIEnv* env, jobject obj)
 {
-	// Read only the GameMain-published atomic modal flag (no cross-thread pool derefs)
-	// and signal a dedicated atomic cancel flag (not gated by Settings::kmEnabled()).
-	if (!g_nativeModalActive.load(std::memory_order_acquire)) {
-		return JNI_FALSE;
+	(void) env;
+	(void) obj;
+	return InputArbiter::requestNativeBackDismiss() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_ArtworkDownloader_onDownloadProgress(
+	JNIEnv* env, jclass cls, jint generation, jint fileType, jint crc, jlong downloaded, jlong total)
+{
+	(void) env;
+	(void) cls;
+	artwork::ArtworkManager::instance().notifyWorkerProgress(
+		static_cast<int32_t>(generation),
+		static_cast<uint8_t>(fileType),
+		static_cast<uint32_t>(crc),
+		downloaded > 0 ? static_cast<uint64_t>(downloaded) : 0u,
+		total > 0 ? static_cast<uint64_t>(total) : 0u);
+}
+
+extern "C" JNIEXPORT void JNICALL Java_com_sampmobile_game_ArtworkDownloader_onDownloadFinished(
+	JNIEnv* env, jclass cls, jint generation, jint fileType, jint crc, jboolean success, jint failureKind, jstring error)
+{
+	(void) cls;
+	std::string errStr;
+	if (env && error) {
+		const char* cstr = env->GetStringUTFChars(error, nullptr);
+		if (cstr) {
+			errStr = cstr;
+			env->ReleaseStringUTFChars(error, cstr);
+		}
 	}
-	g_pendingBackCancel.store(true, std::memory_order_release);
-	return JNI_TRUE;
+	artwork::ArtworkManager::instance().notifyWorkerFinished(
+		static_cast<int32_t>(generation),
+		static_cast<uint8_t>(fileType),
+		static_cast<uint32_t>(crc),
+		success == JNI_TRUE,
+		static_cast<artwork::DownloadFailureKind>(failureKind),
+		errStr);
+}
+
+extern "C" JNIEXPORT jint JNICALL Java_com_sampmobile_game_ArtworkDownloader_validateAndCommitFile(
+	JNIEnv* env, jclass cls, jint fileType, jstring tempPath, jstring finalPath)
+{
+	(void) cls;
+	if (!env || !tempPath || !finalPath) {
+		return static_cast<jint>(artwork::DownloadFailureKind::UnsafeUrl);
+	}
+	const char* tmpCStr = env->GetStringUTFChars(tempPath, nullptr);
+	const char* dstCStr = env->GetStringUTFChars(finalPath, nullptr);
+	if (!tmpCStr || !dstCStr) {
+		if (tmpCStr) env->ReleaseStringUTFChars(tempPath, tmpCStr);
+		if (dstCStr) env->ReleaseStringUTFChars(finalPath, dstCStr);
+		return static_cast<jint>(artwork::DownloadFailureKind::TransientNet);
+	}
+	const std::string tmp(tmpCStr);
+	const std::string dst(dstCStr);
+	env->ReleaseStringUTFChars(tempPath, tmpCStr);
+	env->ReleaseStringUTFChars(finalPath, dstCStr);
+
+	const artwork::FileType ft = (fileType == 1) ? artwork::FileType::Dff
+		: ((fileType == 2) ? artwork::FileType::Txd : artwork::FileType::None);
+	return static_cast<jint>(artwork::ArtworkManager::validateAndCommitDownloadedFile(ft, tmp, dst));
 }

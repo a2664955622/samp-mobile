@@ -1,6 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <sys/types.h>
+#include <Core/Vector.h>
+#include <RenderWare/rw.h>
+
+namespace sa {
+class CPhysical;
+}
 
 class CEntity {
 public:
@@ -25,7 +32,7 @@ public:
 
 	void SetGravityProcessing(bool state);
 
-	void UpdateMatrix(RwMatrix mat);
+	virtual void UpdateMatrix(RwMatrix mat);
 	void UpdateRwMatrixAndFrame();
 
 	void Render();

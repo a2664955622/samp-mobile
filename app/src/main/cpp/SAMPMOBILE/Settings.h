@@ -1,9 +1,5 @@
 #pragma once
 
-#include <imgui.h>
-#include <arpa/inet.h>
-#include <RakNet/SocketLayer.h>
-
 class Settings {
 public:
 	static void initialize();
@@ -15,21 +11,12 @@ public:
 	static char* host() { return m_host; }
 	static int port() { return m_port; }
 	static char* pass() { return m_pass; }
-
-	static char* ip()
-	{
-		struct in_addr ipv4{};
-		if (inet_pton(AF_INET, m_host, &ipv4) == 1) {
-			return m_host;
-		}
-		char* resolved = (char*) SocketLayer::Instance()->DomainNameToIP(m_host);
-		return resolved ? resolved : m_host;
-	}
+	static char* ip();
 
 	// settings
 	static char* nick() { return m_nick; }
-	static int sampversion() { return m_sampversion; }
-	static bool newinterface() { return m_newinterface; }
+	static const char* sampVersionName() { return m_sampVersionName; }
+	static int sampNetgameVersion() { return m_sampNetgameVersion; }
 	static bool systemkeyboard() { return m_systemkeyboard; }
 	static bool timestamp() { return m_timestamp; }
 	static void setTimestamp(bool v);
@@ -43,8 +30,10 @@ public:
 	static float fontsize() { return m_fontsize; }
 	static int fontSizeOffset() { return m_fontsizeoffset; }
 	static void setFontSizeOffset(int v) { m_fontsizeoffset = v; }
-	static ImVec2 chatpos() { return m_chatpos; }
-	static ImVec2 chatsize() { return m_chatsize; }
+	static float chatPosX() { return m_chatPosX; }
+	static float chatPosY() { return m_chatPosY; }
+	static float chatSizeX() { return m_chatSizeX; }
+	static float chatSizeY() { return m_chatSizeY; }
 	static char* charset() { return m_charset; }
 	static bool modloader() { return m_modloader; }
 	static bool aml() { return m_aml; }
@@ -83,7 +72,7 @@ public:
 	static int pedCamZoom() { return m_pedcamzoom; }
 	static int targetingMode() { return m_targetingmode; }
 	static int joystickSize() { return m_joysticksize; }
-	static float joystickScale() { return (float) m_joysticksize / 100.0f; }
+	static float joystickScale() { return static_cast<float>(m_joysticksize) / 100.0f; }
 	static int analogSensitivity() { return m_analogsensitivity; }
 	static int flickSensitivity() { return m_flicksensitivity; }
 	static int shootThreshold() { return m_shootthreshold; }
@@ -121,9 +110,9 @@ public:
 	static bool showNameTags() { return m_shownametags; }
 	static bool showNametagWeapon() { return m_shownametagweapon; }
 	static int nametagSize() { return m_nametagsize; }
-	static float nametagScale() { return (float) m_nametagsize / 100.0f; }
+	static float nametagScale() { return static_cast<float>(m_nametagsize) / 100.0f; }
 	static int textlabelSize() { return m_textlabelsize; }
-	static float textlabelScale() { return (float) m_textlabelsize / 100.0f; }
+	static float textlabelScale() { return static_cast<float>(m_textlabelsize) / 100.0f; }
 	static int fontFamily() { return m_fontfamily; }
 	static bool showButtonPanel() { return m_showbuttonpanel; }
 	static bool showScreenshotBtn() { return m_showscreenshotbtn; }
@@ -148,8 +137,8 @@ private:
 
 	// settings
 	static char m_nick[30];
-	static int m_sampversion;
-	static bool m_newinterface;
+	static char m_sampVersionName[16];
+	static int m_sampNetgameVersion;
 	static bool m_systemkeyboard;
 	static bool m_timestamp;
 	static bool m_fastconnect;
@@ -158,8 +147,10 @@ private:
 	static int m_fpslimit;
 	static int m_chatstrings;
 	static float m_fontsize;
-	static ImVec2 m_chatpos;
-	static ImVec2 m_chatsize;
+	static float m_chatPosX;
+	static float m_chatPosY;
+	static float m_chatSizeX;
+	static float m_chatSizeY;
 	static char m_charset[16];
 	static bool m_modloader;
 	static bool m_aml;

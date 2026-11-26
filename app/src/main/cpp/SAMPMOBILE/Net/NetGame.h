@@ -1,46 +1,23 @@
 #pragma once
 
-#include <RakNet/RakClientInterface.h>
-#include <RakNet/RakNetworkFactory.h>
-#include <RakNet/PacketEnumerations.h>
-#include <RakNet/StringCompressor.h>
-
-#include <RakNet/SAMP/SAMPRPC.h>
-
-typedef unsigned short PLAYERID;
-typedef unsigned short VEHICLEID;
-typedef unsigned short OBJECTID;
-
-#define GAMESTATE_WAIT_CONNECT        1
-#define GAMESTATE_CONNECTING          2
-#define GAMESTATE_CONNECTED           5
-#define GAMESTATE_AWAIT_JOIN          6
-#define GAMESTATE_RESTARTING          11
-
-#define MAX_PLAYER_NAME               24
-#define MAX_PLAYERS                   1004
-#define MAX_VEHICLES                  2000
-#define MAX_OBJECTS                   2100
-#define MAX_ACTORS                    1000
-#define MAX_PICKUPS                   4096
-#define MAX_TEXT_LABELS               2048
-#define MAX_TEXT_DRAWS                2304
-#define MAX_GANG_ZONES                1024
-#define MAX_MAP_ICONS                 100
-
-#include "LocalPlayer.h"
-#include "RemotePlayer.h"
-#include "PlayerPool.h"
-#include "VehiclePool.h"
-#include "ObjectPool.h"
-#include "ActorPool.h"
-#include "PickupPool.h"
-#include "TextLabelPool.h"
-#include "TextDrawPool.h"
-#include "PlayerBubblePool.h"
-#include "GangZonePool.h"
-#include "MenuPool.h"
+#include "NetTypes.h"
 #include "Session.h"
+// Kept lightweight (zero RakNet/Game/UI includes) to satisfy frozen Cef/ callers
+// that dereference GetPlayerPool()->GetLocalPlayerID() and GetObjectPool()->GetAt().
+#include "PlayerPool.h"
+#include "ObjectPool.h"
+
+class RakClientInterface;
+struct Packet;
+
+class CVehiclePool;
+class CActorPool;
+class CPickupPool;
+class CTextLabelPool;
+class CTextDrawPool;
+class CPlayerBubblePool;
+class CGangZonePool;
+class CMenuPool;
 
 class NetGame {
 public:
@@ -141,9 +118,6 @@ private:
 	int m_gameState;
 	int m_lastConnectAttempt;
 	uint32_t m_mapIcon[MAX_MAP_ICONS];
-	int32_t m_dlVirtualWorld = 0;
-	bool m_dlVirtualWorldKnown = false;
-	bool m_dlFinishDownloadPending = false;
 
 	struct NET_POOLS {
 		CPlayerPool* playerPool;

@@ -1,12 +1,17 @@
+#include "Scoreboard.h"
 #include "../UI.h"
+#include "../UISettings.h"
 #include "../../Client.h"
 #include "../../Game/Game.h"
+#include "../../Game/Util.h"
 #include "../../Net/NetGame.h"
+#include "../../Net/RemotePlayer.h"
 #include "../../Net/Proto/RpcOutbound.h"
+#include <RakNet/RakClientInterface.h>
+#include <RakNet/SAMP/SAMPRPC.h>
+#include <encoding.h>
+#include <sstream>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 struct _PLAYER_SCORE_INFO {
 	uint32_t dwID;
@@ -117,19 +122,19 @@ void Scoreboard::draw(ImGuiRenderer* renderer)
 
 	ImGui::Columns(4, "ScoreboardBody", false);
 	for (uint32_t line = m_offset; line < endplayer; line++) {
-		int tmpTabId = 0;
-		if (tmpTabId == 0) {
-			ImGui::PushID(tmpTabId + line);
+		bool closeAfterClick = false;
+		const int32_t rowIdx = static_cast<int32_t>(line);
+		ImGui::PushID(rowIdx);
 
-			std::stringstream ss;
-			ss << line + tmpTabId;
-			std::string s = ss.str();
+		char itemid[24];
+		snprintf(itemid, sizeof(itemid), "##row_%u", line);
+		const bool is_selected = (m_selectedItem == rowIdx);
 
-			std::string itemid = "##" + s;
-			bool is_selected = (m_selectedItem == line);
-
-			if (ImGui::Selectable(itemid.c_str(), is_selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick, ImVec2(0.0f, (UISettings::fontSize() / 2) + ImGui::GetStyle().ItemSpacing.y))) {
-				if (m_lastSelectedItem == m_selectedItem && pNetGame && pNetGame->GetRakClient()) {
+		if (ImGui::Selectable(itemid, is_selected, ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowDoubleClick, ImVec2(0.0f, (UISettings::fontSize() / 2) + ImGui::GetStyle().ItemSpacing.y))) {
+			const bool isDoubleActivate = ImGui::IsMouseDoubleClicked(0)
+				|| (m_lastSelectedItem >= 0 && m_lastSelectedItem == rowIdx);
+			if (isDoubleActivate) {
+				if (pNetGame && pNetGame->GetRakClient()) {
 					RakNet::BitStream bsSend;
 					proto::Writer writer(bsSend);
 					proto::ClickPlayerReq req{};
@@ -137,28 +142,34 @@ void Scoreboard::draw(ImGuiRenderer* renderer)
 					req.source = 0; // 0 from scoreboard
 					req.serialize(writer, proto::ProtoVersion::V037);
 					pNetGame->GetRakClient()->RPC(&RPC_ClickPlayer, &bsSend, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
-
-					if (visible()) {
-						m_lastSelectedItem = -1;
-						m_selectedItem = -1;
-						setVisible(false);
-						break;
-					}
 				}
 
-				m_lastSelectedItem = line;
+				m_lastSelectedItem = -1;
+				m_selectedItem = -1;
+				if (visible()) {
+					setVisible(false);
+					closeAfterClick = true;
+				}
 			}
-
-			if (ImGui::IsItemHovered()) {
-				m_selectedItem = line;
+			else {
+				m_selectedItem = rowIdx;
+				m_lastSelectedItem = rowIdx;
 			}
+		}
 
-			if (is_selected) {
-				ImGui::SetItemDefaultFocus();
-			}
+		if (ImGui::IsItemHovered()) {
+			m_selectedItem = rowIdx;
+		}
 
-			ImGui::SameLine();
-			ImGui::PopID();
+		if (is_selected) {
+			ImGui::SetItemDefaultFocus();
+		}
+
+		ImGui::SameLine();
+		ImGui::PopID();
+
+		if (closeAfterClick) {
+			break;
 		}
 
 		sprintf(szPlayerId, "%d", m_players[line].dwID);
@@ -209,7 +220,8 @@ void Scoreboard::processUpdating()
 
 	PLAYERID playercount = pPlayerPool->GetTotalPlayers();
 
-	if (m_offset > (playercount - 20)) m_offset = (playercount - 20);
+	const int maxOffset = static_cast<int>(playercount) - 20;
+	if (m_offset > maxOffset) m_offset = maxOffset;
 	if (m_offset < 0) m_offset = 0;
 
 	PLAYER_SCORE_INFO* players = (PLAYER_SCORE_INFO*) malloc(playercount * sizeof(PLAYER_SCORE_INFO));

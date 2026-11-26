@@ -1,13 +1,16 @@
-#include "../../Client.h"
-#include "../../UI/UI.h"
-#include "Java.h"
+#include "../Addr.h"
+#include "../Client.h"
+#include "../InputArbiter.h"
+#include "../Game/Engine/PatchRegistry.h"
+#include "../Game/Engine/Symbols.h"
 #include "MultiTouch.h"
 #include "NV_Event.h"
 
+#include <Memory.h>
+#include <spdlog/spdlog.h>
 #include <android/input.h>
 #include <unistd.h>
 
-extern UI* pUI;
 
 /* MultiTouch */
 
@@ -18,11 +21,9 @@ extern void AND_TouchEvent_hook(int type, int num, int posX, int posY);
 
 void touch_event(int type, int num, int x, int y)
 {
-	// While SAMP's modal keyboard/dialog or Java Dialog is open, dispatch directly
-	// to our hook so third-party AML touch overlays cannot steal modal UI taps.
-	const bool modalOpen = Java::isJavaDialogVisible() ||
-		(pUI != nullptr && pUI->isModalOpenSnapshot());
-	if (!modalOpen && g_fnAndTouchEvent != nullptr) {
+	// While a modal overlay (Java Dialog/Keyboard, ImGui Keyboard, Scoreboard) is active,
+	// dispatch directly to our hook so third-party AML touch overlays cannot steal modal taps.
+	if (!InputArbiter::shouldBypassExternalTouch() && g_fnAndTouchEvent != nullptr) {
 		g_fnAndTouchEvent(type, num, x, y);
 		return;
 	}
@@ -65,12 +66,7 @@ static void dispatchMultiTouchEvent(const NVEvent& event)
 	// phantom fingers permanently held down in CTouchInterface and forcing
 	// single-finger camera drags into two-finger pinch zoom.
 	if (type == NV_MULTITOUCH_CANCEL) {
-		if (pUI != nullptr) {
-			pUI->enqueueTouchEvent(ImVec2(0.0f, 0.0f), TouchType::pop, true);
-			if (pUI->buttonpanel() != nullptr) {
-				pUI->buttonpanel()->clearHeldKeys();
-			}
-		}
+		InputArbiter::onTouchCancel();
 		for (int i = 0; i < 4; ++i) {
 			if (s_pointerDown[i]) {
 				const bool hasCoord = (presentMask & (1u << i)) != 0;
@@ -190,7 +186,9 @@ DECL_HOOK(int32_t, NVEventGetNextEvent, NVEvent* ev, int waitMSecs)
 	int32_t ret = NVEventGetNextEvent(ev, waitMSecs);
 
 	if (ret && ev) {
-		if (ev->m_type == NV_EVENT_MULTITOUCH) {
+		// Suppress both legacy single-touch and 2-finger multitouch NVEvents;
+		// all touch input is routed exclusively through multiTouchEvent4Ex().
+		if (ev->m_type == NV_EVENT_MULTITOUCH || ev->m_type == NV_EVENT_TOUCH) {
 			ev->m_type = (NVEventType) 228;
 		}
 		else {

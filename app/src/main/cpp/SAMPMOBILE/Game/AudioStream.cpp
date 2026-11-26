@@ -8,10 +8,14 @@
 #include <pthread.h>
 
 #include "AudioStream.h"
+#include "Aimstuff.h"
 #include "Game.h"
+#include "PlayerPed.h"
+#include "Util.h"
 #include "../Client.h"
+#include <bass.h>
+#include <spdlog/spdlog.h>
 
-extern Game* pGame;
 
 namespace {
 std::mutex g_audioStreamMutex;

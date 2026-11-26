@@ -24,7 +24,7 @@ local.properties
 app/google-services.json
 
 # Proprietary Rockstar GTA:SA Android v2.10 binaries & APK assets
-# Populated locally via tools/prepare_gtasa.py from your own GTA:SA v2.10 APK (never commit)
+# Populated locally via tools/engine/prepare_gtasa.py from your own GTA:SA v2.10 APK (never commit)
 app/src/main/jniLibs/*/libGTASA.so
 app/src/main/jniLibs/*/libImmEmulatorJ.so
 app/src/main/assets/*
@@ -42,8 +42,4 @@ __pycache__/
 *.pyc
 
 # Local game data (large / copyrighted - keep out of VCS)
-Android/
-GTA/
-gamefiles/
-gamefiles.tar
 dist/

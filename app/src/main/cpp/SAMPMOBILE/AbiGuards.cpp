@@ -5,8 +5,9 @@
 #include "Client.h"
 #include "Game/Game.h"
 #include "Net/NetGame.h"
-#include "GameSA/include/PlayerInfo.h"
-#include "GameSA/include/Entity/Object/Object.h"
+#include "Net/LocalPlayer.h"
+#include <RakNet/NetworkTypes.h>
+#include <SA.h>
 
 #include <cstddef>
 #include <cstdint>

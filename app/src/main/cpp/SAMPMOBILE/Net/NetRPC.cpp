@@ -1,26 +1,47 @@
-#include "../Game/Game.h"
-#include "../Game/Util.h"
-#include "../Client.h"
 #include "NetGame.h"
+#include "LocalPlayer.h"
+#include "RemotePlayer.h"
+#include "VehiclePool.h"
+#include "TextDrawPool.h"
+#include "TextLabelPool.h"
+#include "PlayerBubblePool.h"
+#include "PickupPool.h"
+#include "GangZonePool.h"
+#include "ActorPool.h"
+#include "MenuPool.h"
 #include "RpcHandlers.h"
+#include "ScmEvents.h"
+#include "SessionHooks.h"
 #include "Proto/RpcOutbound.h"
+#include "../Client.h"
+#include "../Settings.h"
+#include "../Game/Game.h"
+#include "../Game/Artwork/ArtworkManager.h"
+#include "../Game/PlayerPed.h"
+#include "../Game/RadarColors.h"
+#include "../Game/Vehicle.h"
+#include "../Game/Util.h"
 #include "../UI/UI.h"
+#include "../UI/SAMPWidgets/Chat.h"
+#include "../UI/SAMPWidgets/DeathWindow.h"
+#include "../UI/SAMPWidgets/NetStats.h"
+#include "../UI/SAMPWidgets/Scoreboard.h"
+#include "../UI/SAMPWidgets/VoiceButton.h"
 #include "../Java/Java.h"
-#include "../Voice/Network.h"
-#include "../Voice/SpeakerList.h"
+#include "../Java/EditObject.h"
+#include <RakNet/RakClientInterface.h>
+#include <RakNet/StringCompressor.h>
+#include <RakNet/SAMP/SAMPRPC.h>
 #include <RakNet/GetTime.h>
+#include <encoding.h>
+#include <spdlog/spdlog.h>
 #include <cmath>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 #define REJECT_REASON_BAD_VERSION 1
 #define REJECT_REASON_BAD_NICKNAME 2
 #define REJECT_REASON_BAD_MOD 3
 #define REJECT_REASON_BAD_PLAYERID 4
-
-void ProcessIncommingEvent(PLAYERID playerID, int iEventType, uint32_t dwParam1, uint32_t dwParam2, uint32_t dwParam3);
 
 void RpcHandlers::OnInitGame(const proto::InitGame& p)
 {
@@ -307,8 +328,7 @@ void RpcHandlers::OnConnectionRejected(const proto::ConnectionRejected& p)
 			break;
 	}
 
-	Network::OnRaknetDisconnect();
-	SpeakerList::Hide();
+	SessionHooks::NotifyDisconnect();
 	pNetGame->GetRakClient()->Disconnect(100);
 }
 
@@ -360,8 +380,7 @@ void RpcHandlers::OnWorldPlayerAdd(const proto::WorldPlayerAdd& p)
 		CRemotePlayer* pRemotePlayer = pPlayerPool->GetAt(p.playerId);
 		if (pRemotePlayer) {
 			sa::CVector vecPos(p.position.x, p.position.y, p.position.z);
-			const int effectiveSkin = ResolveEffectivePedSkin(p.skin, p.customSkin);
-			if (pRemotePlayer->Spawn(p.team, effectiveSkin, &vecPos, p.rotation, p.color, p.fightingStyle)) {
+			if (pRemotePlayer->Spawn(p.team, p.skin, &vecPos, p.rotation, p.color, p.fightingStyle, p.customSkin)) {
 				CPlayerPed* pPlayerPed = pRemotePlayer->GetPlayerPed();
 				if (pPlayerPed) {
 					for (int i = 0; i < 11; i++) {
@@ -538,7 +557,7 @@ void RpcHandlers::OnScmEvent(const proto::ScmEvent& p)
 	spdlog::debug("dwParam2 {}", p.param2);
 	spdlog::debug("dwParam3 {}", p.param3);
 
-	ProcessIncommingEvent(p.playerId, p.eventType, p.param1, p.param2, p.param3);
+	ProcessIncomingScmEvent(p.playerId, p.eventType, p.param1, p.param2, p.param3);
 }
 
 void RpcHandlers::OnUpdateScoresPingsIPs(const proto::UpdateScoresPingsIPs& p)
@@ -947,7 +966,8 @@ void RpcHandlers::OnShowActor(const proto::ShowActor& p)
 
 	NEW_ACTOR newActor{};
 	newActor.ActorID = p.actorId;
-	newActor.iSkin = effectiveSkin;
+	newActor.iSkin = p.skin;
+	newActor.iCustomSkin = p.customSkin;
 	newActor.vecPos = sa::CVector(p.position.x, p.position.y, p.position.z);
 	newActor.fAngle = p.angle;
 	newActor.fHealth = p.health;
@@ -1067,21 +1087,24 @@ void RpcHandlers::OnDlModelRequest(const proto::DlModelRequest& p)
 {
 	spdlog::debug("RPC: DlModelRequest (pool={} count={} type={} vw={} base={} new={})",
 			p.poolId, p.count, p.type, p.virtualWorld, p.baseId, p.newId);
+	artwork::ArtworkManager::instance().onModelRecord(p);
 }
 
 void RpcHandlers::OnDlModelReset(const proto::DlModelReset&)
 {
 	spdlog::debug("RPC: DlModelReset");
-	pNetGame->ResetDlArtworkState();
+	artwork::ArtworkManager::instance().onModelReset();
 }
 
 void RpcHandlers::OnDlModelUrl(const proto::DlModelUrl& p)
 {
-	spdlog::debug("RPC: DlModelUrl (type={} crc={:#x} url={})",
-			p.fileType, p.fileChecksum, p.downloadLink);
+	spdlog::debug("RPC: DlModelUrl (kind={} type={} crc={:#x} url={})",
+			p.kind, p.fileType, p.fileChecksum, p.downloadLink);
+	artwork::ArtworkManager::instance().onDownloadCommand(p);
 }
 
 void RpcHandlers::OnDlDownloadCompleted(const proto::DlDownloadCompleted&)
 {
 	spdlog::debug("RPC: DlDownloadCompleted");
+	artwork::ArtworkManager::instance().onDownloadCompletedRpc();
 }

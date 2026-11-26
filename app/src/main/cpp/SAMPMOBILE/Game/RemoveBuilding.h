@@ -4,6 +4,9 @@
 
 #pragma once
 
+#include <cstdint>
+#include <Core/Vector.h>
+
 struct BuildingToRemove {
 	uint32_t model;
 	sa::CVector pos;

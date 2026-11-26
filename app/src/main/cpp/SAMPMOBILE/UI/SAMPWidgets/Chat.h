@@ -2,8 +2,14 @@
 
 #include <cstdio>
 #include <ctime>
+#include <functional>
 #include <list>
 #include <map>
+
+#include "../Widgets/ListBox.h"
+#include "../Widgets/Label.h"
+#include "../UISettings.h"
+#include "../../Settings.h"
 
 class Chat : public ListBox {
 public:

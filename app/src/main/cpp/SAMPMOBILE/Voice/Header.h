@@ -10,10 +10,11 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
 #include <mutex>
 #include <thread>
 
-#include "../Client.h"
+#include <Core/Vector.h>
 
 #define SleepForMilliseconds(mscount) std::this_thread::sleep_for(std::chrono::milliseconds(mscount))
 
@@ -198,33 +199,4 @@ struct DeleteEffectPacket {
 #pragma pack(pop)
 }
 
-inline void LogVoice(const char* fmt, ...)
-{
-	static std::mutex s_logVoiceMutex;
-	static FILE* flLog = nullptr;
-	std::lock_guard<std::mutex> lock(s_logVoiceMutex);
-
-	char buffer[512];
-	if (flLog == nullptr && Client::gameDir() != nullptr) {
-		snprintf(buffer, sizeof(buffer), "%sSAMP/%s", Client::gameDir(), SV::kLogFileName);
-		flLog = fopen(buffer, "w");
-	}
-
-	memset(buffer, 0, sizeof(buffer));
-
-	va_list arg;
-	va_start(arg, fmt);
-	vsnprintf(buffer, sizeof(buffer), fmt, arg);
-	va_end(arg);
-
-	__android_log_write(ANDROID_LOG_INFO, "SAMPMOBILE", buffer);
-
-	if (flLog == nullptr) {
-		return;
-	}
-
-	fprintf(flLog, "%s\n", buffer);
-	if (Client::isLogLevelDebug()) {
-		fflush(flLog);
-	}
-}
+void LogVoice(const char* fmt, ...);

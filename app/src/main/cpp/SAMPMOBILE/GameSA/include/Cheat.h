@@ -1,4 +1,5 @@
 #pragma once
+#include "Game/Engine/Symbols.h"
 #include "../../Memory/include/Memory.h"
 
 namespace sa {

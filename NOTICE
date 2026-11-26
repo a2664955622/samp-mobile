@@ -28,7 +28,7 @@ game data, or commercial fonts:
     GTA:SA APK assets (assets/data, assets/Text, assets/Fonts, etc.), and
     game data files belong to Rockstar Games / Take-Two Interactive and
     must be supplied locally by the user from their own legally owned
-    GTA: San Andreas Android v2.10 copy (see tools/prepare_gtasa.py).
+    GTA: San Andreas Android v2.10 copy (see tools/engine/prepare_gtasa.py).
   * Commercial UI fonts (Gotham, Museo Sans, Helvetica Neue, etc.) have
     been removed and replaced with open-source fonts (Roboto, Apache-2.0;
     Montserrat via Google Fonts, OFL-1.1).

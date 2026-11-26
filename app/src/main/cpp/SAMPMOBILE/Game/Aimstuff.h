@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstdint>
+#include <Core/Vector.h>
+
 extern uint8_t* pbyteCameraMode;
 extern float* pfCameraExtZoom;
 extern float* pfAspectRatio;

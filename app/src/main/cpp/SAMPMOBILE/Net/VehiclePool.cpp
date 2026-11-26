@@ -1,12 +1,19 @@
-#include "../Game/Game.h"
-#include "../UI/UI.h"
+#include "VehiclePool.h"
+#include "LocalPlayer.h"
+#include "RemotePlayer.h"
 #include "NetGame.h"
 #include "Proto/RpcOutbound.h"
 #include "../Client.h"
+#include "../Game/Game.h"
+#include "../Game/PlayerPed.h"
+#include "../Game/Vehicle.h"
+#include "../Game/Util.h"
+#include "../UI/UI.h"
+#include "../UI/SAMPWidgets/Chat.h"
+#include <RakNet/RakClientInterface.h>
+#include <RakNet/SAMP/SAMPRPC.h>
+#include <spdlog/spdlog.h>
 
-extern UI* pUI;
-extern Game* pGame;
-extern NetGame* pNetGame;
 
 CVehiclePool::CVehiclePool()
 {

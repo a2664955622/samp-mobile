@@ -30,6 +30,7 @@ public class Dialog {
 
     private Activity activity;
     private Listener listener;
+    private final String charset;
 
     public final int DIALOG_STYLE_INPUT;
     public final int DIALOG_STYLE_LIST;
@@ -81,9 +82,10 @@ public class Dialog {
         void _onDialogVisibilityChanged(boolean visible);
     }
 
-    public Dialog(Activity activity, Listener listener) {
+    public Dialog(Activity activity, Listener listener, String charset) {
         this.activity = activity;
         this.listener = listener;
+        this.charset = (charset != null && !charset.isEmpty()) ? charset : "GBK";
 
         ConstraintLayout layout = (ConstraintLayout) activity.getLayoutInflater().inflate(R.layout.activity_game_dialog, null);
         activity.addContentView(layout, new ConstraintLayout.LayoutParams(-1, -1));
@@ -240,7 +242,6 @@ public class Dialog {
 
         byte[] encoded;
         try {
-            String charset = activity.getSharedPreferences("samp_settings", Context.MODE_PRIVATE).getString("charset", "GBK");
             encoded = safeStr.getBytes(charset);
         } catch (UnsupportedEncodingException e) {
             encoded = safeStr.getBytes(StandardCharsets.UTF_8);

@@ -2,9 +2,15 @@
 // Created by ALYN on 16-Jan-25.
 //
 
-#include "Game.h"
 #include "RemoveBuilding.h"
+#include "Game.h"
+#include "Util.h"
 #include "Engine/PatchRegistry.h"
+#include "Engine/Symbols.h"
+#include "../Client.h"
+#include <Memory.h>
+#include <SA.h>
+#include <spdlog/spdlog.h>
 
 void RemoveBuilding::add(uint32_t model, sa::CVector pos, float radius)
 {

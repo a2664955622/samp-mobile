@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstdint>
+#include "../Widget.h"
 
 class NetStats : public Widget {
 public:
