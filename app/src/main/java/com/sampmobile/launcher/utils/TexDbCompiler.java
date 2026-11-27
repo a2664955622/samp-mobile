@@ -23,7 +23,7 @@ final class TexDbCompiler {
 
     public static void compileTextureDatabase(File outDir, String dbName, List<DecodedTexture> textures) throws IOException {
         if (!outDir.exists() && !outDir.mkdirs()) {
-            throw new IOException("无法创建贴图库目录: " + outDir.getAbsolutePath());
+            throw new IOException(I18n.tr("无法创建贴图库目录: ") + outDir.getAbsolutePath());
         }
 
         File txtFile = new File(outDir, dbName + ".txt");

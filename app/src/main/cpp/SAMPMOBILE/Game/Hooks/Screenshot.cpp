@@ -13,6 +13,7 @@
 #include <ctime>
 #include <thread>
 #include <vector>
+#include "../../L10n.h"
 
 static std::atomic<int> s_pendingScreenshotMode{-1};
 
@@ -104,7 +105,7 @@ void CaptureCurrentFramebufferToPng(int mode)
 	std::string fileLabel(filename);
 
 	if (pUI && pUI->chat()) {
-		pUI->chat()->addInfoMessage("-> Screenshot Taken (%s): %s",
+		pUI->chat()->addInfoMessage(L10N("-> Screenshot Taken (%s): %s", "-> 截图已保存（%s）：%s"),
 			mode == 1 ? "Game Only" : "HUD+Chat", filename);
 	}
 

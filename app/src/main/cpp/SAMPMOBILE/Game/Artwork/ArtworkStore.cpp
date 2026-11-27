@@ -326,22 +326,13 @@ RwTexture* createRwTextureFromDecoded(const DecodedTexture& dt)
 sa::CColModel* loadEmbeddedColModel(const std::vector<uint8_t>& colBytes, const char* debugName)
 {
 	ColFormat fmt = ColFormat::None;
+	std::vector<uint8_t> mutableBody;
 	std::string colErr;
-	if (!validateColBytes(colBytes.data(), colBytes.size(), fmt, colErr)) {
+	if (!prepareColBodyForEngine(colBytes.data(), colBytes.size(), fmt, mutableBody, colErr)) {
 		spdlog::warn("ArtworkStore: rejected embedded COL for {}: {}", debugName, colErr);
 		return nullptr;
 	}
-
-	const uint8_t* raw = colBytes.data();
-	const uint32_t encodedSize = static_cast<uint32_t>(raw[4])
-		| (static_cast<uint32_t>(raw[5]) << 8)
-		| (static_cast<uint32_t>(raw[6]) << 16)
-		| (static_cast<uint32_t>(raw[7]) << 24);
-	const size_t effectiveTotal = std::min<size_t>(colBytes.size(), static_cast<size_t>(encodedSize) + 8u);
-	if (effectiveTotal < 32u) {
-		return nullptr;
-	}
-	const uint32_t bodySize = static_cast<uint32_t>(effectiveTotal - 32u);
+	const uint32_t bodySize = static_cast<uint32_t>(mutableBody.size());
 
 	void* mem = eng::fn::CColModel_OpNew<void*>(sizeof(sa::CColModel));
 	if (!mem) {
@@ -351,7 +342,6 @@ sa::CColModel* loadEmbeddedColModel(const std::vector<uint8_t>& colBytes, const 
 	eng::fn::CColModel_Ctor(mem);
 	auto* col = static_cast<sa::CColModel*>(mem);
 
-	std::vector<uint8_t> mutableBody(raw + 32, raw + effectiveTotal);
 	uint8_t* bodyPtr = mutableBody.data();
 
 	if (fmt == ColFormat::Col1) {

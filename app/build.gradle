@@ -20,16 +20,45 @@ def hasReleaseSigning = releaseStoreFile != null && releaseStoreFile.exists()
 def gamedataManifestUrl = (localProps.getProperty("SAMP_GAMEDATA_MANIFEST")
         ?: System.getenv("SAMP_GAMEDATA_MANIFEST") ?: "").trim()
 
+// Optional bundled-data packaging (tools/packaging/build_bundled_apk.py):
+// points at a prepared assets overlay containing gamedata/bundle.gdz + bundle.json,
+// which gets merged into the APK so first-run extraction needs no download.
+def bundleAssetsDir = (project.findProperty("sampBundleAssets")
+        ?: System.getenv("SAMP_BUNDLE_ASSETS") ?: "").toString().trim()
+if (!bundleAssetsDir.isEmpty() && !file(bundleAssetsDir).isDirectory()) {
+    throw new GradleException("sampBundleAssets points at a missing directory: " + bundleAssetsDir)
+}
+
+// Redirect this module's build output into the repo-level build/ tree, so app/
+// only holds sources and everything generated lives under build/ alongside the
+// packaging artifacts (build/app is what used to be app/build).
+layout.buildDirectory.set(rootProject.file("build/app"))
+
 android {
     namespace "com.sampmobile.launcher"
     compileSdk 35
+
+    aaptOptions {
+        // The embedded bundle is already deflate-compressed zip data; compressing it
+        // again inside the APK would double the inflate cost on every first-run
+        // extraction and slow the build for zero size gain.
+        noCompress "gdz"
+    }
+
+    sourceSets {
+        main {
+            if (!bundleAssetsDir.isEmpty()) {
+                assets.srcDir(bundleAssetsDir)
+            }
+        }
+    }
 
     defaultConfig {
         applicationId "com.sampmobile.launcher"
         minSdk 24
         targetSdk 35
-        versionCode 10001
-        versionName "1.0.0.1"
+        versionCode 10004
+        versionName "1.0.0.103"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
@@ -68,7 +97,13 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
         debug {
-            // Uses the standard Android debug keystore by default for zero-config fresh-machine builds.
+            // When the shared test key is configured (packaging scripts set the env vars),
+            // sign debug builds with it too: test players can then install debug and release
+            // builds over each other as updates instead of uninstalling first. Fresh machines
+            // without the key still fall back to the standard Android debug keystore.
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 

@@ -1,22 +1,38 @@
 package com.sampmobile.game;
 
+
+import com.sampmobile.launcher.utils.I18n;
+import android.content.Context;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
+import android.view.Display;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.Surface;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.Toast;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import com.joom.paranoid.Obfuscate;
 import com.rockstargames.gtasa.GTASA;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 
 import com.sampmobile.game.ui.GameInputArbiter;
 import com.sampmobile.game.ui.UI;
 import com.sampmobile.game.ui.cef.CefManager;
 import com.sampmobile.launcher.utils.ClientSettings;
+import com.sampmobile.launcher.utils.LocaleManager;
 import com.sampmobile.launcher.utils.ModManager;
 
 @Obfuscate
@@ -24,6 +40,37 @@ public class SAMP extends GTASA {
     private static final String TAG = "SAMP";
     private static boolean sAmlLoaded = false;
     private static boolean sMonetLoaded = false;
+    private static boolean sJavaCrashHandlerInstalled = false;
+
+    private void installJavaCrashHandler() {
+        if (sJavaCrashHandlerInstalled) return;
+        sJavaCrashHandlerInstalled = true;
+        final File extDir = getExternalFilesDir(null);
+        if (extDir == null) return;
+        final Thread.UncaughtExceptionHandler prev = Thread.getDefaultUncaughtExceptionHandler();
+        Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+            try {
+                File logcatDir = new File(extDir, "logcat");
+                if (!logcatDir.exists()) logcatDir.mkdirs();
+                long epoch = System.currentTimeMillis() / 1000L;
+                int pid = android.os.Process.myPid();
+                File out = new File(logcatDir, "crash_java_" + epoch + "_" + pid + ".log");
+                StringWriter sw = new StringWriter();
+                sw.append("========== SA-MP Mobile Java crash report ==========\n");
+                sw.append("epoch: ").append(String.valueOf(epoch)).append("\n");
+                sw.append("pid: ").append(String.valueOf(pid))
+                        .append(" thread: ").append(thread != null ? thread.getName() : "unknown").append("\n\n");
+                throwable.printStackTrace(new PrintWriter(sw));
+                try (FileOutputStream fos = new FileOutputStream(out)) {
+                    fos.write(sw.toString().getBytes(StandardCharsets.UTF_8));
+                }
+            } catch (Throwable ignored) {
+            }
+            if (prev != null) {
+                prev.uncaughtException(thread, throwable);
+            }
+        });
+    }
 
     public UI ui;
 
@@ -48,6 +95,11 @@ public class SAMP extends GTASA {
 
         System.loadLibrary("GTASA");
         System.loadLibrary("SAMPMOBILE");
+    }
+
+    @Override
+    protected void attachBaseContext(Context newBase) {
+        super.attachBaseContext(LocaleManager.wrap(newBase));
     }
 
     private void loadModLibraries(ClientSettings settings) {
@@ -99,6 +151,7 @@ public class SAMP extends GTASA {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         Log.i(TAG, "**** onCreate");
+        installJavaCrashHandler();
 
         android.content.Intent launchIntent = getIntent();
         if (launchIntent == null || !Objects.equals(launchIntent.getStringExtra("extra_check"), "sampmobile1337")) {
@@ -112,12 +165,12 @@ public class SAMP extends GTASA {
         loadLibraries();
 
         super.onCreate(savedInstanceState);
-        Toast.makeText(this, "SAMP 已启动", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, I18n.tr("SAMP 已启动"), Toast.LENGTH_LONG).show();
 
         File extDir = getExternalFilesDir(null);
         if (extDir == null) {
             Log.e(TAG, "External files directory is unavailable!");
-            Toast.makeText(this, "游戏数据存储目录不可用", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, I18n.tr("游戏数据存储目录不可用"), Toast.LENGTH_LONG).show();
             finish();
             return;
         }
@@ -176,6 +229,105 @@ public class SAMP extends GTASA {
             } else if (Build.VERSION.SDK_INT >= 28) {
                 getWindow().getAttributes().layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
             }
+        }
+
+        applyPreferredRefreshRate(settings);
+        installBackInvokedCallback();
+    }
+
+    private void installBackInvokedCallback() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return;
+        try {
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+                    () -> {
+                        if (inputArbiter.onBackPressed()) {
+                            return;
+                        }
+                        KeyEvent down = new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_BACK);
+                        KeyEvent up = new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_BACK);
+                        super.onKeyDown(KeyEvent.KEYCODE_BACK, down);
+                        super.onKeyUp(KeyEvent.KEYCODE_BACK, up);
+                    });
+        } catch (Throwable ignored) {
+        }
+    }
+
+    // Opt out of Android 15/16 default 60Hz game frame-rate intervention by selecting
+    // the matching high-refresh Display.Mode and voting frame rate on the game Surface.
+    private void applyPreferredRefreshRate(ClientSettings settings) {
+        try {
+            int fpsLimit = settings != null ? settings.getInt("fps_limit") : 0;
+            Display curDisplay = Build.VERSION.SDK_INT >= 30
+                    ? getDisplay()
+                    : getWindowManager().getDefaultDisplay();
+            if (curDisplay == null) return;
+
+            Display.Mode currentMode = curDisplay.getMode();
+            Display.Mode[] modes = curDisplay.getSupportedModes();
+            float peakHz = currentMode != null ? currentMode.getRefreshRate() : 60.0f;
+            int bestModeId = currentMode != null ? currentMode.getModeId() : 0;
+
+            if (currentMode != null && modes != null) {
+                for (Display.Mode m : modes) {
+                    if (m.getPhysicalWidth() == currentMode.getPhysicalWidth()
+                            && m.getPhysicalHeight() == currentMode.getPhysicalHeight()) {
+                        float hz = m.getRefreshRate();
+                        if (fpsLimit > 0 && fpsLimit <= 240) {
+                            if (hz >= fpsLimit - 0.5f && (bestModeId == currentMode.getModeId() || hz < peakHz)) {
+                                peakHz = hz;
+                                bestModeId = m.getModeId();
+                            }
+                        } else if (hz > peakHz) {
+                            peakHz = hz;
+                            bestModeId = m.getModeId();
+                        }
+                    }
+                }
+                if (bestModeId != 0 && bestModeId != currentMode.getModeId()) {
+                    WindowManager.LayoutParams lp = getWindow().getAttributes();
+                    lp.preferredDisplayModeId = bestModeId;
+                    getWindow().setAttributes(lp);
+                }
+            }
+
+            final float targetHz = (fpsLimit >= 30 && fpsLimit <= 240) ? (float) fpsLimit : peakHz;
+            if (Build.VERSION.SDK_INT >= 30 && targetHz > 0.0f) {
+                View mainView = GetMainView();
+                if (mainView instanceof SurfaceView) {
+                    SurfaceHolder holder = ((SurfaceView) mainView).getHolder();
+                    applySurfaceFrameRate(holder.getSurface(), targetHz);
+                    holder.addCallback(new SurfaceHolder.Callback() {
+                        @Override
+                        public void surfaceCreated(SurfaceHolder h) {
+                            applySurfaceFrameRate(h.getSurface(), targetHz);
+                        }
+
+                        @Override
+                        public void surfaceChanged(SurfaceHolder h, int fmt, int w, int ht) {
+                            applySurfaceFrameRate(h.getSurface(), targetHz);
+                        }
+
+                        @Override
+                        public void surfaceDestroyed(SurfaceHolder h) {
+                        }
+                    });
+                }
+            }
+        } catch (Throwable ignored) {
+        }
+    }
+
+    private static void applySurfaceFrameRate(Surface surface, float fps) {
+        if (surface == null || !surface.isValid() || fps <= 0.0f) return;
+        try {
+            if (Build.VERSION.SDK_INT >= 31) {
+                surface.setFrameRate(fps, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE,
+                        Surface.CHANGE_FRAME_RATE_ONLY_IF_SEAMLESS);
+            } else if (Build.VERSION.SDK_INT >= 30) {
+                surface.setFrameRate(fps, Surface.FRAME_RATE_COMPATIBILITY_FIXED_SOURCE);
+            }
+        } catch (Throwable ignored) {
         }
     }
 
@@ -345,6 +497,16 @@ public class SAMP extends GTASA {
         }
         // 拆除全部 omp-cef WebView，避免跨 Activity 生命周期泄漏
         CefManager.shutdown();
+        // Reaching onDestroy means an orderly teardown (intentional exit or
+        // user swipe-away), so clear the session-alive marker before dying;
+        // crash / LMK / vendor kill never get here and leave the marker behind.
+        try {
+            File extDir = getExternalFilesDir(null);
+            if (extDir != null) {
+                new File(extDir, "logcat/session_alive").delete();
+            }
+        } catch (Throwable ignored) {
+        }
         // Kill the isolated :game process BEFORE NvEventQueueActivity.onDestroy() invokes
         // quitAndWait() (10s Main-Looper wait + OS_ApplicationEvent UAF) & systemCleanup().
         android.os.Process.killProcess(android.os.Process.myPid());

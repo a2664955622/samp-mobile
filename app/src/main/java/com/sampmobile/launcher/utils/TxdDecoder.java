@@ -28,7 +28,7 @@ final class TxdDecoder {
         int rootType = readLE32(data, 0);
         long rootSize = readLE32(data, 4) & 0xFFFFFFFFL;
         if (rootType != RW_TEXDICTIONARY) {
-            if (warnings != null) warnings.add("TXD 文件头无效 (非 RenderWare TEXDICTIONARY)");
+            if (warnings != null) warnings.add(I18n.tr("TXD 文件头无效 (非 RenderWare TEXDICTIONARY)"));
             return result;
         }
         int end = (int) Math.min((long) data.length, 12L + rootSize);
@@ -76,7 +76,7 @@ final class TxdDecoder {
         int platformId = readLE32(data, s);
         // 8 = D3D8 (GTA3/VC/SA), 9 = D3D9 (GTA:SA PC)
         if (platformId != 8 && platformId != 9) {
-            if (warnings != null) warnings.add("跳过非 PC 平台 TXD 贴图 (platform=" + platformId + ")");
+            if (warnings != null) warnings.add(I18n.tr("跳过非 PC 平台 TXD 贴图 (platform=") + platformId + ")");
             return null;
         }
         String name = readNullTermAscii(data, s + 8, 32).trim();
@@ -90,7 +90,7 @@ final class TxdDecoder {
         int flagsOrComp = data[s + 87] & 0xFF;
 
         if (width <= 0 || height <= 0 || width > 4096 || height > 4096) {
-            if (warnings != null) warnings.add("跳过异常尺寸贴图: " + name + " (" + width + "x" + height + ")");
+            if (warnings != null) warnings.add(I18n.tr("跳过异常尺寸贴图: ") + name + " (" + width + "x" + height + ")");
             return null;
         }
 
@@ -151,7 +151,7 @@ final class TxdDecoder {
             rgba = decode16Bit(data, cur, mip0Size, width, height, formatMask);
         } else {
             if (warnings != null) {
-                warnings.add("不支持的 TXD 贴图格式: " + name + " (depth=" + depth + ", fmt=0x"
+                warnings.add(I18n.tr("不支持的 TXD 贴图格式: ") + name + " (depth=" + depth + ", fmt=0x"
                         + Integer.toHexString(rasterFormat) + ", d3d=0x" + Integer.toHexString(d3dFmtOrAlpha) + ")");
             }
             return null;

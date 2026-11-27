@@ -31,6 +31,48 @@ SO_GTASA = {
 
 OWN_LIBS = ("libSAMPMOBILE.so", "libSCAnd.so")
 
+# arm64 libraries on the core game path that MUST ship with 16KB-aligned PT_LOAD
+# segments (Android 15+/16 16KB-page kernels). Mod-ecosystem libs (AML/luajit/
+# monetloader) are player-optional and load only when the corresponding toggle is
+# on, so they are reported informationally instead of failing the gate.
+ARM64_16K_REQUIRED = {
+    "libBASS.so",
+    "libbass_ssl.so",
+    "libc++_shared.so",
+    "libGTASA.so",
+    "libOpenAL64.so",
+}
+
+
+def _load_segment_aligns(so_path: Path) -> List[int]:
+    """Pure-python PT_LOAD p_align parser (32/64-bit ELF, no external tools)."""
+    data = so_path.read_bytes()
+    if len(data) < 0x40 or data[:4] != b"\x7fELF":
+        return []
+    is64 = data[4] == 2
+    endian = "<" if data[5] == 1 else ">"
+    if is64:
+        e_phoff = struct.unpack_from(endian + "Q", data, 0x20)[0]
+        e_phentsize = struct.unpack_from(endian + "H", data, 0x36)[0]
+        e_phnum = struct.unpack_from(endian + "H", data, 0x38)[0]
+    else:
+        e_phoff = struct.unpack_from(endian + "I", data, 0x1C)[0]
+        e_phentsize = struct.unpack_from(endian + "H", data, 0x2A)[0]
+        e_phnum = struct.unpack_from(endian + "H", data, 0x2C)[0]
+    aligns: List[int] = []
+    for i in range(e_phnum):
+        off = e_phoff + i * e_phentsize
+        if off + e_phentsize > len(data):
+            break
+        p_type = struct.unpack_from(endian + "I", data, off)[0]
+        if p_type != 1:  # PT_LOAD
+            continue
+        if is64:
+            aligns.append(struct.unpack_from(endian + "Q", data, off + 0x30)[0])
+        else:
+            aligns.append(struct.unpack_from(endian + "I", data, off + 0x1C)[0])
+    return aligns
+
 
 def _load_dynamic_exports(nm_bin: Path, so_path: Path) -> Dict[str, str]:
     out = subprocess.check_output(
@@ -106,6 +148,31 @@ def _check_prebuilt_jnilibs(r: Runner, require_gtasa: bool) -> None:
         r.ok("Dual-ABI jniLibs ELF integrity", f"{total_checked} .so files verified")
     else:
         r.fail("Dual-ABI jniLibs ELF integrity", "; ".join(errors))
+
+    # 16KB page-size alignment for arm64 prebuilt libs: core game-path libs must
+    # load natively on 16KB kernels (Android 15+/16) without the fragile backcompat
+    # mode; optional mod libs are informational only.
+    arm64_dir = jni_root / "arm64-v8a"
+    if arm64_dir.is_dir():
+        bad_core: List[str] = []
+        info_mods: List[str] = []
+        aligned_count = 0
+        for so in sorted(arm64_dir.glob("*.so")):
+            aligns = _load_segment_aligns(so)
+            if not aligns:
+                continue
+            if min(aligns) >= 0x4000:
+                aligned_count += 1
+            elif so.name in ARM64_16K_REQUIRED:
+                bad_core.append(f"{so.name} (min LOAD align 0x{min(aligns):x})")
+            else:
+                info_mods.append(so.name)
+        if not bad_core:
+            r.ok("arm64 prebuilt jniLibs 16KB page alignment", f"{aligned_count} core libs aligned to 16KB")
+        else:
+            r.fail("arm64 prebuilt jniLibs 16KB page alignment", "core libs still 4KB-aligned: " + ", ".join(bad_core))
+        if info_mods:
+            r.info("arm64 optional mod libs 16KB alignment", "4KB-aligned (player-optional, non-core): " + ", ".join(info_mods))
 
     if prop_present == 0:
         if require_gtasa:
@@ -210,8 +277,8 @@ def _resolve_compiled_libs(apk_path: Optional[Path], tmp_dir: Path) -> Dict[str,
             if lib in found[abi]:
                 continue
             for cand in (
-                REPO_ROOT / f"app/build/intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out/lib/{abi}/{lib}",
-                REPO_ROOT / f"app/build/intermediates/merged_native_libs/debug/mergeDebugNativeLibs/out/lib/{abi}/{lib}",
+                REPO_ROOT / f"build/app/intermediates/stripped_native_libs/debug/stripDebugDebugSymbols/out/lib/{abi}/{lib}",
+                REPO_ROOT / f"build/app/intermediates/merged_native_libs/debug/mergeDebugNativeLibs/out/lib/{abi}/{lib}",
             ):
                 if cand.is_file():
                     found[abi][lib] = cand
@@ -224,8 +291,12 @@ def _collect_java_native_methods() -> List[Tuple[str, str, str]]:
     native_decl_re = re.compile(r"\bnative\s+[\w<>\[\], ?]+\s+(\w+)\s*\(")
     pkg_re = re.compile(r"^\s*package\s+([\w.]+)\s*;", re.MULTILINE)
     methods: List[Tuple[str, str, str]] = []
+    string_lit_re = re.compile(r'"(?:\\.|[^"\\])*"')
+    char_lit_re = re.compile(r"'(?:\\.|[^'\\])'")
     for p in sorted(java_root.rglob("*.java")):
         text = p.read_text(encoding="utf-8", errors="ignore")
+        text = string_lit_re.sub('""', text)
+        text = char_lit_re.sub("''", text)
         pkg_m = pkg_re.search(text)
         if not pkg_m:
             continue
@@ -283,6 +354,7 @@ def _check_compiled_binaries_and_jni(
         bad_needed: List[str] = []
         align_notes: List[str] = []
         audited_count = 0
+        arm64_align_audited = 0
 
         for abi in ("arm64-v8a", "armeabi-v7a"):
             allowed_libs = (
@@ -305,7 +377,9 @@ def _check_compiled_binaries_and_jni(
                     if needed not in allowed_libs:
                         bad_needed.append(f"{abi}/{lib_name} -> {needed}")
 
-                # Check PT_LOAD page alignment (informational for Android 15+ 16KB devices)
+                # Check PT_LOAD page alignment: project-built arm64 libs must be
+                # 16KB-aligned (CMakeLists sets -z max-page-size/common-page-size=16384).
+                # A 4KB result means the linker flags regressed or were lost.
                 phdr_out = subprocess.check_output(
                     [str(readelf_bin), "-lW", str(lib_path)],
                     text=True,
@@ -319,8 +393,10 @@ def _check_compiled_binaries_and_jni(
                             load_aligns.append(int(parts[-1], 16))
                         except ValueError:
                             pass
-                if load_aligns and abi == "arm64-v8a" and min(load_aligns) < 0x4000:
-                    align_notes.append(f"{abi}/{lib_name} (min LOAD align 0x{min(load_aligns):x})")
+                if load_aligns and abi == "arm64-v8a":
+                    arm64_align_audited += 1
+                    if min(load_aligns) < 0x4000:
+                        align_notes.append(f"{abi}/{lib_name} (min LOAD align 0x{min(load_aligns):x})")
 
         if not textrel_hits:
             r.ok("Compiled .so zero TEXTREL (Android 6+ requirement)", f"{audited_count} binaries verified")
@@ -333,7 +409,11 @@ def _check_compiled_binaries_and_jni(
             r.fail("Compiled .so DT_NEEDED dependency closure", "unbundled/non-NDK libs: " + "; ".join(bad_needed))
 
         if align_notes:
-            r.info("Android 15+ 16KB page-size readiness", "4KB aligned (NDK 25 default): " + ", ".join(align_notes))
+            r.fail("Android 15+/16 16KB page-size alignment (compiled libs)", "arm64 libs still 4KB-aligned: " + ", ".join(align_notes))
+        elif arm64_align_audited:
+            r.ok("Android 15+/16 16KB page-size alignment (compiled libs)", f"{arm64_align_audited} arm64 built libs aligned to 16KB")
+        else:
+            r.info("Android 15+/16 16KB page-size alignment (compiled libs)", "skipped (no arm64 built libs in scope)")
 
         # 2) Real compiled ELF dynamic JNI symbol verification on BOTH ABIs
         for abi in ("arm64-v8a", "armeabi-v7a"):

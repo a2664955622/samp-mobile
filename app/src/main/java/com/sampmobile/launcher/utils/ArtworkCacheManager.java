@@ -329,7 +329,7 @@ public final class ArtworkCacheManager {
                                      ProgressListener listener, AtomicBoolean cancelled) throws IOException {
         try (InputStream raw = resolver.openInputStream(zipUri)) {
             if (raw == null) {
-                throw new IOException("无法打开所选压缩包");
+                throw new IOException(I18n.tr("无法打开所选压缩包"));
             }
             try (ZipInputStream zis = new ZipInputStream(new BufferedInputStream(raw, IO_BUFFER_SIZE))) {
                 ZipEntry entry;

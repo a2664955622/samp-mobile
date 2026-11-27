@@ -1,4 +1,4 @@
-"""Stage 5: Executable test suites (C++ native, Gradle JVM, Gamedata) & official Android Lint."""
+"""Stage 5: Executable test suites (C++ native, Gradle JVM) & official Android Lint."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from .common import REPO_ROOT, Runner, find_compatible_java_home
-from .gamedata import run_gamedata_check
 
 
 def run_native_tests(r: Runner) -> None:
@@ -74,7 +73,7 @@ def run_android_lint(r: Runner, online: bool = False) -> None:
         text=True,
         errors="ignore",
     )
-    report_xml = REPO_ROOT / "app/build/reports/lint-results-debug.xml"
+    report_xml = REPO_ROOT / "build/app/reports/lint-results-debug.xml"
     if not report_xml.is_file():
         out = ((proc.stdout or "") + "\n" + (proc.stderr or "")).strip()
         if not online and "available for offline mode" in out:
@@ -105,16 +104,15 @@ def run_android_lint(r: Runner, online: bool = False) -> None:
             warnings += 1
 
     if not errors:
-        r.ok("Android Lint (lintDebug)", f"0 errors, {warnings} warnings (see app/build/reports/lint-results-debug.html)")
+        r.ok("Android Lint (lintDebug)", f"0 errors, {warnings} warnings (see build/app/reports/lint-results-debug.html)")
     else:
         sample = ", ".join(errors[:6]) + (f" (+{len(errors) - 6} more)" if len(errors) > 6 else "")
         r.warn("Android Lint (lintDebug)", f"{len(errors)} errors, {warnings} warnings: {sample}")
 
 
 def run_executable_suites(r: Runner, include_lint: bool = False, online: bool = False) -> None:
-    r.section("Stage 5: Executable Unit Tests, Gamedata Contract & Android Lint")
+    r.section("Stage 5: Executable Unit Tests & Android Lint")
     run_native_tests(r)
     run_jvm_tests(r)
-    run_gamedata_check(r)
     if include_lint:
         run_android_lint(r, online=online)

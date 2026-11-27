@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.download;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.content.Context;
 import android.util.Log;
 
@@ -104,7 +106,7 @@ public final class GamedataInstaller {
             deleteRecursively(staging);
         }
         if (!staging.isDirectory() && !staging.mkdirs()) {
-            throw new IOException("无法创建临时目录：" + staging);
+            throw new IOException(I18n.tr("无法创建临时目录：") + staging);
         }
 
         long written = 0;
@@ -124,12 +126,12 @@ public final class GamedataInstaller {
                 // 归一化 + 安全校验（拒绝 .. / 绝对路径 / __MACOSX）
                 String rel = GameDataImporter.normalizeZipEntryPath(raw);
                 if (rel == null) {
-                    Log.d(TAG, "跳过条目: " + raw);
+                    Log.d(TAG, I18n.tr("跳过条目: ") + raw);
                     zis.closeEntry();
                     continue;
                 }
                 if (!isSafeEntryName(rel)) {
-                    Log.w(TAG, "跳过不安全的 zip 条目: " + raw);
+                    Log.w(TAG, I18n.tr("跳过不安全的 zip 条目: ") + raw);
                     zis.closeEntry();
                     continue;
                 }
@@ -137,7 +139,7 @@ public final class GamedataInstaller {
                 File out = new File(staging, rel);
                 File parent = out.getParentFile();
                 if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-                    throw new IOException("无法创建父目录：" + parent);
+                    throw new IOException(I18n.tr("无法创建父目录：") + parent);
                 }
 
                 try (OutputStream os = new FileOutputStream(out)) {
@@ -154,7 +156,7 @@ public final class GamedataInstaller {
             }
         }
 
-        if (listener != null) listener.onStatus("解压完成，正在启用…");
+        if (listener != null) listener.onStatus(I18n.tr("解压完成，正在启用…"));
     }
 
     /**
@@ -167,12 +169,12 @@ public final class GamedataInstaller {
     public void activateStaging() throws IOException {
         File staging = stagingDir();
         if (!staging.isDirectory()) {
-            throw new IOException("临时目录不存在，无法启用：" + staging);
+            throw new IOException(I18n.tr("临时目录不存在，无法启用：") + staging);
         }
 
         File root = installDir();
         int files = mergeDir(staging, root, "");
-        Log.i(TAG, "已合并 " + files + " 个文件到 " + root);
+        Log.i(TAG, I18n.tr("已合并 ") + files + I18n.tr(" 个文件到 ") + root);
 
         deleteRecursively(staging);
     }
@@ -188,19 +190,19 @@ public final class GamedataInstaller {
 
             if (src.isDirectory()) {
                 if (!dst.isDirectory() && !dst.mkdirs()) {
-                    throw new IOException("无法创建目录：" + dst);
+                    throw new IOException(I18n.tr("无法创建目录：") + dst);
                 }
                 count += mergeDir(src, dst, rel);
             } else {
                 // 用户配置（服务器列表、设置、日志）不能被数据包覆盖，
                 // 否则玩家每次更新数据都会丢掉自己的服务器书签。
                 if (GameDataImporter.shouldPreserveExisting(rel) && dst.exists()) {
-                    Log.i(TAG, "保留用户文件，不覆盖：" + rel);
+                    Log.i(TAG, I18n.tr("保留用户文件，不覆盖：") + rel);
                     continue;
                 }
                 // 覆盖同名文件；先删掉旧的
                 if (dst.exists() && !dst.delete()) {
-                    throw new IOException("无法覆盖已有文件：" + dst);
+                    throw new IOException(I18n.tr("无法覆盖已有文件：") + dst);
                 }
 
                 // 优先 renameTo：staging 与 files/ 在同一文件系统内，改名是零拷贝，
@@ -229,7 +231,7 @@ public final class GamedataInstaller {
             while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
         }
         if (!src.delete()) {
-            Log.w(TAG, "临时文件删除失败（不影响结果）: " + src);
+            Log.w(TAG, I18n.tr("临时文件删除失败（不影响结果）: ") + src);
         }
     }
 
@@ -243,12 +245,12 @@ public final class GamedataInstaller {
      */
     public void mergeIntoInstall(File srcFile, String relPath) throws IOException {
         if (!isSafeEntryName(relPath)) {
-            throw new IOException("不安全的相对路径：" + relPath);
+            throw new IOException(I18n.tr("不安全的相对路径：") + relPath);
         }
         File dst = new File(installDir(), relPath);
         File parent = dst.getParentFile();
         if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-            throw new IOException("无法创建目录：" + parent);
+            throw new IOException(I18n.tr("无法创建目录：") + parent);
         }
         try (InputStream in = new FileInputStream(srcFile);
              OutputStream out = new FileOutputStream(dst)) {
@@ -284,6 +286,6 @@ public final class GamedataInstaller {
                 for (File c : children) deleteRecursively(c);
             }
         }
-        if (!f.delete()) Log.w(TAG, "删除失败: " + f);
+        if (!f.delete()) Log.w(TAG, I18n.tr("删除失败: ") + f);
     }
 }

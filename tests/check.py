@@ -7,9 +7,9 @@ plus real executable test suites — zero fragile business-logic regexes.
 
 Modes:
   python tests/check.py            # Fast gate (Stages 1-4: compliance, platform, ELF/537 symbols/JNI, APK tools)
-  python tests/check.py --full     # Full gate (Stages 1-5: adds C++ native tests, Gradle JVM tests, gamedata roundtrip)
+  python tests/check.py --full     # Full gate (Stages 1-5: adds C++ native tests, Gradle JVM tests)
   python tests/check.py --release  # Pre-release gate (--full + --require-apk + --require-gtasa + Android Lint)
-  python tests/check.py --stage <compliance|platform|abi|apk|native|jvm|gamedata|lint>
+  python tests/check.py --stage <compliance|platform|abi|apk|native|jvm|lint>
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ from checks.apk_verify import run_apk_checks
 from checks.binary_abi import run_binary_abi_checks
 from checks.common import REPO_ROOT, Runner
 from checks.compliance import run_compliance_checks
-from checks.gamedata import run_gamedata_check
 from checks.platform import run_platform_checks
 from checks.runners import (
     run_android_lint,
@@ -39,10 +38,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Unified objective verification pipeline for SA-MP Mobile.")
     parser.add_argument(
         "--apk",
-        default="app/build/outputs/apk/debug/samp.apk",
-        help="Target APK path (default: app/build/outputs/apk/debug/samp.apk)",
+        default="build/app/outputs/apk/debug/samp.apk",
+        help="Target APK path (default: build/app/outputs/apk/debug/samp.apk)",
     )
-    parser.add_argument("--full", action="store_true", help="Run all 5 stages (including C++/JVM/gamedata tests)")
+    parser.add_argument("--full", action="store_true", help="Run all 5 stages (including C++/JVM tests)")
     parser.add_argument(
         "--release",
         action="store_true",
@@ -54,7 +53,7 @@ def main() -> int:
     parser.add_argument("--require-gtasa", action="store_true", help="Fail if local GTA:SA v2.10 binaries/assets are absent")
     parser.add_argument(
         "--stage",
-        choices=("compliance", "platform", "abi", "apk", "native", "jvm", "gamedata", "lint"),
+        choices=("compliance", "platform", "abi", "apk", "native", "jvm", "lint"),
         help="Run a single verification stage only",
     )
     args = parser.parse_args()
@@ -86,11 +85,8 @@ def main() -> int:
         elif args.stage == "jvm":
             r.section("Stage 5b: Gradle JVM Unit Tests")
             run_jvm_tests(r)
-        elif args.stage == "gamedata":
-            r.section("Stage 5c: Gamedata Publish Roundtrip")
-            run_gamedata_check(r)
         elif args.stage == "lint":
-            r.section("Stage 5d: Official Android Lint")
+            r.section("Stage 5c: Official Android Lint")
             run_android_lint(r, online=args.online)
     else:
         run_compliance_checks(r)

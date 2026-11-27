@@ -33,6 +33,7 @@
 #include <RakNet/StringCompressor.h>
 #include <RakNet/SAMP/SAMPRPC.h>
 #include <RakNet/GetTime.h>
+#include "../L10n.h"
 #include <encoding.h>
 #include <spdlog/spdlog.h>
 #include <cmath>
@@ -119,7 +120,7 @@ void RpcHandlers::OnInitGame(const proto::InitGame& p)
 	spdlog::debug("vehicleFriendlyFire, {}", sess.settings.vehicleFriendlyFire);
 
 	if (pUI) {
-		pUI->chat()->addDebugMessage("Connected to {B9C9BF}%s", Encoding::cp2utf(sess.hostName).c_str());
+		pUI->chat()->addDebugMessage(L10N("Connected to {B9C9BF}%s", "已连接到 {B9C9BF}%s"), Encoding::cp2utf(sess.hostName).c_str());
 		pUI->voicebutton()->setVisible(Settings::voice() && Settings::voiceMicEnable());
 	}
 
@@ -302,28 +303,28 @@ void RpcHandlers::OnConnectionRejected(const proto::ConnectionRejected& p)
 	switch (p.reason) {
 		case REJECT_REASON_BAD_VERSION:
 			if (pUI) {
-				pUI->chat()->addInfoMessage("CONNECTION REJECTED: Incorrect Version.");
+				pUI->chat()->addInfoMessage(L10N("CONNECTION REJECTED: Incorrect Version.", "连接被拒绝：版本不正确。"));
 			}
 
 			break;
 
 		case REJECT_REASON_BAD_NICKNAME:
 			if (pUI) {
-				pUI->chat()->addInfoMessage("CONNECTION REJECTED: Unacceptable NickName");
-				pUI->chat()->addInfoMessage("Please choose another nick between and 3-20 characters");
-				pUI->chat()->addInfoMessage("Please use only a-z, A-Z, 0-9");
-				pUI->chat()->addInfoMessage("Use /quit to exit or press ESC and select Quit Game");
+				pUI->chat()->addInfoMessage(L10N("CONNECTION REJECTED: Unacceptable NickName", "连接被拒绝：昵称不可用"));
+				pUI->chat()->addInfoMessage(L10N("Please choose another nick between and 3-20 characters", "请改用 3-20 个字符的昵称"));
+				pUI->chat()->addInfoMessage(L10N("Please use only a-z, A-Z, 0-9", "请只使用 a-z、A-Z、0-9"));
+				pUI->chat()->addInfoMessage(L10N("Use /quit to exit or press ESC and select Quit Game", "输入 /quit 退出，或按 ESC 选择退出游戏"));
 			}
 			break;
 
 		case REJECT_REASON_BAD_MOD:
 			if (pUI) {
-				pUI->chat()->addInfoMessage("CONNECTION REJECTED: Bad mod version.");
+				pUI->chat()->addInfoMessage(L10N("CONNECTION REJECTED: Bad mod version.", "连接被拒绝：模组版本错误。"));
 			}
 			break;
 		case REJECT_REASON_BAD_PLAYERID:
 			if (pUI) {
-				pUI->chat()->addInfoMessage("CONNECTION REJECTED: Unable to allocate a player slot.");
+				pUI->chat()->addInfoMessage(L10N("CONNECTION REJECTED: Unable to allocate a player slot.", "连接被拒绝：无法分配玩家位置。"));
 			}
 			break;
 	}

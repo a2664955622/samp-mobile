@@ -1,5 +1,7 @@
 package com.sampmobile.game.ui.widgets;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.res.ColorStateList;
@@ -80,48 +82,48 @@ public class EditObject {
         attach_leftright = activity.findViewById(R.id.attach_leftright);
         attach_leftright.setOnClickListener(view -> {
             active_button = BUTTON_LEFT_RIGHT;
-            attach_text_description.setText("调整左右位置");
+            attach_text_description.setText(I18n.tr("调整左右位置"));
             SelectetItem(view);
         });
 
         attach_topbott = activity.findViewById(R.id.attach_topbott);
         attach_topbott.setOnClickListener(view -> {
             active_button = BUTTON_UP_DOWN;
-            attach_text_description.setText("调整上下位置");
+            attach_text_description.setText(I18n.tr("调整上下位置"));
             SelectetItem(view);
         });
 
         attach_pushpull = activity.findViewById(R.id.attach_pushpull);
         attach_pushpull.setOnClickListener(view -> {
             active_button = BUTTON_PUSH_PULL;
-            attach_text_description.setText("调整前后距离");
+            attach_text_description.setText(I18n.tr("调整前后距离"));
             SelectetItem(view);
         });
 
         attach_scale = activity.findViewById(R.id.attach_scale);
         attach_scale.setOnClickListener(view -> {
-            attach_text_description.setText("调整缩放");
+            attach_text_description.setText(I18n.tr("调整缩放"));
             active_button = BUTTON_SCALE;
             SelectetItem(view);
         });
 
         attach_rotX = activity.findViewById(R.id.attach_rotX);
         attach_rotX.setOnClickListener(view -> {
-            attach_text_description.setText("调整旋转 X");
+            attach_text_description.setText(I18n.tr("调整旋转 X"));
             active_button = BUTTON_ROT_X;
             SelectetItem(view);
         });
 
         attach_rotY = activity.findViewById(R.id.attach_rotY);
         attach_rotY.setOnClickListener(view -> {
-            attach_text_description.setText("调整旋转 Y");
+            attach_text_description.setText(I18n.tr("调整旋转 Y"));
             active_button = BUTTON_ROT_Y;
             SelectetItem(view);
         });
 
         attach_rotZ = activity.findViewById(R.id.attach_rotZ);
         attach_rotZ.setOnClickListener(view -> {
-            attach_text_description.setText("调整旋转 Z");
+            attach_text_description.setText(I18n.tr("调整旋转 Z"));
             active_button = BUTTON_ROT_Z;
             SelectetItem(view);
         });

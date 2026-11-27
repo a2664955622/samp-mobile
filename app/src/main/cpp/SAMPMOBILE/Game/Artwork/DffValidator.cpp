@@ -474,8 +474,8 @@ bool validateGeometry(const uint8_t* data, const ChunkView& geom, DffValidationR
 			}
 			for (size_t f = 0; f < 4u; ++f) {
 				const float v = readLEFloat(data + cur + f * 4u);
-				if (!std::isfinite(v) || std::fabs(v) > 1.0e6f) {
-					err = "Geometry morph bounding sphere non-finite/extreme";
+				if (!std::isfinite(v)) {
+					err = "Geometry morph bounding sphere non-finite";
 					return false;
 				}
 			}
@@ -648,6 +648,13 @@ bool validateColBytes(const uint8_t* colData, size_t colLen, ColFormat& outFmt, 
 	const uint8_t numLines = body[46u];
 	const uint32_t flags = readLE32(body + 48u);
 
+	// Mobile libGTASA.so (LoadCollisionModelVer2/3/4 & CCollisionData::GetNoVectors)
+	// sign-extends numFaces via ldrsh; >= 32768 becomes negative and blows up malloc.
+	if (numFaces > 32767u) {
+		err = "COL2/3/4 face count exceeds int16 limit";
+		return false;
+	}
+
 	const uint32_t offSpheres = readLE32(body + 52u);
 	const uint32_t offBoxes = readLE32(body + 56u);
 	const uint32_t offLines = readLE32(body + 60u);
@@ -710,13 +717,18 @@ bool validateColBytes(const uint8_t* colData, size_t colLen, ColFormat& outFmt, 
 		}
 	}
 
-	// COL3 / COL4 shadow mesh
+	// COL3 / COL4 shadow mesh: mobile LoadCollisionModelVer3 checks offShadowFaces != 0
+	// directly without gating on (flags & 0x10), so validate whenever shadow faces are
+	// present (either flagged or pointed to by a non-zero offset). Stale non-zero
+	// offShadowVerts with numShadowFaces == 0 are tolerated here and zeroed by
+	// prepareColBodyForEngine() so valid collision meshes are not dropped.
 	if (outFmt == ColFormat::Col3 || outFmt == ColFormat::Col4) {
 		const uint32_t numShadowFaces = readLE32(body + 76u);
 		const uint32_t offShadowVerts = readLE32(body + 80u);
 		const uint32_t offShadowFaces = readLE32(body + 84u);
-		if ((flags & 0x10u) != 0u && numShadowFaces > 0) {
-			if (numShadowFaces > 65535u) {
+		const bool hasShadowFaces = numShadowFaces > 0u && ((flags & 0x10u) != 0u || offShadowFaces != 0u);
+		if (hasShadowFaces) {
+			if (numShadowFaces > 32767u) {
 				err = "COL3/4 shadow face count exceeds limit";
 				return false;
 			}
@@ -741,6 +753,87 @@ bool validateColBytes(const uint8_t* colData, size_t colLen, ColFormat& outFmt, 
 		}
 	}
 
+	return true;
+}
+
+bool prepareColBodyForEngine(const uint8_t* colData, size_t colLen,
+	ColFormat& outFmt, std::vector<uint8_t>& outBody, std::string& outErr)
+{
+	outFmt = ColFormat::None;
+	outBody.clear();
+	ColFormat fmt = ColFormat::None;
+	if (!validateColBytes(colData, colLen, fmt, outErr)) {
+		return false;
+	}
+
+	const uint32_t encodedSize = readLE32(colData + 4u);
+	const size_t effectiveTotal = std::min<size_t>(colLen, static_cast<size_t>(encodedSize) + 8u);
+	if (effectiveTotal < 32u) {
+		outErr = "Embedded COL effective size truncated";
+		return false;
+	}
+
+	outBody.assign(colData + 32u, colData + effectiveTotal);
+	if (fmt == ColFormat::Col2 || fmt == ColFormat::Col3 || fmt == ColFormat::Col4) {
+		auto writeLE32 = [](uint8_t* p, uint32_t v) {
+			p[0] = static_cast<uint8_t>(v & 0xFFu);
+			p[1] = static_cast<uint8_t>((v >> 8) & 0xFFu);
+			p[2] = static_cast<uint8_t>((v >> 16) & 0xFFu);
+			p[3] = static_cast<uint8_t>((v >> 24) & 0xFFu);
+		};
+
+		uint8_t* body = outBody.data();
+		const uint16_t numSpheres = readLE16(body + 40u);
+		const uint16_t numBoxes = readLE16(body + 42u);
+		const uint16_t numFaces = readLE16(body + 44u);
+		const uint8_t numLines = body[46u];
+		uint32_t flags = readLE32(body + 48u);
+
+		// Mobile libGTASA.so LoadCollisionModelVer2/3/4 guards vertex unpacking only on
+		// (offVerts != 0) / (offShadowVerts != 0), and GetNoVectors()/GetNoShadVectors()
+		// return 1 (not 0) when face count is 0. Clear stale offsets for empty sections so
+		// the engine never OOB-reads 6 bytes past the tail of the COL buffer.
+		if (numSpheres == 0u) writeLE32(body + 52u, 0u);
+		if (numBoxes == 0u) writeLE32(body + 56u, 0u);
+		if (numLines == 0u) writeLE32(body + 60u, 0u);
+		if (numFaces == 0u) {
+			writeLE32(body + 64u, 0u);
+			writeLE32(body + 68u, 0u);
+			flags &= ~0x08u; // face groups meaningless without faces
+		}
+
+		if (fmt == ColFormat::Col3 || fmt == ColFormat::Col4) {
+			const uint32_t numShadowFaces = readLE32(body + 76u);
+			const uint32_t offShadowVerts = readLE32(body + 80u);
+			const uint32_t offShadowFaces = readLE32(body + 84u);
+			if (numShadowFaces == 0u || offShadowVerts == 0u || offShadowFaces == 0u) {
+				writeLE32(body + 76u, 0u);
+				writeLE32(body + 80u, 0u);
+				writeLE32(body + 84u, 0u);
+				flags &= ~0x10u;
+			}
+		}
+		writeLE32(body + 48u, flags);
+
+		// Mobile arm64 CFileLoader::LoadCollisionModelVer4 has a broken 136-byte header
+		// (64-bit pointers leaked into the on-disk header struct). Standard PC COL4 is
+		// identical to COL3 except for 4 unused trailing header bytes at body[88..91];
+		// strip them and shift non-zero section offsets by -4 so LoadCollisionModelVer3
+		// loads it cleanly on both ABIs.
+		if (fmt == ColFormat::Col4 && outBody.size() >= 92u) {
+			static constexpr size_t kOffsetFields[] = {52u, 56u, 60u, 64u, 68u, 80u, 84u};
+			for (size_t offPos : kOffsetFields) {
+				const uint32_t rawOff = readLE32(body + offPos);
+				if (rawOff >= 32u) {
+					writeLE32(body + offPos, rawOff - 4u);
+				}
+			}
+			outBody.erase(outBody.begin() + 88, outBody.begin() + 92);
+			fmt = ColFormat::Col3;
+		}
+	}
+
+	outFmt = fmt;
 	return true;
 }
 

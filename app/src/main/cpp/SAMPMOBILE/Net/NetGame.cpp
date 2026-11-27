@@ -33,6 +33,7 @@
 #include "../UI/SAMPWidgets/NetStats.h"
 #include "../UI/SAMPWidgets/Scoreboard.h"
 #include "../UI/SAMPWidgets/Spawn.h"
+#include "../L10n.h"
 #include "../UI/SAMPWidgets/SplashScreen.h"
 #include "../UI/SAMPWidgets/VoiceButton.h"
 #include "../Java/Java.h"
@@ -252,8 +253,8 @@ NetGame::NetGame(const char* host, int port, const char* playerName, const char*
 	SetGameState(GAMESTATE_WAIT_CONNECT);
 
 	if (pUI) {
-		pUI->chat()->addDebugMessage("{FFFFFF}SA-MP {B9C9BF}%s {FFFFFF}Started", Client::sampVersion().c_str());
-		pUI->chat()->addInfoMessage("-> Use /clientcmds for client commands");
+		pUI->chat()->addDebugMessage(L10N("{FFFFFF}SA-MP {B9C9BF}%s {FFFFFF}Started", "{FFFFFF}SA-MP {B9C9BF}%s {FFFFFF}已启动"), Client::sampVersion().c_str());
+		pUI->chat()->addInfoMessage(L10N("-> Use /clientcmds for client commands", "-> 输入 /clientcmds 查看客户端命令"));
 	}
 }
 
@@ -541,7 +542,7 @@ void NetGame::ShutdownForGameModeRestart(SessionState::ResetReason reason)
 	SessionHooks::NotifyDisconnect();
 
 	if (pUI) {
-		pUI->chat()->addInfoMessage("The server is restarting..");
+		pUI->chat()->addInfoMessage(L10N("The server is restarting..", "服务器正在重启.."));
 	}
 }
 
@@ -593,7 +594,7 @@ void NetGame::ProcessConnecting()
 {
 	if ((GetTickCount() - m_lastConnectAttempt) > 3000) {
 		if (pUI) {
-			pUI->chat()->addDebugMessage("Connecting to %s:%d...", m_host, m_port);
+			pUI->chat()->addDebugMessage(L10N("Connecting to %s:%d...", "正在连接 %s:%d..."), m_host, m_port);
 		}
 
 		m_rakClient->Connect(m_host, m_port, 0, 0, 2);

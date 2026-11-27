@@ -978,8 +978,10 @@ static const char* GetTaskTypeName(eTaskType taskType)
 			//CASE_FOR(TASK_COMPLEX_C);
 			//CASE_FOR(TASK_COMPLEX_D);
 			//CASE_FOR(TASK_COMPLEX_E);
-		default:assert(0);
+		default:
+			assert(0);
 			//Log("Invalid task type: %d", (int)taskType);
+			return "TASK_UNKNOWN";
 	}
 #undef CASE_FOR
 }

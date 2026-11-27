@@ -3,9 +3,12 @@
 
 #include <spdlog/spdlog.h>
 #include <android/log.h>
+#include <sys/prctl.h>
 #include <sys/system_properties.h>
+#include <sys/syscall.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
 #include <atomic>
 #include <cstring>
 
@@ -210,7 +213,88 @@ void appendDecAsync(char* dst, size_t cap, size_t& pos, long v)
 	if (cap > 0) dst[pos] = '\0';
 }
 
+// Async-signal-safe single-line field extractor from a /proc file:
+// opens the file with raw syscalls, scans for a line starting with `key`,
+// and copies the remainder of that line (trimmed) into out.
+bool readProcFieldAsyncSafe(const char* path, const char* key, char* out, size_t outCap)
+{
+	if (!path || !key || !out || outCap < 2) return false;
+	out[0] = '\0';
+	int fd = open(path, O_RDONLY);
+	if (fd < 0) return false;
+
+	char buf[2048];
+	const size_t keyLen = strlen(key);
+	size_t outPos = 0;
+	bool inKeyLine = false;
+	bool skippingLine = false;
+	bool done = false;
+	size_t keyPos = 0;
+
+	while (!done) {
+		ssize_t n = read(fd, buf, sizeof(buf));
+		if (n <= 0) break;
+		for (ssize_t i = 0; i < n && !done; ++i) {
+			char c = buf[i];
+			if (c == '\n') {
+				if (inKeyLine) {
+					done = true;
+				}
+				inKeyLine = false;
+				skippingLine = false;
+				keyPos = 0;
+				continue;
+			}
+			if (inKeyLine) {
+				if (outPos + 1 < outCap && c != '\r') {
+					out[outPos++] = c;
+				}
+				continue;
+			}
+			if (skippingLine) continue;
+			if (keyPos < keyLen) {
+				if (c == key[keyPos]) {
+					++keyPos;
+					if (keyPos == keyLen) {
+						inKeyLine = true;
+					}
+				} else {
+					skippingLine = true;
+				}
+			}
+		}
+	}
+	close(fd);
+	// trim leading spaces/tabs
+	size_t lead = 0;
+	while (lead < outPos && (out[lead] == ' ' || out[lead] == '\t')) ++lead;
+	if (lead > 0) {
+		for (size_t i = 0; i + lead < outPos; ++i) out[i] = out[i + lead];
+		outPos -= lead;
+	}
+	out[outPos] = '\0';
+	return outPos > 0;
+}
+
 } // namespace
+
+// Preformatted "<gameDir>logcat/crash_" prefix captured at client init so the
+// fatal handler can build the report filename without any allocation.
+static char s_crashPathPrefix[320] = {};
+static bool s_crashPathReady = false;
+
+void crash_set_report_dir(const char* gameDir)
+{
+	if (!gameDir || !*gameDir) return;
+	size_t pos = 0;
+	s_crashPathPrefix[0] = '\0';
+	appendStrAsync(s_crashPathPrefix, sizeof(s_crashPathPrefix), pos, gameDir);
+	if (pos > 0 && s_crashPathPrefix[pos - 1] != '/') {
+		appendStrAsync(s_crashPathPrefix, sizeof(s_crashPathPrefix), pos, "/");
+	}
+	appendStrAsync(s_crashPathPrefix, sizeof(s_crashPathPrefix), pos, "logcat/crash_");
+	s_crashPathReady = pos + 8 < sizeof(s_crashPathPrefix);
+}
 
 void crash_breadcrumb(int signal, siginfo_t* info, void* ctx)
 {
@@ -238,6 +322,7 @@ void crash_breadcrumb(int signal, siginfo_t* info, void* ctx)
 	const uint16_t lastOpcode = g_lastScriptOpcode.load(std::memory_order_relaxed);
 	const int lastObj = g_lastObjectModel.load(std::memory_order_relaxed);
 
+	// ---- one-line summary to logcat (debuggerd/tombstone linkage) ----
 	char buf[512];
 	size_t pos = 0;
 	buf[0] = '\0';
@@ -265,6 +350,162 @@ void crash_breadcrumb(int signal, siginfo_t* info, void* ctx)
 	appendHexAsync(buf, sizeof(buf), pos, lastOpcode, 4);
 
 	__android_log_write(ANDROID_LOG_FATAL, "SAMPMOBILE", buf);
+
+	// ---- full report to crash file (feedback bundle collects these) ----
+	if (!s_crashPathReady) return;
+
+	const long epoch = static_cast<long>(time(nullptr));
+	const long pid = static_cast<long>(getpid());
+	const long tid = static_cast<long>(syscall(SYS_gettid));
+
+	static char report[8192];
+	size_t rpos = 0;
+	report[0] = '\0';
+
+	appendStrAsync(report, sizeof(report), rpos, "========== SA-MP Mobile crash report ==========\n");
+	appendStrAsync(report, sizeof(report), rpos, "epoch: ");
+	appendDecAsync(report, sizeof(report), rpos, epoch);
+	appendStrAsync(report, sizeof(report), rpos, "\npid: ");
+	appendDecAsync(report, sizeof(report), rpos, pid);
+	appendStrAsync(report, sizeof(report), rpos, " tid: ");
+	appendDecAsync(report, sizeof(report), rpos, tid);
+
+	{
+		// Use prctl(PR_GET_NAME) so we capture the crashing thread's own name
+		// (e.g. "NvEvent" vs "main"), not /proc/self/comm which is always the main thread.
+		char cbuf[32] = {};
+		if (prctl(PR_GET_NAME, cbuf, 0, 0, 0) == 0 && cbuf[0] != '\0') {
+			cbuf[sizeof(cbuf) - 1] = '\0';
+			appendStrAsync(report, sizeof(report), rpos, " comm: ");
+			appendStrAsync(report, sizeof(report), rpos, cbuf);
+		}
+	}
+
+	appendStrAsync(report, sizeof(report), rpos, "\nsignal: ");
+	appendDecAsync(report, sizeof(report), rpos, signal);
+	switch (signal) {
+		case SIGSEGV: appendStrAsync(report, sizeof(report), rpos, " (SIGSEGV)"); break;
+		case SIGABRT: appendStrAsync(report, sizeof(report), rpos, " (SIGABRT)"); break;
+		case SIGBUS:  appendStrAsync(report, sizeof(report), rpos, " (SIGBUS)"); break;
+		case SIGILL:  appendStrAsync(report, sizeof(report), rpos, " (SIGILL)"); break;
+		case SIGFPE:  appendStrAsync(report, sizeof(report), rpos, " (SIGFPE)"); break;
+		case SIGTRAP: appendStrAsync(report, sizeof(report), rpos, " (SIGTRAP)"); break;
+		case SIGSYS:  appendStrAsync(report, sizeof(report), rpos, " (SIGSYS)"); break;
+		default: break;
+	}
+	appendStrAsync(report, sizeof(report), rpos, " code: ");
+	appendDecAsync(report, sizeof(report), rpos, info ? info->si_code : 0);
+	if (signal == SIGSEGV && info) {
+		if (info->si_code == SEGV_MAPERR) {
+			appendStrAsync(report, sizeof(report), rpos, " (SEGV_MAPERR)");
+		} else if (info->si_code == SEGV_ACCERR) {
+			appendStrAsync(report, sizeof(report), rpos, " (SEGV_ACCERR)");
+		} else if (info->si_code == 8) {
+			appendStrAsync(report, sizeof(report), rpos, " (SEGV_MTEAERR)");
+		} else if (info->si_code == 9) {
+			appendStrAsync(report, sizeof(report), rpos, " (SEGV_MTESERR)");
+		}
+	} else if (signal == SIGSYS && info) {
+		appendStrAsync(report, sizeof(report), rpos, " syscall: ");
+		appendDecAsync(report, sizeof(report), rpos, info->si_syscall);
+	}
+	appendStrAsync(report, sizeof(report), rpos, "\nfault_addr: 0x");
+	appendHexAsync(report, sizeof(report), rpos, faultAddr);
+
+	appendStrAsync(report, sizeof(report), rpos, "\npc: 0x");
+	appendHexAsync(report, sizeof(report), rpos, pc);
+	appendStrAsync(report, sizeof(report), rpos, " (");
+	appendStrAsync(report, sizeof(report), rpos, pcMod);
+	appendStrAsync(report, sizeof(report), rpos, "+0x");
+	appendHexAsync(report, sizeof(report), rpos, pcModOff);
+	appendStrAsync(report, sizeof(report), rpos, ")");
+	appendStrAsync(report, sizeof(report), rpos, "\nlr: 0x");
+	appendHexAsync(report, sizeof(report), rpos, lr);
+	appendStrAsync(report, sizeof(report), rpos, " (");
+	appendStrAsync(report, sizeof(report), rpos, lrMod);
+	appendStrAsync(report, sizeof(report), rpos, "+0x");
+	appendHexAsync(report, sizeof(report), rpos, lrModOff);
+	appendStrAsync(report, sizeof(report), rpos, ")");
+
+	appendStrAsync(report, sizeof(report), rpos, "\nlast script opcode: 0x");
+	appendHexAsync(report, sizeof(report), rpos, lastOpcode, 4);
+	appendStrAsync(report, sizeof(report), rpos, "\nlast object model: ");
+	appendDecAsync(report, sizeof(report), rpos, lastObj);
+
+	appendStrAsync(report, sizeof(report), rpos, "\n\nregisters:\n");
+	if (ctx) {
+#ifdef __aarch64__
+		auto* uc = reinterpret_cast<ucontext*>(ctx);
+		for (int i = 0; i < 31; ++i) {
+			appendStrAsync(report, sizeof(report), rpos, "x");
+			appendDecAsync(report, sizeof(report), rpos, i);
+			appendStrAsync(report, sizeof(report), rpos, ": 0x");
+			appendHexAsync(report, sizeof(report), rpos, uc->uc_mcontext.regs[i]);
+			appendStrAsync(report, sizeof(report), rpos, (i % 4 == 3) ? "\n" : "  ");
+		}
+		appendStrAsync(report, sizeof(report), rpos, "sp: 0x");
+		appendHexAsync(report, sizeof(report), rpos, uc->uc_mcontext.sp);
+		appendStrAsync(report, sizeof(report), rpos, "\n");
+#else
+		auto* uc = reinterpret_cast<ucontext*>(ctx);
+		const unsigned int armRegs[13] = {
+			uc->uc_mcontext.arm_r0, uc->uc_mcontext.arm_r1, uc->uc_mcontext.arm_r2,
+			uc->uc_mcontext.arm_r3, uc->uc_mcontext.arm_r4, uc->uc_mcontext.arm_r5,
+			uc->uc_mcontext.arm_r6, uc->uc_mcontext.arm_r7, uc->uc_mcontext.arm_r8,
+			uc->uc_mcontext.arm_r9, uc->uc_mcontext.arm_r10, uc->uc_mcontext.arm_fp,
+			uc->uc_mcontext.arm_ip};
+		for (int i = 0; i < 13; ++i) {
+			appendStrAsync(report, sizeof(report), rpos, "r");
+			appendDecAsync(report, sizeof(report), rpos, i);
+			appendStrAsync(report, sizeof(report), rpos, ": 0x");
+			appendHexAsync(report, sizeof(report), rpos, armRegs[i]);
+			appendStrAsync(report, sizeof(report), rpos, (i % 4 == 3) ? "\n" : "  ");
+		}
+		appendStrAsync(report, sizeof(report), rpos, "sp: 0x");
+		appendHexAsync(report, sizeof(report), rpos, uc->uc_mcontext.arm_sp);
+		appendStrAsync(report, sizeof(report), rpos, "\n");
+#endif
+	} else {
+		appendStrAsync(report, sizeof(report), rpos, "(no ucontext)\n");
+	}
+
+	char vmrss[96];
+	if (readProcFieldAsyncSafe("/proc/self/status", "VmRSS:", vmrss, sizeof(vmrss))) {
+		appendStrAsync(report, sizeof(report), rpos, "\nVmRSS: ");
+		appendStrAsync(report, sizeof(report), rpos, vmrss);
+	}
+	char memavail[96];
+	if (readProcFieldAsyncSafe("/proc/meminfo", "MemAvailable:", memavail, sizeof(memavail))) {
+		appendStrAsync(report, sizeof(report), rpos, "\nMemAvailable: ");
+		appendStrAsync(report, sizeof(report), rpos, memavail);
+	}
+	char memtotal[96];
+	if (readProcFieldAsyncSafe("/proc/meminfo", "MemTotal:", memtotal, sizeof(memtotal))) {
+		appendStrAsync(report, sizeof(report), rpos, "\nMemTotal: ");
+		appendStrAsync(report, sizeof(report), rpos, memtotal);
+	}
+	appendStrAsync(report, sizeof(report), rpos, "\n");
+
+	// filename: <prefix><epoch>_<pid>.log
+	char path[384];
+	size_t ppos = 0;
+	path[0] = '\0';
+	appendStrAsync(path, sizeof(path), ppos, s_crashPathPrefix);
+	appendDecAsync(path, sizeof(path), ppos, epoch);
+	appendStrAsync(path, sizeof(path), ppos, "_");
+	appendDecAsync(path, sizeof(path), ppos, pid);
+	appendStrAsync(path, sizeof(path), ppos, ".log");
+
+	int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (fd >= 0) {
+		size_t written = 0;
+		while (written < rpos) {
+			ssize_t w = write(fd, report + written, rpos - written);
+			if (w <= 0) break;
+			written += static_cast<size_t>(w);
+		}
+		close(fd);
+	}
 }
 
 void dump_register(int signal, siginfo_t* info, void* ctx)

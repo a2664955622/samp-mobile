@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.ui.fragment;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.ColorStateList;
@@ -59,7 +61,7 @@ final class SettingsArtworkCacheController {
         if (btnRefresh != null) {
             btnRefresh.setOnClickListener(v -> {
                 refresh();
-                Toast.makeText(host.requireContext(), "已刷新模型缓存状态", Toast.LENGTH_SHORT).show();
+                Toast.makeText(host.requireContext(), I18n.tr("已刷新模型缓存状态"), Toast.LENGTH_SHORT).show();
             });
         }
         if (btnClearAll != null) {
@@ -97,10 +99,10 @@ final class SettingsArtworkCacheController {
         if (tvSummary == null || listContainer == null || !host.isAdded()) return;
 
         if (summary.totalFiles == 0) {
-            tvSummary.setText("当前占用：0 文件 · 0 B（尚未缓存任何 0.3.DL 自定义模型）");
+            tvSummary.setText(I18n.tr("当前占用：0 文件 · 0 B（尚未缓存任何 0.3.DL 自定义模型）"));
         } else {
             tvSummary.setText(String.format(Locale.US,
-                    "当前占用：%d 个缓存目录 · %,d 个文件 · %s",
+                    I18n.tr("当前占用：%d 个缓存目录 · %,d 个文件 · %s"),
                     summary.folders.size(),
                     summary.totalFiles,
                     GameDataVerifier.formatBytes(summary.totalBytes)));
@@ -146,7 +148,7 @@ final class SettingsArtworkCacheController {
             info.setLayoutParams(infoLp);
 
             TextView tvTitle = new TextView(ctx);
-            tvTitle.setText(entry.isLocal ? "local（全服共享缓存）" : entry.name);
+            tvTitle.setText(entry.isLocal ? I18n.tr("local（全服共享缓存）") : entry.name);
             tvTitle.setTextColor(colorText);
             tvTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12);
             tvTitle.setTypeface(null, android.graphics.Typeface.BOLD);
@@ -155,14 +157,14 @@ final class SettingsArtworkCacheController {
             info.addView(tvTitle);
 
             TextView tvMeta = new TextView(ctx);
-            tvMeta.setText(String.format(Locale.US, "%,d 个文件 · %s",
+            tvMeta.setText(String.format(Locale.US, I18n.tr("%,d 个文件 · %s"),
                     entry.fileCount, GameDataVerifier.formatBytes(entry.totalBytes)));
             tvMeta.setTextColor(colorDim);
             tvMeta.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
             info.addView(tvMeta);
 
             TextView btnDel = new TextView(ctx);
-            btnDel.setText("删除");
+            btnDel.setText(I18n.tr("删除"));
             btnDel.setTextColor(colorDanger);
             btnDel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
             btnDel.setTypeface(null, android.graphics.Typeface.BOLD);
@@ -181,19 +183,19 @@ final class SettingsArtworkCacheController {
         Activity act = host.getActivity();
         if (act == null || act.isFinishing()) return;
         new AlertDialog.Builder(act)
-                .setTitle("删除缓存目录")
+                .setTitle(I18n.tr("删除缓存目录"))
                 .setMessage(String.format(Locale.US,
-                        "确定删除「%s」中的 %,d 个缓存文件（%s）吗？\n删除后下次进入对应服务器时将重新下载所需模型。",
+                        I18n.tr("确定删除「%s」中的 %,d 个缓存文件（%s）吗？\n删除后下次进入对应服务器时将重新下载所需模型。"),
                         entry.name, entry.fileCount, GameDataVerifier.formatBytes(entry.totalBytes)))
-                .setNegativeButton("取消", null)
-                .setPositiveButton("确认删除", (d, w) -> {
+                .setNegativeButton(I18n.tr("取消"), null)
+                .setPositiveButton(I18n.tr("确认删除"), (d, w) -> {
                     final Context appCtx = act.getApplicationContext();
                     host.ioExecutor.execute(() -> {
                         File cacheRoot = ArtworkCacheManager.getCacheRoot(appCtx);
                         boolean ok = ArtworkCacheManager.deleteFolder(cacheRoot, entry.name);
                         act.runOnUiThread(() -> {
                             if (!host.isAdded()) return;
-                            Toast.makeText(act, ok ? ("已删除缓存：" + entry.name) : "删除失败", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(act, ok ? (I18n.tr("已删除缓存：") + entry.name) : I18n.tr("删除失败"), Toast.LENGTH_SHORT).show();
                             refresh();
                         });
                     });
@@ -206,23 +208,23 @@ final class SettingsArtworkCacheController {
         if (act == null || act.isFinishing()) return;
         ArtworkCacheManager.CacheSummary snap = lastSummary;
         if (snap == null || snap.totalFiles == 0) {
-            Toast.makeText(act, "当前没有可清理的模型缓存", Toast.LENGTH_SHORT).show();
+            Toast.makeText(act, I18n.tr("当前没有可清理的模型缓存"), Toast.LENGTH_SHORT).show();
             return;
         }
         new AlertDialog.Builder(act)
-                .setTitle("清空全部自定义模型缓存")
+                .setTitle(I18n.tr("清空全部自定义模型缓存"))
                 .setMessage(String.format(Locale.US,
-                        "将永久删除 SAMP/cache/ 下全部 %d 个目录（共 %,d 个文件，%s）。\n确定继续吗？",
+                        I18n.tr("将永久删除 SAMP/cache/ 下全部 %d 个目录（共 %,d 个文件，%s）。\n确定继续吗？"),
                         snap.folders.size(), snap.totalFiles, GameDataVerifier.formatBytes(snap.totalBytes)))
-                .setNegativeButton("取消", null)
-                .setPositiveButton("全部清空", (d, w) -> {
+                .setNegativeButton(I18n.tr("取消"), null)
+                .setPositiveButton(I18n.tr("全部清空"), (d, w) -> {
                     final Context appCtx = act.getApplicationContext();
                     host.ioExecutor.execute(() -> {
                         File cacheRoot = ArtworkCacheManager.getCacheRoot(appCtx);
                         ArtworkCacheManager.clearAll(cacheRoot);
                         act.runOnUiThread(() -> {
                             if (!host.isAdded()) return;
-                            Toast.makeText(act, "已清空全部自定义模型缓存", Toast.LENGTH_SHORT).show();
+                            Toast.makeText(act, I18n.tr("已清空全部自定义模型缓存"), Toast.LENGTH_SHORT).show();
                             refresh();
                         });
                     });
@@ -235,7 +237,7 @@ final class SettingsArtworkCacheController {
         if (act == null || act.isFinishing() || uris == null || uris.isEmpty()) return;
         File cacheRoot = ArtworkCacheManager.getCacheRoot(act);
         if (cacheRoot == null) {
-            Toast.makeText(act, "无法访问应用外部存储目录", Toast.LENGTH_LONG).show();
+            Toast.makeText(act, I18n.tr("无法访问应用外部存储目录"), Toast.LENGTH_LONG).show();
             return;
         }
 
@@ -245,7 +247,7 @@ final class SettingsArtworkCacheController {
         box.setPadding(pad, dp(act, 14), pad, dp(act, 8));
 
         TextView tvStatus = new TextView(act);
-        tvStatus.setText("正在导入自定义模型缓存…");
+        tvStatus.setText(I18n.tr("正在导入自定义模型缓存…"));
         tvStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
         box.addView(tvStatus);
 
@@ -269,10 +271,10 @@ final class SettingsArtworkCacheController {
 
         AtomicBoolean cancelled = new AtomicBoolean(false);
         AlertDialog dialog = new AlertDialog.Builder(act)
-                .setTitle("导入 0.3.DL 模型缓存")
+                .setTitle(I18n.tr("导入 0.3.DL 模型缓存"))
                 .setView(box)
                 .setCancelable(false)
-                .setNegativeButton("取消", (d, w) -> cancelled.set(true))
+                .setNegativeButton(I18n.tr("取消"), (d, w) -> cancelled.set(true))
                 .create();
         dialog.show();
 
@@ -286,7 +288,7 @@ final class SettingsArtworkCacheController {
                         (imported, skipped, relPath) -> act.runOnUiThread(() -> {
                             if (act.isFinishing() || !dialog.isShowing()) return;
                             tvStatus.setText(String.format(Locale.US,
-                                    "已导入 %,d 个文件（跳过 %,d 个非缓存项）", imported, skipped));
+                                    I18n.tr("已导入 %,d 个文件（跳过 %,d 个非缓存项）"), imported, skipped));
                             if (relPath != null) tvFile.setText(relPath);
                         }),
                         cancelled
@@ -298,16 +300,16 @@ final class SettingsArtworkCacheController {
                     refresh();
                     if (res.cancelled) {
                         Toast.makeText(act, String.format(Locale.US,
-                                "已取消导入（已写入 %,d 个文件）", res.importedFiles), Toast.LENGTH_LONG).show();
+                                I18n.tr("已取消导入（已写入 %,d 个文件）"), res.importedFiles), Toast.LENGTH_LONG).show();
                     } else if (res.importedFiles == 0) {
                         new AlertDialog.Builder(act)
-                                .setTitle("未找到有效的 0.3.DL 缓存文件")
-                                .setMessage("所选文件/压缩包中未检测到 0x<CRC>.dff 或 0x<CRC>.txd 格式的模型缓存文件。")
-                                .setPositiveButton("知道了", null)
+                                .setTitle(I18n.tr("未找到有效的 0.3.DL 缓存文件"))
+                                .setMessage(I18n.tr("所选文件/压缩包中未检测到 0x<CRC>.dff 或 0x<CRC>.txd 格式的模型缓存文件。"))
+                                .setPositiveButton(I18n.tr("知道了"), null)
                                 .show();
                     } else {
                         Toast.makeText(act, String.format(Locale.US,
-                                "导入完成：%,d 个文件（%s），跳过 %,d 项",
+                                I18n.tr("导入完成：%,d 个文件（%s），跳过 %,d 项"),
                                 res.importedFiles,
                                 GameDataVerifier.formatBytes(res.importedBytes),
                                 res.skippedFiles), Toast.LENGTH_LONG).show();
@@ -318,7 +320,7 @@ final class SettingsArtworkCacheController {
                     if (dialog.isShowing()) dialog.dismiss();
                     if (act.isFinishing() || !host.isAdded()) return;
                     refresh();
-                    Toast.makeText(act, "导入失败：" + (t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()),
+                    Toast.makeText(act, I18n.tr("导入失败：") + (t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName()),
                             Toast.LENGTH_LONG).show();
                 });
             }

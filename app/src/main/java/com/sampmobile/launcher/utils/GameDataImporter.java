@@ -202,7 +202,7 @@ public final class GameDataImporter {
         long totalBytes = queryDocumentSize(context, zipUri);
         try (InputStream raw = context.getContentResolver().openInputStream(zipUri)) {
             if (raw == null) {
-                throw new IOException("无法打开所选 ZIP 文件");
+                throw new IOException(I18n.tr("无法打开所选 ZIP 文件"));
             }
             return importFromStream(raw, totalBytes, filesDir, listener, cancelled);
         }
@@ -214,10 +214,10 @@ public final class GameDataImporter {
     public static ImportResult importFromStream(InputStream rawIn, long totalZipBytes, File filesDir,
                                                 ProgressListener listener, AtomicBoolean cancelled) throws IOException {
         if (filesDir == null) {
-            throw new IOException("目标 files 目录不可用");
+            throw new IOException(I18n.tr("目标 files 目录不可用"));
         }
         if (!filesDir.exists() && !filesDir.mkdirs()) {
-            throw new IOException("无法创建目录: " + filesDir.getAbsolutePath());
+            throw new IOException(I18n.tr("无法创建目录: ") + filesDir.getAbsolutePath());
         }
         String canonicalRoot = filesDir.getCanonicalPath();
         if (!canonicalRoot.endsWith(File.separator)) {
@@ -253,7 +253,7 @@ public final class GameDataImporter {
                 File outFile = new File(filesDir, rel);
                 String canonicalOut = outFile.getCanonicalPath();
                 if (!canonicalOut.startsWith(canonicalRoot)) {
-                    throw new IOException("检测到非法 ZIP 路径: " + entry.getName());
+                    throw new IOException(I18n.tr("检测到非法 ZIP 路径: ") + entry.getName());
                 }
 
                 if (shouldPreserveExisting(rel) && outFile.isFile() && outFile.length() > 0) {
@@ -263,7 +263,7 @@ public final class GameDataImporter {
 
                 File parent = outFile.getParentFile();
                 if (parent != null && !parent.exists() && !parent.mkdirs()) {
-                    throw new IOException("无法创建子目录: " + parent.getAbsolutePath());
+                    throw new IOException(I18n.tr("无法创建子目录: ") + parent.getAbsolutePath());
                 }
 
                 try (FileOutputStream fos = new FileOutputStream(outFile)) {

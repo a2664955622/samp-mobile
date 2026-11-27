@@ -12,14 +12,14 @@ SA-MP Mobile 统一自动化校验与测试目录。
 # 日常快检（约 2–3 秒）：合规与卫生 + 平台底线 + NDK 二进制/537 符号/真实 JNI + SDK APK 工具校验
 python tests/check.py
 
-# 全量校验：上述全部 + C++ 电脑端单测 + Gradle JVM 单测 + gamedata 分片拼包闭环
+# 全量校验：上述全部 + C++ 电脑端单测 + Gradle JVM 单测
 python tests/check.py --full
 
 # 发包前严格门禁：--full + 强制要求已提取 GTA:SA 与已构建 APK + Android Lint 静态检查
 python tests/check.py --release
 
 # 单独运行某一环节
-python tests/check.py --stage <compliance|platform|abi|apk|native|jvm|gamedata|lint>
+python tests/check.py --stage <compliance|platform|abi|apk|native|jvm|lint>
 ```
 
 ---
@@ -32,7 +32,7 @@ python tests/check.py --stage <compliance|platform|abi|apk|native|jvm|gamedata|l
 | **Stage 2** | `checks/platform.py` | `app/build.gradle` 双 ABI / 固定 NDK / `useLegacyPackaging` / 条件 Firebase；`AndroidManifest.xml` TBI 关闭与 `:game` 独立进程；`monetloader_lib.zip` 与 GTA:SA 提取资产索引 |
 | **Stage 3** | `checks/binary_abi.py` | 双 ABI `jniLibs/*.so` ELF 头；NDK `llvm-nm` 双 ABI `Symbols.def` 全量 537 符号导出校验；NDK `llvm-readelf` 校验编译出的 `libSAMPMOBILE.so` / `libSCAnd.so` **零 `TEXTREL`**、**`DT_NEEDED` 依赖闭包**（仅链接 NDK 公开库或随包库）、**Android 15+ 16KB 页对齐提示**、以及双 ABI **真实 ELF 导出符号 ↔ Java `native` 方法对齐** |
 | **Stage 4** | `checks/apk_verify.py` | APK ZIP 结构与双 ABI 库完整度；Android SDK **`aapt2`** 核对编译后二进制 `AndroidManifest.xml`（包名、`minSdk`/`targetSdk`、双 ABI、`extractNativeLibs`、`allowNativeHeapPointerTagging`）；**`zipalign -c 4`** 对齐校验；**`apksigner verify`** 签名合法性校验 |
-| **Stage 5** | `checks/runners.py` & `checks/gamedata.py` | ① `tests/native/` 20 项 C++ 电脑端单测（含 open.mp 上游对拍）；② `gradlew testDebugUnitTest` Java JUnit 单测；③ `publish_gamedata.py` 分片/清单/重装 SHA-256 端到端闭环；④（`--lint` / `--release`）官方 Android Lint (`gradlew lintDebug`) |
+| **Stage 5** | `checks/runners.py` | ① `tests/native/` 20 项 C++ 电脑端单测（含 open.mp 上游对拍）；② `gradlew testDebugUnitTest` Java JUnit 单测；③（`--lint` / `--release`）官方 Android Lint (`gradlew lintDebug`) |
 
 ---
 

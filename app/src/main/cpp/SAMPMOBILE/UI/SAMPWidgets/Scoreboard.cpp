@@ -11,6 +11,7 @@
 #include <RakNet/SAMP/SAMPRPC.h>
 #include <encoding.h>
 #include <sstream>
+#include "../../L10n.h"
 
 
 struct _PLAYER_SCORE_INFO {
@@ -104,16 +105,16 @@ void Scoreboard::draw(ImGuiRenderer* renderer)
 	ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5);
 
 	ImGui::Columns(4, "ScoreboardHeader", false);
-	ImGui::TextColored(ImVec4(0.57f, 0.65f, 0.78f, 1.1f), " id");
+	ImGui::TextColored(ImVec4(0.57f, 0.65f, 0.78f, 1.1f), L10N(" id", " ID"));
 	ImGui::SetColumnWidth(-1, size().x * 0.1);
 	ImGui::NextColumn();
-	ImGui::TextColored(ImVec4(0.57f, 0.65f, 0.78f, 1.1f), " name");
+	ImGui::TextColored(ImVec4(0.57f, 0.65f, 0.78f, 1.1f), L10N(" name", " 名称"));
 	ImGui::SetColumnWidth(-1, size().x * 0.45);
 	ImGui::NextColumn();
-	ImGui::TextColored(ImVec4(0.57f, 0.65f, 0.78f, 1.1f), " score");
+	ImGui::TextColored(ImVec4(0.57f, 0.65f, 0.78f, 1.1f), L10N(" score", " 积分"));
 	ImGui::SetColumnWidth(-1, size().x * 0.2);
 	ImGui::NextColumn();
-	ImGui::TextColored(ImVec4(0.57f, 0.65f, 0.78f, 1.1f), " ping");
+	ImGui::TextColored(ImVec4(0.57f, 0.65f, 0.78f, 1.1f), L10N(" ping", " 延迟"));
 	ImGui::SetColumnWidth(-1, size().x * 0.25);
 	ImGui::Columns();
 

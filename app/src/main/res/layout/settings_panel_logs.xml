@@ -40,7 +40,7 @@
                         android:id="@+id/tv_diag_status_title"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="运行诊断状态：正常"
+                        android:text="@string/ui_settings_panel_logs_001"
                         android:textColor="@color/launcher_accent"
                         android:textSize="@dimen/_10ssp"
                         android:textStyle="bold" />
@@ -51,7 +51,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_4sdp"
                         android:lineSpacingExtra="3dp"
-                        android:text="客户端已自动记录后台运行状态信息。"
+                        android:text="@string/ui_settings_panel_logs_002"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_8ssp" />
                 </LinearLayout>
@@ -63,7 +63,7 @@
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
                     android:paddingHorizontal="@dimen/_10sdp"
-                    android:text="重新检测"
+                    android:text="@string/ui_settings_panel_logs_003"
                     android:textColor="@color/launcher_accent"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />
@@ -82,7 +82,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="故障反馈与日志导出"
+                android:text="@string/ui_settings_panel_logs_004"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -92,7 +92,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_4sdp"
                 android:lineSpacingExtra="3dp"
-                android:text="如果在游戏过程中遇到闪退、卡顿或模组异常，无需手动查找文件，点击下方按钮即可一键复制或导出反馈信息，发送给服主或开发者快速协助定位问题。"
+                android:text="@string/ui_settings_panel_logs_005"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_8ssp" />
 
@@ -111,7 +111,7 @@
                     android:layout_weight="1.3"
                     android:background="@drawable/launcher_btn_primary"
                     android:gravity="center"
-                    android:text="一键复制故障反馈信息"
+                    android:text="@string/ui_settings_panel_logs_006"
                     android:textColor="@color/launcher_on_accent"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />
@@ -124,7 +124,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
-                    android:text="导出反馈日志文件"
+                    android:text="@string/ui_settings_panel_logs_007"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />
@@ -136,7 +136,7 @@
                     android:layout_weight="0.8"
                     android:background="@drawable/launcher_btn_danger"
                     android:gravity="center"
-                    android:text="清理日志缓存"
+                    android:text="@string/ui_settings_panel_logs_008"
                     android:textColor="@color/launcher_danger"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />

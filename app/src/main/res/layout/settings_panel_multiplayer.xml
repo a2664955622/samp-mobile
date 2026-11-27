@@ -26,7 +26,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="角色身份与协议兼容"
+                android:text="@string/ui_settings_panel_multiplayer_001"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -36,7 +36,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
                 android:layout_marginBottom="@dimen/_8sdp"
-                android:text="配置进入服务器时使用的角色名称、通信协议与文字编码"
+                android:text="@string/ui_settings_panel_multiplayer_002"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -58,7 +58,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="默认游戏昵称"
+                        android:text="@string/ui_settings_panel_multiplayer_003"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -67,7 +67,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="连接服务器时使用的角色名，支持英文、数字与下划线"
+                        android:text="@string/ui_settings_panel_multiplayer_004"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -78,7 +78,7 @@
                     android:layout_height="@dimen/_28sdp"
                     android:background="@drawable/launcher_input_bg"
                     android:gravity="center_vertical"
-                    android:hint="输入游戏昵称"
+                    android:hint="@string/ui_settings_panel_multiplayer_005"
                     android:imeOptions="actionDone"
                     android:inputType="textNoSuggestions"
                     android:maxLength="24"
@@ -112,7 +112,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="客户端协议版本"
+                        android:text="@string/ui_settings_panel_multiplayer_006"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -121,7 +121,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="模拟对应的客户端版本号以适配不同服务器限制"
+                        android:text="@string/ui_settings_panel_multiplayer_007"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -155,7 +155,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="服务器文字编码"
+                        android:text="@string/ui_settings_panel_multiplayer_008"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -164,7 +164,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="国内服务器一般为 GBK，如遇中文乱码请切换为 UTF-8"
+                        android:text="@string/ui_settings_panel_multiplayer_009"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -200,7 +200,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="连接与资源选项"
+                android:text="@string/ui_settings_panel_multiplayer_010"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -210,7 +210,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
                 android:layout_marginBottom="@dimen/_8sdp"
-                android:text="管理进服连接速度、服务器自定义模型下载与本地文件校验"
+                android:text="@string/ui_settings_panel_multiplayer_011"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -232,7 +232,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="快速连接服务器"
+                        android:text="@string/ui_settings_panel_multiplayer_012"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -241,7 +241,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="缩短进服连接握手间隔，加快进入与重连服务器的速度"
+                        android:text="@string/ui_settings_panel_multiplayer_013"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -277,7 +277,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="下载服务器自定义模型"
+                        android:text="@string/ui_settings_panel_multiplayer_014"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -286,7 +286,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="在支持自定义模型的服务器中自动接收并加载人物与建筑资源"
+                        android:text="@string/ui_settings_panel_multiplayer_015"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -322,7 +322,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="保留本地数据包修改"
+                        android:text="@string/ui_settings_panel_multiplayer_016"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -331,7 +331,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="跳过启动器原始文件完整性检查，避免手工替换的数据文件被还原"
+                        android:text="@string/ui_settings_panel_multiplayer_017"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -371,7 +371,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:tag="theme_accent_text"
-                        android:text="0.3.DL 自定义模型缓存"
+                        android:text="@string/ui_settings_panel_multiplayer_018"
                         android:textColor="@color/launcher_accent"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -381,7 +381,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_2sdp"
-                        android:text="正在统计 SAMP/cache/ 目录…"
+                        android:text="@string/ui_settings_panel_multiplayer_019"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_8ssp" />
 
@@ -389,7 +389,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="支持导入 PC 端 0.3.DL 缓存 .zip 包或散装 0x*.dff / 0x*.txd（散装文件导入至 local/ 全服通用）"
+                        android:text="@string/ui_settings_panel_multiplayer_020"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -403,7 +403,7 @@
                     android:background="@drawable/launcher_btn_primary"
                     android:gravity="center"
                     android:paddingHorizontal="@dimen/_9sdp"
-                    android:text="导入缓存"
+                    android:text="@string/ui_settings_panel_multiplayer_021"
                     android:textColor="@color/launcher_on_accent"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -416,7 +416,7 @@
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
                     android:paddingHorizontal="@dimen/_8sdp"
-                    android:text="刷新"
+                    android:text="@string/refresh"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -428,7 +428,7 @@
                     android:background="@drawable/launcher_btn_danger"
                     android:gravity="center"
                     android:paddingHorizontal="@dimen/_8sdp"
-                    android:text="清空全部"
+                    android:text="@string/ui_settings_panel_multiplayer_022"
                     android:textColor="@color/launcher_danger"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -442,7 +442,7 @@
                 android:background="@drawable/ui_item_bg"
                 android:gravity="center"
                 android:padding="@dimen/_8sdp"
-                android:text="暂无已缓存的服务器自定义模型"
+                android:text="@string/ui_settings_panel_multiplayer_023"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp"
                 android:visibility="gone" />
@@ -468,7 +468,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:tag="theme_accent_text"
-                android:text="启动器主题配色"
+                android:text="@string/ui_settings_panel_multiplayer_024"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -477,7 +477,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
-                android:text="选择预设主题色或拖动下方色相条自由定制你喜欢的启动器与进度条颜色"
+                android:text="@string/ui_settings_panel_multiplayer_025"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -495,7 +495,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
-                    android:text="经典金"
+                    android:text="@string/ui_settings_panel_multiplayer_026"
                     android:textColor="#FFAE1A"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -508,7 +508,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
-                    android:text="霓虹青"
+                    android:text="@string/ui_settings_panel_multiplayer_027"
                     android:textColor="#18DCFF"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -521,7 +521,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
-                    android:text="翡翠绿"
+                    android:text="@string/ui_settings_panel_multiplayer_028"
                     android:textColor="#2ECC71"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -534,7 +534,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
-                    android:text="竞速红"
+                    android:text="@string/ui_settings_panel_multiplayer_029"
                     android:textColor="#FF4757"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -547,7 +547,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
-                    android:text="电光紫"
+                    android:text="@string/ui_settings_panel_multiplayer_030"
                     android:textColor="#A55EEA"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -559,7 +559,7 @@
                     android:layout_weight="1"
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
-                    android:text="极客蓝"
+                    android:text="@string/ui_settings_panel_multiplayer_031"
                     android:textColor="#3788FF"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -576,7 +576,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="自定义色相滑条"
+                    android:text="@string/ui_settings_panel_multiplayer_032"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />

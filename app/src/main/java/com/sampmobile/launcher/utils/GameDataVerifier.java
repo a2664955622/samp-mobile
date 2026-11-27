@@ -123,35 +123,35 @@ public final class GameDataVerifier {
 
     private static final EntrySpec[] SPECS = {
             // SA-MP 联机核心
-            new EntrySpec("SAMP/main.scm", "SA-MP 主脚本", "SA-MP 联机", false, false, 64),
-            new EntrySpec("SAMP/SAMP.ide", "联机模型定义", "SA-MP 联机", false, false, 128),
-            new EntrySpec(new String[]{"texdb/SAMPCOL.img", "SAMP/SAMPCOL.img"}, "联机碰撞库", "SA-MP 联机", false, false, 1024),
-            new EntrySpec("SAMP/gta.dat", "世界资源索引", "SA-MP 联机", false, false, 128),
-            new EntrySpec("SAMP/peds.ide", "角色皮肤定义表", "SA-MP 联机", false, false, 128),
-            new EntrySpec("SAMP/vehicles.ide", "载具属性定义表", "SA-MP 联机", false, false, 128),
-            new EntrySpec("texdb/samp.img", "SA-MP 模型档案", "SA-MP 联机", false, false, 4096),
-            new EntrySpec("texdb/samp/samp.txt", "SA-MP 贴图索引", "SA-MP 联机", false, false, 64),
-            new EntrySpec("texdb/samp_extra/samp_extra.txt", "TextDraw 扩展贴图索引", "SA-MP 联机", false, false, 64),
+            new EntrySpec("SAMP/main.scm", I18n.tr("SA-MP 主脚本"), I18n.tr("SA-MP 联机"), false, false, 64),
+            new EntrySpec("SAMP/SAMP.ide", I18n.tr("联机模型定义"), I18n.tr("SA-MP 联机"), false, false, 128),
+            new EntrySpec(new String[]{"texdb/SAMPCOL.img", "SAMP/SAMPCOL.img"}, I18n.tr("联机碰撞库"), I18n.tr("SA-MP 联机"), false, false, 1024),
+            new EntrySpec("SAMP/gta.dat", I18n.tr("世界资源索引"), I18n.tr("SA-MP 联机"), false, false, 128),
+            new EntrySpec("SAMP/peds.ide", I18n.tr("角色皮肤定义表"), I18n.tr("SA-MP 联机"), false, false, 128),
+            new EntrySpec("SAMP/vehicles.ide", I18n.tr("载具属性定义表"), I18n.tr("SA-MP 联机"), false, false, 128),
+            new EntrySpec("texdb/samp.img", I18n.tr("SA-MP 模型档案"), I18n.tr("SA-MP 联机"), false, false, 4096),
+            new EntrySpec("texdb/samp/samp.txt", I18n.tr("SA-MP 贴图索引"), I18n.tr("SA-MP 联机"), false, false, 64),
+            new EntrySpec("texdb/samp_extra/samp_extra.txt", I18n.tr("TextDraw 扩展贴图索引"), I18n.tr("SA-MP 联机"), false, false, 64),
 
             // GTA:SA 核心地图、模型与贴图
-            new EntrySpec("texdb/gta3.img", "主世界模型档案", "GTA:SA 核心", false, false, 1024 * 1024),
-            new EntrySpec("texdb/gta_int.img", "室内场景模型档案", "GTA:SA 核心", false, false, 1024 * 1024),
-            new EntrySpec("texdb/player.img", "主角模型与服装档案", "GTA:SA 核心", false, false, 1024 * 1024),
-            new EntrySpec("texdb/gta3/gta3.txt", "主世界贴图索引", "GTA:SA 核心", false, false, 64),
-            new EntrySpec("texdb/gta_int/gta_int.txt", "室内贴图索引", "GTA:SA 核心", false, false, 64),
-            new EntrySpec("texdb/txd/txd.txt", "通用贴图索引", "GTA:SA 核心", false, false, 64),
-            new EntrySpec("texdb/mobile/mobile.txt", "移动端贴图索引", "GTA:SA 核心", false, false, 64),
-            new EntrySpec("texdb/player/player.txt", "主角贴图索引", "GTA:SA 核心", false, false, 64),
-            new EntrySpec("models/coll/peds.col", "人物骨骼碰撞数据", "GTA:SA 核心", false, false, 512),
-            new EntrySpec("anim/anim.img", "角色动作动画库", "GTA:SA 核心", false, false, 1024 * 1024),
-            new EntrySpec("data/handling.cfg", "载具物理参数表", "GTA:SA 核心", false, false, 1024),
-            new EntrySpec("data/weapon.dat", "武器数据配置表", "GTA:SA 核心", false, false, 1024),
+            new EntrySpec("texdb/gta3.img", I18n.tr("主世界模型档案"), I18n.tr("GTA:SA 核心"), false, false, 1024 * 1024),
+            new EntrySpec("texdb/gta_int.img", I18n.tr("室内场景模型档案"), I18n.tr("GTA:SA 核心"), false, false, 1024 * 1024),
+            new EntrySpec("texdb/player.img", I18n.tr("主角模型与服装档案"), I18n.tr("GTA:SA 核心"), false, false, 1024 * 1024),
+            new EntrySpec("texdb/gta3/gta3.txt", I18n.tr("主世界贴图索引"), I18n.tr("GTA:SA 核心"), false, false, 64),
+            new EntrySpec("texdb/gta_int/gta_int.txt", I18n.tr("室内贴图索引"), I18n.tr("GTA:SA 核心"), false, false, 64),
+            new EntrySpec("texdb/txd/txd.txt", I18n.tr("通用贴图索引"), I18n.tr("GTA:SA 核心"), false, false, 64),
+            new EntrySpec("texdb/mobile/mobile.txt", I18n.tr("移动端贴图索引"), I18n.tr("GTA:SA 核心"), false, false, 64),
+            new EntrySpec("texdb/player/player.txt", I18n.tr("主角贴图索引"), I18n.tr("GTA:SA 核心"), false, false, 64),
+            new EntrySpec("models/coll/peds.col", I18n.tr("人物骨骼碰撞数据"), I18n.tr("GTA:SA 核心"), false, false, 512),
+            new EntrySpec("anim/anim.img", I18n.tr("角色动作动画库"), I18n.tr("GTA:SA 核心"), false, false, 1024 * 1024),
+            new EntrySpec("data/handling.cfg", I18n.tr("载具物理参数表"), I18n.tr("GTA:SA 核心"), false, false, 1024),
+            new EntrySpec("data/weapon.dat", I18n.tr("武器数据配置表"), I18n.tr("GTA:SA 核心"), false, false, 1024),
 
             // 音频配置与完整版音频流（按 GTA:SA 引擎规则忽略大小写解析）
-            new EntrySpec("audio/CONFIG/TrkHead.dat", "音频引擎核心配置", "音频资源", false, false, 16),
-            new EntrySpec("audio/CONFIG/BankLkup.dat", "音频库映射表", "音频资源", false, false, 16),
-            new EntrySpec("audio/sfx", "完整版音效流目录（2.10 GiB）", "音频资源", true, true, 1024 * 1024),
-            new EntrySpec("audio/streams", "完整版电台与语音流（2.10 GiB）", "音频资源", true, true, 1024 * 1024),
+            new EntrySpec("audio/CONFIG/TrkHead.dat", I18n.tr("音频引擎核心配置"), I18n.tr("音频资源"), false, false, 16),
+            new EntrySpec("audio/CONFIG/BankLkup.dat", I18n.tr("音频库映射表"), I18n.tr("音频资源"), false, false, 16),
+            new EntrySpec("audio/sfx", I18n.tr("完整版音效流目录（2.10 GiB）"), I18n.tr("音频资源"), true, true, 1024 * 1024),
+            new EntrySpec("audio/streams", I18n.tr("完整版电台与语音流（2.10 GiB）"), I18n.tr("音频资源"), true, true, 1024 * 1024),
     };
 
     private GameDataVerifier() {}
@@ -359,7 +359,7 @@ public final class GameDataVerifier {
     }
 
     public static String formatBytes(long bytes) {
-        if (bytes < 0) return "未知";
+        if (bytes < 0) return I18n.tr("未知");
         if (bytes < 1024) return bytes + " B";
         double kib = bytes / 1024.0;
         if (kib < 1024) return String.format(Locale.US, "%.1f KiB", kib);

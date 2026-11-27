@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.ui.fragment;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.ContentResolver;
@@ -79,6 +81,7 @@ import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.GameDataImporter;
 import com.sampmobile.launcher.utils.GameDataVerifier;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
+import com.sampmobile.launcher.utils.LocaleManager;
 
 @Obfuscate
 public class SettingsPageFragment extends Fragment implements LauncherThemeManager.ThemeListener {
@@ -89,29 +92,32 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
     private static final int CAT_CAMERA      = 3;
     private static final int CAT_CONTROLS    = 4;
     private static final int CAT_AUDIO       = 5;
-    private static final int CAT_HUD_CHAT    = 6;
-    private static final int CAT_SCREENSHOTS = 7;
-    private static final int CAT_LOGS        = 8;
-    private static final int CAT_HELP_ABOUT  = 9;
+    private static final int CAT_LANGUAGE    = 6;
+    private static final int CAT_HUD_CHAT    = 7;
+    private static final int CAT_SCREENSHOTS = 8;
+    private static final int CAT_LOGS        = 9;
+    private static final int CAT_HELP_ABOUT  = 10;
 
-    private static final String[] CATEGORY_TITLES = {
-            "联机",
-            "文件验证",
-            "画面",
-            "镜头",
-            "操作",
-            "音频",
-            "界面与聊天",
-            "截图库",
-            "问题反馈",
-            "帮助与关于"
+    private static final int[] CATEGORY_TITLE_RES = {
+            R.string.settings_cat_multiplayer,
+            R.string.settings_cat_gamedata,
+            R.string.settings_cat_graphics,
+            R.string.settings_cat_camera,
+            R.string.settings_cat_controls,
+            R.string.settings_cat_audio,
+            R.string.settings_cat_language,
+            R.string.settings_cat_hud_chat,
+            R.string.settings_cat_screenshots,
+            R.string.settings_cat_logs,
+            R.string.settings_cat_help_about
     };
 
     private static final String[] GAMEDATA_EDITION_ITEMS = {
-            "精简版（推荐）",
-            "完整版（2.10 GiB）"
+            I18n.tr("精简版（推荐）"),
+            I18n.tr("完整版（2.10 GiB）")
     };
 
+    private static int sLastCategory = CAT_MULTIPLAYER;
     private int currentCategory = CAT_MULTIPLAYER;
     final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
     private final SettingsScreenshotController screenshotController = new SettingsScreenshotController(this);
@@ -131,6 +137,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
     private GtaOptionView dropdown_targeting_mode, dropdown_touch_steering, dropdown_touch_layout, dropdown_accelerometer;
     private GtaOptionView dropdown_radio_station, dropdown_voice_mic_mode;
     private GtaOptionView dropdown_crosshair_style, dropdown_font_family;
+    private GtaOptionView dropdown_app_language;
 
     private TextView btn_gfx_preset_low, btn_gfx_preset_med, btn_gfx_preset_high, btn_gfx_preset_ultra;
     private TextView btn_open_hud_editor, btn_reset_hud_editor;
@@ -203,6 +210,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
             R.layout.settings_panel_camera,
             R.layout.settings_panel_controls,
             R.layout.settings_panel_audio,
+            R.layout.settings_panel_language,
             R.layout.settings_panel_hud_chat,
             R.layout.settings_panel_screenshots,
             R.layout.settings_panel_logs,
@@ -270,7 +278,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
     }
 
     public void onPageShown() {
-        if (!isAdded()) return;
+        if (!isAdded() || rootView == null) return;
         settings = ClientSettings.reloadLauncher(requireContext());
         setWidgetsForSettings();
         if (currentCategory == CAT_MULTIPLAYER) {
@@ -357,6 +365,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         dropdown_voice_mic_mode = view.findViewById(R.id.dropdown_voice_mic_mode);
         dropdown_crosshair_style = view.findViewById(R.id.dropdown_crosshair_style);
         dropdown_font_family = view.findViewById(R.id.dropdown_font_family);
+        dropdown_app_language = view.findViewById(R.id.dropdown_app_language);
 
         voice = view.findViewById(R.id.voice_switch);
         timestamp = view.findViewById(R.id.timestamp_switch);
@@ -487,6 +496,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
                 view.findViewById(R.id.panel_camera),
                 view.findViewById(R.id.panel_controls),
                 view.findViewById(R.id.panel_audio),
+                view.findViewById(R.id.panel_language),
                 view.findViewById(R.id.panel_hud_chat),
                 view.findViewById(R.id.panel_screenshots),
                 view.findViewById(R.id.panel_logs),
@@ -494,7 +504,11 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         };
 
         settingsTabs = view.findViewById(R.id.settings_tabs);
-        settingsTabs.setTabs(CATEGORY_TITLES);
+        String[] titles = new String[CATEGORY_TITLE_RES.length];
+        for (int i = 0; i < titles.length; i++) {
+            titles[i] = i == CAT_LANGUAGE ? "语言 / Language" : getString(CATEGORY_TITLE_RES[i]);
+        }
+        settingsTabs.setTabs(titles);
         settingsTabs.setOnTabSelectedListener((index, reselected) -> {
             if (reselected) {
                 if (categoryPanels[index] instanceof android.widget.ScrollView) {
@@ -509,11 +523,12 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
             panel.setTranslationY(8f * getResources().getDisplayMetrics().density);
             panel.animate().alpha(1f).translationY(0f).setDuration(180).start();
         });
-        switchCategory(CAT_MULTIPLAYER);
+        switchCategory(sLastCategory);
     }
 
     private void switchCategory(int catIdx) {
         currentCategory = catIdx;
+        sLastCategory = catIdx;
 
         for (int i = 0; i < categoryPanels.length; i++) {
             categoryPanels[i].setVisibility((i == catIdx) ? View.VISIBLE : View.GONE);
@@ -607,12 +622,13 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         bindStringOptionDropdown(dropdown_voice_mic_mode, ClientSettings.VOICE_MIC_MODES, "voice_mic_mode");
         bindStringOptionDropdown(dropdown_crosshair_style, ClientSettings.CROSSHAIR_STYLES, "crosshair_style");
         bindStringOptionDropdown(dropdown_font_family, ClientSettings.FONT_FAMILIES, "font_family");
+        setupLanguageDropdown();
 
         // 四档画质预设
-        btn_gfx_preset_low.setOnClickListener(v -> applyGraphicsPreset(0, 0, 0, 60, 40, "省电流畅"));
-        btn_gfx_preset_med.setOnClickListener(v -> applyGraphicsPreset(1, 1, 1, 80, 60, "均衡标准"));
-        btn_gfx_preset_high.setOnClickListener(v -> applyGraphicsPreset(2, 1, 2, 100, 75, "高清画质"));
-        btn_gfx_preset_ultra.setOnClickListener(v -> applyGraphicsPreset(3, 2, 3, 100, 100, "极致画质"));
+        btn_gfx_preset_low.setOnClickListener(v -> applyGraphicsPreset(0, 0, 0, 60, 40, I18n.tr("省电流畅")));
+        btn_gfx_preset_med.setOnClickListener(v -> applyGraphicsPreset(1, 1, 1, 80, 60, I18n.tr("均衡标准")));
+        btn_gfx_preset_high.setOnClickListener(v -> applyGraphicsPreset(2, 1, 2, 100, 75, I18n.tr("高清画质")));
+        btn_gfx_preset_ultra.setOnClickListener(v -> applyGraphicsPreset(3, 2, 3, 100, 100, I18n.tr("极致画质")));
 
         // 自定义游戏按键位置 (Change Button Position)
         if (btn_open_hud_editor != null) {
@@ -621,22 +637,22 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
                 savePreference("open_hud_edit_on_start", next);
                 updateHudEditorButtonUI();
                 if (next) {
-                    Toast.makeText(requireContext(), "已开启：下次进入游戏将自动打开按键位置调整界面（游戏内也可随时点击底部 HUD 键或输入 /hudedit 打开）", Toast.LENGTH_LONG).show();
+                    Toast.makeText(requireContext(), I18n.tr("已开启：下次进入游戏将自动打开按键位置调整界面（游戏内也可随时点击底部 HUD 键或输入 /hudedit 打开）"), Toast.LENGTH_LONG).show();
                 } else {
-                    Toast.makeText(requireContext(), "已取消进服自动打开按键位置调整", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(requireContext(), I18n.tr("已取消进服自动打开按键位置调整"), Toast.LENGTH_SHORT).show();
                 }
             });
         }
         if (btn_reset_hud_editor != null) {
             btn_reset_hud_editor.setOnClickListener(v -> {
-                showAlertDialog("确定要删除自定义按键布局文件 (Adjustable.cfg)，恢复 GTA:SA 原版默认按键位置吗？", (d, w) -> {
+                showAlertDialog(I18n.tr("确定要删除自定义按键布局文件 (Adjustable.cfg)，恢复 GTA:SA 原版默认按键位置吗？"), (d, w) -> {
                     File adjFile = new File(requireContext().getExternalFilesDir(null), "Adjustable.cfg");
                     if (adjFile.exists()) {
                         adjFile.delete();
                     }
                     savePreference("open_hud_edit_on_start", false);
                     updateHudEditorButtonUI();
-                    Toast.makeText(requireContext(), "已恢复默认游戏按键位置", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(requireContext(), I18n.tr("已恢复默认游戏按键位置"), Toast.LENGTH_SHORT).show();
                     d.dismiss();
                 }, (d, w) -> d.dismiss());
             });
@@ -654,19 +670,19 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
             ClientSettings.updateBatchSync(requireContext(), batch);
             settings = ClientSettings.loadLauncher(requireContext());
             setWidgetsForSettings();
-            Toast.makeText(requireContext(), "聊天窗口布局与字号已恢复默认", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), I18n.tr("聊天窗口布局与字号已恢复默认"), Toast.LENGTH_SHORT).show();
         });
 
         // 截图模式切换
         btn_ss_mode_hud.setOnClickListener(v -> {
             savePreference("screenshot_mode", ClientSettings.SCREENSHOT_MODE_HUD);
             updateScreenshotModeUI();
-            Toast.makeText(requireContext(), "已设为：含界面与聊天", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), I18n.tr("已设为：含界面与聊天"), Toast.LENGTH_SHORT).show();
         });
         btn_ss_mode_game.setOnClickListener(v -> {
             savePreference("screenshot_mode", ClientSettings.SCREENSHOT_MODE_GAME);
             updateScreenshotModeUI();
-            Toast.makeText(requireContext(), "已设为：仅游戏画面", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), I18n.tr("已设为：仅游戏画面"), Toast.LENGTH_SHORT).show();
         });
         view.findViewById(R.id.btn_ss_refresh).setOnClickListener(v -> screenshotController.refresh());
         view.findViewById(R.id.btn_ss_clear_all).setOnClickListener(v -> screenshotController.confirmClear());
@@ -674,7 +690,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         // 问题反馈操作按钮
         view.findViewById(R.id.btn_log_refresh).setOnClickListener(v -> {
             diagnosticsController.refresh();
-            Toast.makeText(requireContext(), "运行状态检测已刷新", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), I18n.tr("运行状态检测已刷新"), Toast.LENGTH_SHORT).show();
         });
         view.findViewById(R.id.btn_log_copy_report).setOnClickListener(v -> diagnosticsController.copyReport());
         view.findViewById(R.id.btn_log_share).setOnClickListener(v -> diagnosticsController.shareLogFile());
@@ -687,6 +703,22 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         updateGraphicsPresetUI();
         updateScreenshotModeUI();
         updateHudEditorButtonUI();
+    }
+
+    private void setupLanguageDropdown() {
+        if (dropdown_app_language == null) return;
+        final String[] labels = {"中文", "English"};
+        final String[] ids = {LocaleManager.LANG_ZH, LocaleManager.LANG_EN};
+        dropdown_app_language.setAdapter(createDropdownAdapter(labels));
+        dropdown_app_language.setThreshold(0);
+        String current = LocaleManager.currentLanguage(requireContext());
+        dropdown_app_language.setText(LocaleManager.LANG_ZH.equals(current) ? labels[0] : labels[1], false);
+        dropdown_app_language.setOnClickListener(v -> dropdown_app_language.showDropDown());
+        dropdown_app_language.setOnItemClickListener((av, v, i, l) -> {
+            if (i < 0 || i >= ids.length || ids[i].equals(current)) return;
+            LocaleManager.setLanguage(requireContext(), ids[i]);
+            requireActivity().recreate();
+        });
     }
 
     ArrayAdapter<String> createDropdownAdapter(final String[] items) {
@@ -757,7 +789,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         ClientSettings.updateBatchSync(requireContext(), batch);
         settings = ClientSettings.loadLauncher(requireContext());
         setWidgetsForSettings();
-        Toast.makeText(requireContext(), "已应用画质预设：" + label, Toast.LENGTH_SHORT).show();
+        Toast.makeText(requireContext(), I18n.tr("已应用画质预设：") + label, Toast.LENGTH_SHORT).show();
     }
 
     private void updateGraphicsPresetUI() {
@@ -793,8 +825,8 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         int accentColor = LauncherThemeManager.getAccentColor(requireContext());
         btn_open_hud_editor.setBackgroundTintList(ColorStateList.valueOf(accentColor));
         btn_open_hud_editor.setText(scheduled
-                ? "✓ 已预约：下次进入游戏将自动打开按键调整"
-                : "进入游戏时自动打开按键位置调整");
+                ? I18n.tr("✓ 已预约：下次进入游戏将自动打开按键调整")
+                : I18n.tr("进入游戏时自动打开按键位置调整"));
     }
 
     private void setupSliders() {
@@ -923,7 +955,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         switchButton.setOnCheckedChangeListener((buttonView, isChecked) -> {
             if (updatingWidgets) return;
             if (isChecked && buttonView.isPressed()) {
-                showAlertDialog("开启此选项后，启动器将跳过原始文件完整性检查。若因手工替换数据包导致游戏异常，请关闭此选项。",
+                showAlertDialog(I18n.tr("开启此选项后，启动器将跳过原始文件完整性检查。若因手工替换数据包导致游戏异常，请关闭此选项。"),
                         (dialog, which) -> dialog.dismiss(), (dialog, which) -> {
                             switchButton.setChecked(false);
                             dialog.dismiss();
@@ -934,11 +966,11 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
     }
 
     private void setupRestoreButton() {
-        restore_button.setOnClickListener(v -> showAlertDialog("确定要将所有联机、画面、镜头、操作、音频与界面设置恢复为默认值吗？", (dialog, which) -> {
+        restore_button.setOnClickListener(v -> showAlertDialog(I18n.tr("确定要将所有联机、画面、镜头、操作、音频与界面设置恢复为默认值吗？"), (dialog, which) -> {
             settings = ClientSettings.resetDefaults(requireContext());
             LauncherThemeManager.setHue(requireContext(), LauncherThemeManager.DEFAULT_HUE);
             setWidgetsForSettings();
-            Toast.makeText(requireContext(), "已恢复全部默认设置", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), I18n.tr("已恢复全部默认设置"), Toast.LENGTH_SHORT).show();
             dialog.dismiss();
         }, (dialog, which) -> dialog.dismiss()));
     }
@@ -1065,52 +1097,52 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
 
     private void populateHelpAndAbout() {
         tv_help_mods_body.setText(
-                "1. 在哪里开启和管理模组？\n"
-                + "请返回启动器主界面，点击最左侧导航栏的「模组」板块。您可以在模组板块中统一开启或关闭各类加载器，并单独管理每一个模组包与脚本。\n\n"
-                + "2. 如何安装车包、人物皮肤、武器与贴图音效模组？\n"
-                + "客户端支持免打包文件替换。只需将下载好的模组文件夹（内含 .dff 模型、.txd 贴图或音效文件）放入游戏数据目录的 modloader/ 文件夹下，随后在主界面「模组」板块开启资源加载器即可自动生效，不会破坏原始数据包。\n\n"
-                + "3. 如何使用 Lua 辅助脚本与原生扩展插件？\n"
-                + "• Lua 脚本：将 .lua 脚本文件放入 monetloader/ 目录，并在主界面「模组」板块中启用脚本加载器；\n"
-                + "• 原生插件与画质补丁：在主界面「模组」板块中可一键开启扩展插件与引擎修复补丁，点击「画质补丁配置」还可按需开关各项渲染优化。\n\n"
-                + "4. 安装新模组后进游戏闪退怎么办？\n"
-                + "不同模组之间可能存在模型 ID 冲突或旧版脚本不兼容。只需在主界面「模组」板块中暂时关闭最近新增的模组开关，即可立即恢复正常进服；也可在本页「问题反馈」中一键复制故障信息交由开发者排查。");
+                I18n.tr("1. 在哪里开启和管理模组？\n")
+                + I18n.tr("请返回启动器主界面，点击最左侧导航栏的「模组」板块。您可以在模组板块中统一开启或关闭各类加载器，并单独管理每一个模组包与脚本。\n\n")
+                + I18n.tr("2. 如何安装车包、人物皮肤、武器与贴图音效模组？\n")
+                + I18n.tr("客户端支持免打包文件替换。只需将下载好的模组文件夹（内含 .dff 模型、.txd 贴图或音效文件）放入游戏数据目录的 modloader/ 文件夹下，随后在主界面「模组」板块开启资源加载器即可自动生效，不会破坏原始数据包。\n\n")
+                + I18n.tr("3. 如何使用 Lua 辅助脚本与原生扩展插件？\n")
+                + I18n.tr("• Lua 脚本：将 .lua 脚本文件放入 monetloader/ 目录，并在主界面「模组」板块中启用脚本加载器；\n")
+                + I18n.tr("• 原生插件与画质补丁：在主界面「模组」板块中可一键开启扩展插件与引擎修复补丁，点击「画质补丁配置」还可按需开关各项渲染优化。\n\n")
+                + I18n.tr("4. 安装新模组后进游戏闪退怎么办？\n")
+                + I18n.tr("不同模组之间可能存在模型 ID 冲突或旧版脚本不兼容。只需在主界面「模组」板块中暂时关闭最近新增的模组开关，即可立即恢复正常进服；也可在本页「问题反馈」中一键复制故障信息交由开发者排查。"));
 
         tv_help_faq_body.setText(
-                "1. 如何使用自由镜头、调整摇杆大小或自定义游戏按键位置？\n"
-                + "• 自由镜头：在「镜头设置」中开启「自由镜头（镜头不自动回正）」，行走或驾车时镜头将始终停留在您旋转到的方向；\n"
-                + "• 分段灵敏度：在「镜头设置」中可分别调节步行、载具与开镜瞄准时的独立镜头灵敏度；\n"
-                + "• 自定义按键位置：在「操作设置」中点击「进入游戏时自动打开按键位置调整」（或在游戏内展开底部快捷栏点击 HUD 键 / 输入 /hudedit），即可像单机版一样自由拖拽和缩放屏幕按键。\n\n"
-                + "2. 步战时如何切换视角远近、开镜瞄准、格挡或乘坐副驾驶？\n"
-                + "• 切换视角：点击游戏画面右上角的镜头图标即可在近距、标准、远距视角间切换，也可在「镜头设置」中设定默认距离；\n"
-                + "• 瞄准与射击：持枪时点击右侧独立准星按钮进入瞄准状态，轻点开火键单发点射、按住连续射击；\n"
-                + "• 近战格挡：徒手或持近战武器时按住格挡键即可保持防御姿态；\n"
-                + "• 乘坐副驾驶：靠近载具时点击屏幕右侧出现的 G 键图标，或展开底部功能键盘点击 G。\n\n"
-                + "3. 进入服务器后中文显示为乱码怎么解决？\n"
-                + "在「联机设置」中修改「服务器文字编码」：国内大多数服务器使用 GBK 编码，部分新版服务器使用 UTF-8，港台服务器常使用 BIG5。\n\n"
-                + "4. 如何拍摄不含聊天框和界面按钮的纯净游戏截图？\n"
-                + "在「截图库」中将截图范围设为「仅游戏画面」，或在游戏聊天框直接输入 /ss game，即可拍摄隐藏所有界面与按键的纯净游戏画面。");
+                I18n.tr("1. 如何使用自由镜头、调整摇杆大小或自定义游戏按键位置？\n")
+                + I18n.tr("• 自由镜头：在「镜头设置」中开启「自由镜头（镜头不自动回正）」，行走或驾车时镜头将始终停留在您旋转到的方向；\n")
+                + I18n.tr("• 分段灵敏度：在「镜头设置」中可分别调节步行、载具与开镜瞄准时的独立镜头灵敏度；\n")
+                + I18n.tr("• 自定义按键位置：在「操作设置」中点击「进入游戏时自动打开按键位置调整」（或在游戏内展开底部快捷栏点击 HUD 键 / 输入 /hudedit），即可像单机版一样自由拖拽和缩放屏幕按键。\n\n")
+                + I18n.tr("2. 步战时如何切换视角远近、开镜瞄准、格挡或乘坐副驾驶？\n")
+                + I18n.tr("• 切换视角：点击游戏画面右上角的镜头图标即可在近距、标准、远距视角间切换，也可在「镜头设置」中设定默认距离；\n")
+                + I18n.tr("• 瞄准与射击：持枪时点击右侧独立准星按钮进入瞄准状态，轻点开火键单发点射、按住连续射击；\n")
+                + I18n.tr("• 近战格挡：徒手或持近战武器时按住格挡键即可保持防御姿态；\n")
+                + I18n.tr("• 乘坐副驾驶：靠近载具时点击屏幕右侧出现的 G 键图标，或展开底部功能键盘点击 G。\n\n")
+                + I18n.tr("3. 进入服务器后中文显示为乱码怎么解决？\n")
+                + I18n.tr("在「联机设置」中修改「服务器文字编码」：国内大多数服务器使用 GBK 编码，部分新版服务器使用 UTF-8，港台服务器常使用 BIG5。\n\n")
+                + I18n.tr("4. 如何拍摄不含聊天框和界面按钮的纯净游戏截图？\n")
+                + I18n.tr("在「截图库」中将截图范围设为「仅游戏画面」，或在游戏聊天框直接输入 /ss game，即可拍摄隐藏所有界面与按键的纯净游戏画面。"));
 
         tv_help_commands.setText(
-                "/ss 或 /screenshot      立即截图（也可点击底部快捷键盘 F8）\n"
-                + "/ss game               强制拍摄一张不含界面与聊天的纯净画面\n"
-                + "/hudedit               打开游戏内触控按键位置与大小编辑器\n"
-                + "/freecam               实时开关自由镜头（镜头不自动回正）\n"
-                + "/headmove              开关角色头部随视角方向转动\n"
-                + "/pagesize [5-20]       修改聊天窗口同时显示的消息行数\n"
-                + "/timestamp             开关聊天消息前方的接收时间显示\n"
-                + "/clearmychat           清空当前聊天窗口的历史消息\n"
-                + "/save [备注]           记录当前人物或车辆坐标\n"
-                + "/dl                    开关周围载具编号与距离坐标显示\n"
-                + "/dw                    开关右侧击杀通报列表\n"
-                + "/q 或 /quit            断开服务器连接并退出游戏");
+                I18n.tr("/ss 或 /screenshot      立即截图（也可点击底部快捷键盘 F8）\n")
+                + I18n.tr("/ss game               强制拍摄一张不含界面与聊天的纯净画面\n")
+                + I18n.tr("/hudedit               打开游戏内触控按键位置与大小编辑器\n")
+                + I18n.tr("/freecam               实时开关自由镜头（镜头不自动回正）\n")
+                + I18n.tr("/headmove              开关角色头部随视角方向转动\n")
+                + I18n.tr("/pagesize [5-20]       修改聊天窗口同时显示的消息行数\n")
+                + I18n.tr("/timestamp             开关聊天消息前方的接收时间显示\n")
+                + I18n.tr("/clearmychat           清空当前聊天窗口的历史消息\n")
+                + I18n.tr("/save [备注]           记录当前人物或车辆坐标\n")
+                + I18n.tr("/dl                    开关周围载具编号与距离坐标显示\n")
+                + I18n.tr("/dw                    开关右侧击杀通报列表\n")
+                + I18n.tr("/q 或 /quit            断开服务器连接并退出游戏"));
 
         tv_about_version_line.setText(String.format(Locale.US,
-                "SA-MP Mobile 移动端联机客户端  ·  版本 v%s",
+                I18n.tr("SA-MP Mobile 移动端联机客户端  ·  版本 v%s"),
                 BuildConfig.VERSION_NAME));
 
         tv_about_summary.setText(
-                "专为移动端打造的圣安地列斯多人联机启动器与游戏客户端，全面支持 0.3.7 与 0.3.DL 服务器协议，集成原生画质调节、纯净截图库与模块化扩展支持。\n\n"
-                + "开源致谢：基于 Alyn SA-MP Mobile 二次开发，致谢 AML / MonetLoader / CLEO 等社区开源项目。");
+                I18n.tr("专为移动端打造的圣安地列斯多人联机启动器与游戏客户端，全面支持 0.3.7 与 0.3.DL 服务器协议，集成原生画质调节、纯净截图库与模块化扩展支持。\n\n")
+                + I18n.tr("开源致谢：基于 Alyn SA-MP Mobile 二次开发，致谢 AML / MonetLoader / CLEO 等社区开源项目。"));
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -1119,7 +1151,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
 
     void shareFile(File file, String mimeType, String chooserTitle) {
         if (file == null || !file.exists()) {
-            Toast.makeText(requireContext(), "文件不存在", Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), I18n.tr("文件不存在"), Toast.LENGTH_SHORT).show();
             return;
         }
         try {
@@ -1131,7 +1163,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
             intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             startActivity(Intent.createChooser(intent, chooserTitle));
         } catch (Exception e) {
-            Toast.makeText(requireContext(), "分享失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), I18n.tr("分享失败: ") + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -1149,10 +1181,10 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
 
     void showAlertDialog(String message, DialogInterface.OnClickListener positiveListener, DialogInterface.OnClickListener negativeListener) {
         new AlertDialog.Builder(requireActivity())
-                .setTitle("提示")
+                .setTitle(I18n.tr("提示"))
                 .setMessage(message)
-                .setPositiveButton("确定", positiveListener)
-                .setNegativeButton("取消", negativeListener)
+                .setPositiveButton(I18n.tr("确定"), positiveListener)
+                .setNegativeButton(I18n.tr("取消"), negativeListener)
                 .show();
     }
 }

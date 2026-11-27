@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.download;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -105,24 +107,24 @@ public final class DataManifest {
         try {
             root = new JSONObject(json);
         } catch (JSONException e) {
-            throw new ManifestException("清单不是合法 JSON：" + e.getMessage());
+            throw new ManifestException(I18n.tr("清单不是合法 JSON：") + e.getMessage());
         }
 
         int schema = root.optInt("schema", -1);
         if (schema != SCHEMA) {
-            throw new ManifestException("清单 schema=" + schema + "，客户端只支持 " + SCHEMA
-                    + "（请升级客户端）");
+            throw new ManifestException(I18n.tr("清单 schema=") + schema + I18n.tr("，客户端只支持 ") + SCHEMA
+                    + I18n.tr("（请升级客户端）"));
         }
 
         String version = root.optString("version", "");
         if (version.isEmpty()) {
-            throw new ManifestException("清单缺少 version");
+            throw new ManifestException(I18n.tr("清单缺少 version"));
         }
 
         int minClient = root.optInt("minClientVersionCode", 0);
         if (minClient > 0 && clientVersionCode < minClient) {
-            throw new ManifestException("该数据包要求客户端 versionCode >= " + minClient
-                    + "，当前为 " + clientVersionCode);
+            throw new ManifestException(I18n.tr("该数据包要求客户端 versionCode >= ") + minClient
+                    + I18n.tr("，当前为 ") + clientVersionCode);
         }
 
         List<Group> groups = new ArrayList<>();
@@ -134,7 +136,7 @@ public final class DataManifest {
         }
 
         if (groups.isEmpty()) {
-            throw new ManifestException("清单里既没有 game 也没有 online 分组");
+            throw new ManifestException(I18n.tr("清单里既没有 game 也没有 online 分组"));
         }
 
         return new DataManifest(schema, version, minClient, groups);
@@ -146,13 +148,13 @@ public final class DataManifest {
 
         JSONArray pkgArray = g.optJSONArray("packages");
         if (pkgArray == null || pkgArray.length() == 0) {
-            throw new ManifestException("分组 " + key + " 没有 packages");
+            throw new ManifestException(I18n.tr("分组 ") + key + I18n.tr(" 没有 packages"));
         }
 
         List<Package> packages = new ArrayList<>();
         for (int i = 0; i < pkgArray.length(); i++) {
             JSONObject p = pkgArray.optJSONObject(i);
-            if (p == null) throw new ManifestException("分组 " + key + " 的 packages[" + i + "] 不是对象");
+            if (p == null) throw new ManifestException(I18n.tr("分组 ") + key + I18n.tr(" 的 packages[") + i + I18n.tr("] 不是对象"));
             packages.add(parsePackage(key, p, i));
         }
 
@@ -170,28 +172,28 @@ public final class DataManifest {
         String where = groupKey + ".packages[" + pos + "]";
 
         String id = p.optString("id", "");
-        if (id.isEmpty()) throw new ManifestException(where + " 缺少 id");
+        if (id.isEmpty()) throw new ManifestException(where + I18n.tr(" 缺少 id"));
         // id 会拼进本地路径，必须挡住穿越。
         if (id.contains("/") || id.contains("\\") || id.contains("..")) {
-            throw new ManifestException(where + " 的 id 含非法字符：" + id);
+            throw new ManifestException(where + I18n.tr(" 的 id 含非法字符：") + id);
         }
 
         long bytes = p.optLong("bytes", -1);
-        if (bytes <= 0) throw new ManifestException(where + " 的 bytes 非法：" + bytes);
+        if (bytes <= 0) throw new ManifestException(where + I18n.tr(" 的 bytes 非法：") + bytes);
 
         String sha = p.optString("sha256", "").toLowerCase(java.util.Locale.US);
-        if (!isHex64(sha)) throw new ManifestException(where + " 的 sha256 不是 64 位 hex");
+        if (!isHex64(sha)) throw new ManifestException(where + I18n.tr(" 的 sha256 不是 64 位 hex"));
 
         JSONArray chunkArray = p.optJSONArray("chunks");
         if (chunkArray == null || chunkArray.length() == 0) {
-            throw new ManifestException(where + " 没有 chunks");
+            throw new ManifestException(where + I18n.tr(" 没有 chunks"));
         }
 
         List<Chunk> chunks = new ArrayList<>();
         long chunkSum = 0;
         for (int i = 0; i < chunkArray.length(); i++) {
             JSONObject c = chunkArray.optJSONObject(i);
-            if (c == null) throw new ManifestException(where + ".chunks[" + i + "] 不是对象");
+            if (c == null) throw new ManifestException(where + ".chunks[" + i + I18n.tr("] 不是对象"));
             Chunk chunk = parseChunk(where, c, i);
             chunks.add(chunk);
             chunkSum += chunk.bytes;
@@ -199,8 +201,8 @@ public final class DataManifest {
 
         // 分片大小之和必须等于整包大小，否则拼出来的文件一定不对，早点报错。
         if (chunkSum != bytes) {
-            throw new ManifestException(where + " 的分片总大小 " + chunkSum
-                    + " 与 bytes " + bytes + " 不一致");
+            throw new ManifestException(where + I18n.tr(" 的分片总大小 ") + chunkSum
+                    + I18n.tr(" 与 bytes ") + bytes + I18n.tr(" 不一致"));
         }
 
         String label = p.optString("label", id);
@@ -210,18 +212,18 @@ public final class DataManifest {
     private static Chunk parseChunk(String where, JSONObject c, int pos) throws ManifestException {
         String w = where + ".chunks[" + pos + "]";
         int index = c.optInt("index", -1);
-        if (index < 0) throw new ManifestException(w + " 的 index 非法：" + index);
+        if (index < 0) throw new ManifestException(w + I18n.tr(" 的 index 非法：") + index);
 
         String url = c.optString("url", "");
-        if (url.isEmpty()) throw new ManifestException(w + " 缺少 url");
+        if (url.isEmpty()) throw new ManifestException(w + I18n.tr(" 缺少 url"));
 
         long bytes = c.optLong("bytes", -1);
-        if (bytes <= 0) throw new ManifestException(w + " 的 bytes 非法：" + bytes);
+        if (bytes <= 0) throw new ManifestException(w + I18n.tr(" 的 bytes 非法：") + bytes);
 
         // 分片 sha256 可选：缺失时跳过单片校验，整包仍会校验。
         String sha = c.optString("sha256", "").toLowerCase(java.util.Locale.US);
         if (!sha.isEmpty() && !isHex64(sha)) {
-            throw new ManifestException(w + " 的 sha256 不是 64 位 hex");
+            throw new ManifestException(w + I18n.tr(" 的 sha256 不是 64 位 hex"));
         }
 
         return new Chunk(index, url, bytes, sha);

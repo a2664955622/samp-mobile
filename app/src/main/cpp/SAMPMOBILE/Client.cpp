@@ -1,7 +1,10 @@
 #include <atomic>
+#include <algorithm>
+#include <functional>
 #include <iomanip>
 #include <sstream>
 #include <thread>
+#include <vector>
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <dirent.h>
@@ -33,6 +36,7 @@
 #include "Java/Java.h"
 #include "Java/MultiTouch.h"
 #include "UI/UI.h"
+#include "L10n.h"
 #include "UI/SAMPWidgets/PlayerTags.h"
 #include "UI/SAMPWidgets/SplashScreen.h"
 #include "UI/SAMPWidgets/Chat.h"
@@ -47,6 +51,10 @@
 #include "Cef/CefBrowser.h"
 #include "Cef/CefSession.h"
 #include "Crashlytics.h"
+#include "Game/Artwork/ArtworkTelemetry.h"
+
+#include <cstdio>
+#include <cstdlib>
 
 JavaVM* Client::java_vm = nullptr;
 std::string Client::game_dir;
@@ -148,12 +156,109 @@ void init_logger(const std::string& gameDir)
 	}
 }
 
+// One-time boot progress marker: flushes buffered log lines to disk so a
+// process dying mid-boot leaves its last completed milestone in the file log
+// instead of a seemingly empty file (spdlog buffers everything below warn).
+static inline void bootMilestoneFlush()
+{
+	if (auto logger = spdlog::default_logger()) {
+		logger->flush();
+	}
+}
+
 static bool g_bGameStarted = false;
 volatile pid_t g_gameThreadTid = -1;
 std::atomic<bool> g_processRan{false};
 std::atomic<bool> g_worldReady{false};
 
 static struct sigaction s_prevFatalAction[32]{};
+
+// Memory telemetry helpers (normal thread context — stdio is fine here).
+// Returns the kB value of a "Key:  12345 kB" style /proc field, or -1.
+static long readProcKbField(const char* path, const char* key)
+{
+	FILE* f = fopen(path, "r");
+	if (!f) return -1;
+	char line[256];
+	long result = -1;
+	const size_t keyLen = strlen(key);
+	while (fgets(line, sizeof(line), f)) {
+		if (strncmp(line, key, keyLen) == 0) {
+			const char* p = line + keyLen;
+			while (*p == ' ' || *p == '\t') ++p;
+			result = strtol(p, nullptr, 10);
+			break;
+		}
+	}
+	fclose(f);
+	return result;
+}
+
+// Periodic memory telemetry. The sampler exists primarily to make LMK / vendor
+// kills diagnosable: those leave zero trace, but a memory ramp visible in the
+// file log is almost as good as a crash report. Lines are flushed after every
+// write (cheap at this cadence) so the curve survives process death; under
+// pressure the level escalates to warn, which both forces spdlog's flush_on
+// and keeps the samples in the feedback bundle's tail extraction.
+static void startMemoryTelemetryThread()
+{
+	std::thread([]() {
+		long lastLoggedRssKb = -1;
+		size_t lastLoggedArtBytes = 0;
+		size_t lastLoggedArtSlots = 0;
+		uint64_t sinceLog = 0;
+		for (;;) {
+			sleep(5);
+			++sinceLog;
+
+			const long rssKb = readProcKbField("/proc/self/status", "VmRSS:");
+			const long availKb = readProcKbField("/proc/meminfo", "MemAvailable:");
+			if (rssKb < 0 && availKb < 0) {
+				continue;
+			}
+
+			const size_t artTxdBytes = artwork::g_telemetryTxdBytes.load(std::memory_order_relaxed);
+			const size_t artSlots = artwork::g_telemetryLoadedSlots.load(std::memory_order_relaxed);
+			const size_t artTxds = artwork::g_telemetryLoadedTxds.load(std::memory_order_relaxed);
+
+			const bool pressure =
+					(availKb >= 0 && availKb < 500L * 1024L) ||
+					(rssKb >= 0 && rssKb > 1600L * 1024L);
+
+			// Activity-adaptive sampling: log every 5s while memory or artwork
+			// accounting is actively moving (join bursts, VW switches, streaming
+			// heavy areas — exactly the windows where LMK strikes), fall back to
+			// a 60s heartbeat when the process is stable. Time-based join windows
+			// misfire because heavy loading often starts minutes after joining.
+			const bool rssMoved = (lastLoggedRssKb < 0) ||
+					(rssKb >= 0 && (rssKb - lastLoggedRssKb > 8L * 1024L ||
+							lastLoggedRssKb - rssKb > 8L * 1024L));
+			const bool artMoved = (artTxdBytes != lastLoggedArtBytes) || (artSlots != lastLoggedArtSlots);
+			const bool heartbeatDue = sinceLog >= 12; // 60s
+			if (!pressure && !rssMoved && !artMoved && !heartbeatDue) {
+				continue;
+			}
+
+			lastLoggedRssKb = rssKb;
+			lastLoggedArtBytes = artTxdBytes;
+			lastLoggedArtSlots = artSlots;
+			sinceLog = 0;
+
+			if (pressure) {
+				spdlog::warn("mem: rss={}MB avail={}MB artwork={}MB/{}slots/{}txd (PRESSURE)",
+						rssKb / 1024, availKb / 1024,
+						artTxdBytes / (1024 * 1024), artSlots, artTxds);
+			} else {
+				spdlog::info("mem: rss={}MB avail={}MB artwork={}MB/{}slots/{}txd",
+						rssKb / 1024, availKb / 1024,
+						artTxdBytes / (1024 * 1024), artSlots, artTxds);
+				if (auto logger = spdlog::default_logger()) {
+					logger->flush();
+				}
+			}
+		}
+	}).detach();
+}
 
 static void installFatalSignalHandlers()
 {
@@ -180,7 +285,7 @@ static void installFatalSignalHandlers()
 	};
 	sigemptyset(&sig_action.sa_mask);
 	sig_action.sa_flags = SA_SIGINFO | SA_ONSTACK;
-	for (int sig : {SIGSEGV, SIGBUS, SIGILL, SIGABRT, SIGFPE}) {
+	for (int sig : {SIGSEGV, SIGBUS, SIGILL, SIGABRT, SIGFPE, SIGTRAP, SIGSYS}) {
 		sigaction(sig, &sig_action, &s_prevFatalAction[sig]);
 	}
 }
@@ -219,8 +324,55 @@ void Client::initialize(const std::string& gameDir, bool offlineMode)
 	sigaction(SIGUSR2, &dump_action, nullptr);
 
 	init_logger(gameDir);
+	crash_set_report_dir(gameDir.c_str());
+
+	// Install fatal handlers as early as possible: anything dying before this point
+	// leaves no crash file at all. (Previously installed after Crashlytics init —
+	// that whole middle section was a crash-file blind spot.)
+	installFatalSignalHandlers();
 
 	spdlog::info("Initializing SAMPMOBILE client...");
+	bootMilestoneFlush();
+
+	// Session liveness marker: written at startup, deleted only on intentional exit
+	// (Java exitGame/onDestroy). A leftover means crash / LMK / vendor kill.
+	{
+		const std::string markerPath = gameDir + "logcat/session_alive";
+		if (access(markerPath.c_str(), F_OK) == 0) {
+			spdlog::error("last session did not exit cleanly (crash, LMK or vendor kill suspected)");
+		}
+		int mfd = open(markerPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		if (mfd >= 0) {
+			char mbuf[64];
+			int mlen = snprintf(mbuf, sizeof(mbuf), "pid=%d\n", getpid());
+			if (mlen > 0) {
+				ssize_t w = write(mfd, mbuf, static_cast<size_t>(mlen));
+				(void) w;
+			}
+			close(mfd);
+		}
+
+		// Prune old crash report files, keeping the newest few (they are tiny
+		// but unbounded accumulation would eventually spam the logcat dir).
+		const std::string logcatDir = gameDir + "logcat";
+		DIR* dir = opendir(logcatDir.c_str());
+		if (dir) {
+			std::vector<std::string> crashFiles;
+			struct dirent* ent;
+			while ((ent = readdir(dir)) != nullptr) {
+				if (strncmp(ent->d_name, "crash_", 6) == 0) {
+					crashFiles.emplace_back(ent->d_name);
+				}
+			}
+			closedir(dir);
+			if (crashFiles.size() > 5) {
+				std::sort(crashFiles.begin(), crashFiles.end(), std::greater<>());
+				for (size_t i = 5; i < crashFiles.size(); ++i) {
+					unlink((logcatDir + "/" + crashFiles[i]).c_str());
+				}
+			}
+		}
+	}
 
 	java_vm = g_vm;
 	game_dir = gameDir;
@@ -235,12 +387,19 @@ void Client::initialize(const std::string& gameDir, bool offlineMode)
 	Settings::initialize();
 	Encoding::setCharset(Settings::charset());
 
-	if (firebase::crashlytics::Initialize()) {
-		spdlog::info("Crashlytics initialized");
-		firebase::crashlytics::SetUserId(Settings::nick());
-	}
-	// Install after Crashlytics so we chain to debuggerd / Crashlytics cleanly without clobbering
-	installFatalSignalHandlers();
+	// Pinpoint flush: if the process dies in Settings::initialize or below, the
+	// buffered info lines above only reach disk once execution passes this point.
+	bootMilestoneFlush();
+
+	// Firebase Crashlytics NDK is intentionally NOT initialized: google-services.json
+	// is absent from every build (tests/check.py enforces it), so reports have no
+	// upload path and the native trampoline handler is pure dead weight — worse, its
+	// low-level signal/stack manipulation is a device-compat liability (prime suspect
+	// in the Android-16 early-boot death window). The project's own crash chain
+	// (crash_* files + feedback bundle) replaced it. Restore only if firebase is ever
+	// actually configured.
+	startMemoryTelemetryThread();
+	bootMilestoneFlush();
 
 	samp_version = Settings::sampVersionName();
 	samp_netgame = Settings::sampNetgameVersion();
@@ -257,21 +416,26 @@ void Client::initialize(const std::string& gameDir, bool offlineMode)
 
 	spdlog::info("libGTASA.so loaded at 0x{:X}", g_saSym->GetLibAddr());
 	g_gtasaLibBase = g_saSym->GetLibAddr();
+	bootMilestoneFlush();
 
 	if (!eng::resolveAll()) {
 		spdlog::error("Aborting client initialization due to missing required libGTASA.so symbols!");
 		return;
 	}
+	spdlog::info("libGTASA.so symbols resolved");
+	bootMilestoneFlush();
 
 	char str[100];
 	snprintf(str, sizeof(str), "0x%llx", (unsigned long long) g_saSym->GetLibAddr());
-	firebase::crashlytics::SetCustomKey("libGTASA.so", str);
+	(void) str; // firebase crashlytics usage removed (see below)
 
 	sa::Initialize();
 	ClientSubsystems::onPreHooksInit(game_dir);
 
 	Hooks::install();
 	Patches::apply();
+	spdlog::info("hooks and patches applied");
+	bootMilestoneFlush();
 
 	MultiTouch::initialize();
 	patches::dumpToLog();
@@ -279,6 +443,8 @@ void Client::initialize(const std::string& gameDir, bool offlineMode)
 	pGame = new Game();
 
 	ClientSubsystems::onPostBootInit();
+	spdlog::info("game object constructed, boot handoff");
+	bootMilestoneFlush();
 
 	// Boot watchdog: every 5s log boot progress; if no frame was rendered
 	// after ~15s (boot stall), dump all native game threads via SIGUSR2.
@@ -368,9 +534,9 @@ void Client::process(bool canRender2d)
 			if (pUI) {
 				if (pUI->buttonpanel()) pUI->buttonpanel()->setVisible(false);
 				if (pUI->chat()) {
-					pUI->chat()->addInfoMessage("-> GTA: SA %s started", VER_x32 ? "v2.10 (armeabi-v7a)" : "v2.10 (arm64-v8a)");
-					pUI->chat()->addInfoMessage("-> Type /j to start jetpack");
-					pUI->chat()->addInfoMessage("-> Click on map to teleport anywhere");
+					pUI->chat()->addInfoMessage(L10N("-> GTA: SA %s started", "-> GTA: SA %s 已启动"), VER_x32 ? "v2.10 (armeabi-v7a)" : "v2.10 (arm64-v8a)");
+					pUI->chat()->addInfoMessage(L10N("-> Type /j to start jetpack", "-> 输入 /j 开启喷气背包"));
+					pUI->chat()->addInfoMessage(L10N("-> Click on map to teleport anywhere", "-> 点击地图可传送到任意位置"));
 				}
 			}
 

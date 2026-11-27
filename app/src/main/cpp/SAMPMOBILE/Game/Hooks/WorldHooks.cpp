@@ -33,6 +33,7 @@
 #include "Model/Col/ColBox.h"
 #include "Model/Col/ColSphere.h"
 #include <algorithm>
+#include "../../L10n.h"
 #include <cmath>
 
 // T34: SetObjectNoCameraCollision — let GTA camera LOS & sphere checks ignore flagged SA-MP objects,
@@ -150,7 +151,7 @@ DECL_HOOK(int, CRadar_SetCoordBlip, uint32_t BlpType, sa::CVector vecPosition, u
 
 				if (pUI && pUI->chat())
 				{
-					pUI->chat()->addInfoMessage("-> Teleported to: %.2f %.2f %.2f", vecPosition.x, vecPosition.y, vecPosition.z);
+					pUI->chat()->addInfoMessage(L10N("-> Teleported to: %.2f %.2f %.2f", "-> 传送至：%.2f %.2f %.2f"), vecPosition.x, vecPosition.y, vecPosition.z);
 				}
 			}
 		}

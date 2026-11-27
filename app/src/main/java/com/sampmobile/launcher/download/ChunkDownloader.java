@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.download;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.util.Log;
 
 import java.io.File;
@@ -79,7 +81,7 @@ public final class ChunkDownloader {
 
         File dir = new File(cacheDir, pkg.id);
         if (!dir.isDirectory() && !dir.mkdirs()) {
-            throw new IOException("无法创建缓存目录：" + dir);
+            throw new IOException(I18n.tr("无法创建缓存目录：") + dir);
         }
 
         final int count = pkg.chunks.size();
@@ -90,7 +92,7 @@ public final class ChunkDownloader {
             File finalized = chunkFile(dir, c, true);
             if (finalized.isFile() && finalized.length() != c.bytes) {
                 if (!finalized.delete()) {
-                    Log.w(TAG, "无法删除长度不符的分片 " + finalized);
+                    Log.w(TAG, I18n.tr("无法删除长度不符的分片 ") + finalized);
                 }
             }
         }
@@ -100,7 +102,7 @@ public final class ChunkDownloader {
         // 逐片顺序下载。并发留给上层多个包并行（game 与 online 可同时下），
         // 单包内部串行更好排查问题，也不会把带宽切得太碎。
         for (DataManifest.Chunk c : pkg.chunks) {
-            if (cancelled.get()) throw new InterruptedException("已取消");
+            if (cancelled.get()) throw new InterruptedException(I18n.tr("已取消"));
 
             File finalized = chunkFile(dir, c, true);
             if (finalized.isFile() && finalized.length() == c.bytes) {
@@ -110,7 +112,7 @@ public final class ChunkDownloader {
 
             boolean ok = downloadChunk(baseUrl, dir, c, listener, done, pkg.bytes);
             if (!ok) {
-                throw new IOException("分片 " + c.index + " 下载失败（已重试 " + MAX_ATTEMPTS + " 次）");
+                throw new IOException(I18n.tr("分片 ") + c.index + I18n.tr(" 下载失败（已重试 ") + MAX_ATTEMPTS + I18n.tr(" 次）"));
             }
             // 一片落定后按磁盘现状重算，作为下一片的进度基数。
             // 只增不减也无法出错：completedBytes 只统计真正到位的字节。
@@ -119,7 +121,7 @@ public final class ChunkDownloader {
             listener.onChunkDone(c.index, count);
         }
 
-        if (cancelled.get()) throw new InterruptedException("已取消");
+        if (cancelled.get()) throw new InterruptedException(I18n.tr("已取消"));
         return true;
     }
 
@@ -156,7 +158,7 @@ public final class ChunkDownloader {
         File finalized = chunkFile(dir, c, true);
 
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-            if (cancelled.get()) throw new InterruptedException("已取消");
+            if (cancelled.get()) throw new InterruptedException(I18n.tr("已取消"));
 
             try {
                 long existing = part.isFile() ? part.length() : 0;
@@ -164,7 +166,7 @@ public final class ChunkDownloader {
                 if (existing == c.bytes) {
                     if (verify(part, c.sha256)) {
                         if (!part.renameTo(finalized)) {
-                            throw new IOException("重命名分片失败：" + part);
+                            throw new IOException(I18n.tr("重命名分片失败：") + part);
                         }
                         return true;
                     }
@@ -172,13 +174,13 @@ public final class ChunkDownloader {
                     // 注意不能减 done —— 这片只有在校验通过转正时才 addAndGet，
                     // 此处从未计入，做减法会让进度变成负数。
                     if (!part.delete()) {
-                        throw new IOException("无法删除损坏分片：" + part);
+                        throw new IOException(I18n.tr("无法删除损坏分片：") + part);
                     }
                     existing = 0;
                 }
 
                 if (attempt > 1) {
-                    listener.onStatus("第 " + c.index + " 片重试 " + attempt + "/" + MAX_ATTEMPTS);
+                    listener.onStatus(I18n.tr("第 ") + c.index + I18n.tr(" 片重试 ") + attempt + "/" + MAX_ATTEMPTS);
                 }
 
                 boolean got = fetchTo(urlStr, part, existing, c.bytes, done, totalBytes, listener);
@@ -188,18 +190,18 @@ public final class ChunkDownloader {
                 }
 
                 if (part.length() != c.bytes) {
-                    throw new IOException("分片长度不符：期望 " + c.bytes + " 实际 " + part.length());
+                    throw new IOException(I18n.tr("分片长度不符：期望 ") + c.bytes + I18n.tr(" 实际 ") + part.length());
                 }
                 if (!verify(part, c.sha256)) {
-                    throw new IOException("分片哈希不符：" + c.index);
+                    throw new IOException(I18n.tr("分片哈希不符：") + c.index);
                 }
                 if (!part.renameTo(finalized)) {
-                    throw new IOException("重命名分片失败：" + part);
+                    throw new IOException(I18n.tr("重命名分片失败：") + part);
                 }
                 return true;
 
             } catch (IOException e) {
-                Log.w(TAG, "分片 " + c.index + " 第 " + attempt + " 次失败: " + e.getMessage());
+                Log.w(TAG, I18n.tr("分片 ") + c.index + I18n.tr(" 第 ") + attempt + I18n.tr(" 次失败: ") + e.getMessage());
                 if (attempt == MAX_ATTEMPTS) return false;
                 // 退避，避免连续失败打爆服务器
                 Thread.sleep(800L * attempt);
@@ -234,7 +236,7 @@ public final class ChunkDownloader {
             if (code == 416) {
                 // 请求区间不合法：说明本地 part 比远端还大，整片重来
                 if (target.isFile() && !target.delete()) {
-                    throw new IOException("无法重置分片：" + target);
+                    throw new IOException(I18n.tr("无法重置分片：") + target);
                 }
                 return false;
             }
@@ -248,7 +250,7 @@ public final class ChunkDownloader {
                 // skip 是 part 的既有长度，来源可能是上次运行留下的文件，
                 // 并不一定计入过本轮的 done，减它会让进度变成负数。
                 if (!target.delete() && target.exists()) {
-                    throw new IOException("无法重置分片：" + target);
+                    throw new IOException(I18n.tr("无法重置分片：") + target);
                 }
                 skip = 0;
             }
@@ -263,13 +265,13 @@ public final class ChunkDownloader {
                 long written = skip;
                 int n;
                 while ((n = in.read(buf)) > 0) {
-                    if (cancelled.get()) throw new InterruptedException("已取消");
+                    if (cancelled.get()) throw new InterruptedException(I18n.tr("已取消"));
                     out.write(buf, 0, n);
                     written += n;
                     listener.onProgress(base + written, totalBytes);
                     if (written > expected) {
                         // 远端比清单声明的还长：数据不对，别继续写。
-                        throw new IOException("分片超出预期长度 " + expected);
+                        throw new IOException(I18n.tr("分片超出预期长度 ") + expected);
                     }
                 }
                 out.flush();
@@ -308,7 +310,7 @@ public final class ChunkDownloader {
             }
             return toHex(md.digest()).equalsIgnoreCase(sha256);
         } catch (NoSuchAlgorithmException | IOException e) {
-            Log.w(TAG, "校验失败 " + f + ": " + e.getMessage());
+            Log.w(TAG, I18n.tr("校验失败 ") + f + ": " + e.getMessage());
             return false;
         }
     }
@@ -325,13 +327,13 @@ public final class ChunkDownloader {
                                        boolean keepChunks) throws IOException {
         File parent = out.getParentFile();
         if (parent != null && !parent.isDirectory() && !parent.mkdirs()) {
-            throw new IOException("无法创建输出目录：" + parent);
+            throw new IOException(I18n.tr("无法创建输出目录：") + parent);
         }
         File tmp = new File(out.getPath() + ".tmp");
         try (FileOutputStream fos = new FileOutputStream(tmp)) {
             for (DataManifest.Chunk c : pkg.chunks) {
                 File f = chunkFile(dir, c, true);
-                if (!f.isFile()) throw new IOException("缺少分片 " + f);
+                if (!f.isFile()) throw new IOException(I18n.tr("缺少分片 ") + f);
                 try (InputStream in = new java.io.FileInputStream(f)) {
                     byte[] buf = new byte[256 * 1024];
                     int n;
@@ -339,7 +341,7 @@ public final class ChunkDownloader {
                 }
                 if (!keepChunks) {
                     // 已经拼进 tmp，原片不再需要。删失败不影响正确性，只影响空间。
-                    if (!f.delete()) Log.w(TAG, "分片删除失败（不影响结果）: " + f);
+                    if (!f.delete()) Log.w(TAG, I18n.tr("分片删除失败（不影响结果）: ") + f);
                 }
             }
             fos.flush();
@@ -348,11 +350,11 @@ public final class ChunkDownloader {
         if (tmp.length() != pkg.bytes) {
             //noinspection ResultOfMethodCallIgnored
             tmp.delete();
-            throw new IOException("拼装后大小不符：期望 " + pkg.bytes + " 实际 " + tmp.length());
+            throw new IOException(I18n.tr("拼装后大小不符：期望 ") + pkg.bytes + I18n.tr(" 实际 ") + tmp.length());
         }
         //noinspection ResultOfMethodCallIgnored
         out.delete();
-        if (!tmp.renameTo(out)) throw new IOException("无法重命名为 " + out);
+        if (!tmp.renameTo(out)) throw new IOException(I18n.tr("无法重命名为 ") + out);
         return true;
     }
 

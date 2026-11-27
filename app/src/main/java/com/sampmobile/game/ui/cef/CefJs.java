@@ -1,5 +1,7 @@
 package com.sampmobile.game.ui.cef;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.util.Log;
 
 import java.nio.charset.StandardCharsets;
@@ -87,8 +89,8 @@ final class CefJs {
             + "      for (var i = 1; i < arguments.length; i++) {\n"
             + "        var v = arguments[i];\n"
             + "        var t = typeof v;\n"
-            + "        // 与原版一致：只有 bool / number / string 过线，其余传 null\n"
-            + "        // 并在 browser 进程侧被丢弃。\n"
+            + I18n.tr("        // 与原版一致：只有 bool / number / string 过线，其余传 null\n")
+            + I18n.tr("        // 并在 browser 进程侧被丢弃。\n")
             + "        if (t === 'boolean' || t === 'number' || t === 'string') out.push(v);\n"
             + "        else out.push(null);\n"
             + "      }\n"

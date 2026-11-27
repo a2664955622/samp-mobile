@@ -27,7 +27,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="模组安装与使用指南"
+                android:text="@string/ui_settings_panel_help_about_001"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -54,7 +54,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="游戏操作与常见问题"
+                android:text="@string/ui_settings_panel_help_about_002"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -81,7 +81,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="游戏内常用聊天指令"
+                android:text="@string/ui_settings_panel_help_about_003"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -90,7 +90,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
-                android:text="在游戏内打开聊天输入框即可直接输入以下指令"
+                android:text="@string/ui_settings_panel_help_about_004"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -118,7 +118,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="关于客户端"
+                android:text="@string/ui_settings_panel_help_about_005"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />

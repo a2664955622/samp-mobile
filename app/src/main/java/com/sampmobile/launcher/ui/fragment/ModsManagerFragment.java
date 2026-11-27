@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.ui.fragment;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
@@ -134,7 +136,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
 
         modsContent = v.findViewById(R.id.mods_content);
         GtaTabStrip modTabs = v.findViewById(R.id.mod_tabs);
-        modTabs.setTabs("Modloader", "AML 插件", "JPatch 补丁", "MonetLoader", "CLEO 脚本");
+        modTabs.setTabs("Modloader", I18n.tr("AML 插件"), I18n.tr("JPatch 补丁"), "MonetLoader", I18n.tr("CLEO 脚本"));
         modTabs.setOnTabSelectedListener((index, reselected) -> {
             if (reselected) {
                 reloadCurrentTab();
@@ -225,7 +227,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                     updates.put(key, true);
                     updates.put("aml_scripts", true);
                     ClientSettings.updateBatchSync(ctx, updates);
-                    Toast.makeText(ctx, "已自动同步开启 AML（JPatch 依赖 AML 运行）", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(ctx, I18n.tr("已自动同步开启 AML（JPatch 依赖 AML 运行）"), Toast.LENGTH_SHORT).show();
                 } else {
                     ClientSettings.setSync(ctx, key, isChecked);
                 }
@@ -248,68 +250,68 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         File pathDir;
         switch (currentTab) {
             case TAB_MODLOADER:
-                tvSectionTitle.setText("Modloader 资源覆写");
-                tvSectionStatus.setText("状态：已就绪 · 内置 IMG+TXD 零污染覆写");
+                tvSectionTitle.setText(I18n.tr("Modloader 资源覆写"));
+                tvSectionStatus.setText(I18n.tr("状态：已就绪 · 内置 IMG+TXD 零污染覆写"));
                 tvSectionStatus.setTextColor(accentColor);
-                tvSectionDesc.setText("无需修改官方 gta3.img 或基础贴图：内置 IMG+TXD 工具可直接导入皮肤/载具/武器模型（.dff/.ifp/.col）与 PNG/PC .txd 贴图，进游戏自动打包虚拟 models.img 并挂载自定义 texdb。");
+                tvSectionDesc.setText(I18n.tr("无需修改官方 gta3.img 或基础贴图：内置 IMG+TXD 工具可直接导入皮肤/载具/武器模型（.dff/.ifp/.col）与 PNG/PC .txd 贴图，进游戏自动打包虚拟 models.img 并挂载自定义 texdb。"));
                 pathDir = ModManager.getModLoaderDir(ctx);
-                btnActionPrimary.setText("导入皮肤/模型 (IMG+TXD)");
+                btnActionPrimary.setText(I18n.tr("导入皮肤/模型 (IMG+TXD)"));
                 btnActionPrimary.setOnClickListener(v -> assetImportWizard.showSourceChooser());
-                btnActionSecondary.setText("导入完整 ZIP 模组包");
+                btnActionSecondary.setText(I18n.tr("导入完整 ZIP 模组包"));
                 btnActionSecondary.setOnClickListener(v -> launchPicker(TAB_MODLOADER, new String[]{"application/zip", "application/x-zip-compressed", "*/*"}));
                 btnActionTertiary.setVisibility(View.VISIBLE);
-                btnActionTertiary.setText("新建空模组目录");
+                btnActionTertiary.setText(I18n.tr("新建空模组目录"));
                 btnActionTertiary.setOnClickListener(v -> showCreateModFolderDialog());
                 break;
 
             case TAB_AML:
                 tvSectionTitle.setText("AndroidModLoader (AML)");
-                tvSectionStatus.setText("状态：已内置 AML 1.5.0 · 支持 64位/32位");
+                tvSectionStatus.setText(I18n.tr("状态：已内置 AML 1.5.0 · 支持 64位/32位"));
                 tvSectionStatus.setTextColor(accentColor);
-                tvSectionDesc.setText("加载 mods/ 目录下的原生 .so 插件。启动时会自动将包名伪装为 com.rockstargames.gtasa 并输出日志，请确保导入与当前进程一致的 " + ModManager.getProcessAbiName() + " 插件。");
+                tvSectionDesc.setText(I18n.tr("加载 mods/ 目录下的原生 .so 插件。启动时会自动将包名伪装为 com.rockstargames.gtasa 并输出日志，请确保导入与当前进程一致的 ") + ModManager.getProcessAbiName() + I18n.tr(" 插件。"));
                 pathDir = ModManager.getAmlModsDir(ctx);
-                btnActionPrimary.setText("导入 AML 插件 (.so)");
+                btnActionPrimary.setText(I18n.tr("导入 AML 插件 (.so)"));
                 btnActionPrimary.setOnClickListener(v -> launchPicker(TAB_AML, new String[]{"*/*"}));
-                btnActionSecondary.setText("AML 核心配置");
+                btnActionSecondary.setText(I18n.tr("AML 核心配置"));
                 btnActionSecondary.setOnClickListener(v -> configDialogs.showAmlCoreSettingsDialog());
                 break;
 
             case TAB_JPATCH:
-                tvSectionTitle.setText("JPatch 引擎补丁");
-                tvSectionStatus.setText("正在检查 libJPatch.so 状态…");
+                tvSectionTitle.setText(I18n.tr("JPatch 引擎补丁"));
+                tvSectionStatus.setText(I18n.tr("正在检查 libJPatch.so 状态…"));
                 tvSectionStatus.setTextColor(ctx.getColor(R.color.launcher_text_dim));
-                tvSectionDesc.setText("RusJJ 的 GTA:SA 2.10 修复补丁集（依赖 AML）。由于版权协议禁止重新分发二进制，请从官方页面下载对应 " + ModManager.getProcessAbiName() + " 的 libJPatch.so 后点击下方导入；右侧可直接可视化编辑 JPatch.ini。");
+                tvSectionDesc.setText(I18n.tr("RusJJ 的 GTA:SA 2.10 修复补丁集（依赖 AML）。由于版权协议禁止重新分发二进制，请从官方页面下载对应 ") + ModManager.getProcessAbiName() + I18n.tr(" 的 libJPatch.so 后点击下方导入；右侧可直接可视化编辑 JPatch.ini。"));
                 pathDir = ModManager.getJPatchConfigFile(ctx);
-                btnActionPrimary.setText("导入 libJPatch.so");
+                btnActionPrimary.setText(I18n.tr("导入 libJPatch.so"));
                 btnActionPrimary.setOnClickListener(v -> launchPicker(TAB_JPATCH, new String[]{"*/*"}));
-                btnActionSecondary.setText("应用 SA-MP 安全预设");
+                btnActionSecondary.setText(I18n.tr("应用 SA-MP 安全预设"));
                 btnActionSecondary.setOnClickListener(v -> configDialogs.applyJPatchSafePreset());
                 btnActionTertiary.setVisibility(View.VISIBLE);
-                btnActionTertiary.setText("新增自定义配置项");
+                btnActionTertiary.setText(I18n.tr("新增自定义配置项"));
                 btnActionTertiary.setOnClickListener(v -> configDialogs.showAddJPatchKeyDialog());
                 btnActionQuaternary.setVisibility(View.VISIBLE);
-                btnActionQuaternary.setText("打开 JPatch 官方页");
+                btnActionQuaternary.setText(I18n.tr("打开 JPatch 官方页"));
                 btnActionQuaternary.setOnClickListener(v -> openUrl(ModManager.JPATCH_OFFICIAL_URL));
                 break;
 
             case TAB_MONET:
                 tvSectionTitle.setText("MonetLoader (Lua)");
-                tvSectionStatus.setText("状态：已内置 MonetLoader 3.8.0 · 双 ABI + 原生 SA-MP 桥接");
+                tvSectionStatus.setText(I18n.tr("状态：已内置 MonetLoader 3.8.0 · 双 ABI + 原生 SA-MP 桥接"));
                 tvSectionStatus.setTextColor(accentColor);
-                tvSectionDesc.setText("运行 files/monetloader/ 目录下的 .lua 脚本（LuaJIT 5.1 + mimgui + samp.events + 原生 RakHook 桥接，兼容 MoonLoader 生态），首次开启将自动释放内置 Lua 标准库。");
+                tvSectionDesc.setText(I18n.tr("运行 files/monetloader/ 目录下的 .lua 脚本（LuaJIT 5.1 + mimgui + samp.events + 原生 RakHook 桥接，兼容 MoonLoader 生态），首次开启将自动释放内置 Lua 标准库。"));
                 pathDir = ModManager.getMonetDir(ctx);
-                btnActionPrimary.setText("导入 Lua 脚本 (.lua)");
+                btnActionPrimary.setText(I18n.tr("导入 Lua 脚本 (.lua)"));
                 btnActionPrimary.setOnClickListener(v -> launchPicker(TAB_MONET, new String[]{"*/*"}));
                 btnActionSecondary.setVisibility(View.VISIBLE);
-                btnActionSecondary.setText("重装内置 Lua 标准库");
+                btnActionSecondary.setText(I18n.tr("重装内置 Lua 标准库"));
                 btnActionSecondary.setOnClickListener(v -> {
                     final Context appCtx = ctx.getApplicationContext();
-                    Toast.makeText(ctx, "正在释放 MonetLoader 内置 Lua 库…", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(ctx, I18n.tr("正在释放 MonetLoader 内置 Lua 库…"), Toast.LENGTH_SHORT).show();
                     ioExecutor.execute(() -> {
                         boolean ok = ModManager.ensureMonetLibsInstalled(appCtx, true);
                         if (isAdded()) {
                             requireActivity().runOnUiThread(() -> Toast.makeText(ctx,
-                                    ok ? "已重装 mimgui / samp.events / moonloader 标准库" : "释放标准库失败",
+                                    ok ? I18n.tr("已重装 mimgui / samp.events / moonloader 标准库") : I18n.tr("释放标准库失败"),
                                     Toast.LENGTH_SHORT).show());
                         }
                     });
@@ -318,24 +320,24 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
 
             case TAB_CLEO:
             default:
-                tvSectionTitle.setText("CLEO 脚本");
-                tvSectionStatus.setText("状态：已内置原生 CLEO 引擎 · 支持 64位/32位");
+                tvSectionTitle.setText(I18n.tr("CLEO 脚本"));
+                tvSectionStatus.setText(I18n.tr("状态：已内置原生 CLEO 引擎 · 支持 64位/32位"));
                 tvSectionStatus.setTextColor(accentColor);
-                tvSectionDesc.setText("运行 files/cleo/ 目录下的 .csa/.cs（自动启动）、.csi（游戏内屏幕顶部中段向下滑动打开 CLEO 菜单调用）与 .fxt 自定义文本。双 ABI 原生兼容，自动同步联机玩家句柄。");
+                tvSectionDesc.setText(I18n.tr("运行 files/cleo/ 目录下的 .csa/.cs（自动启动）、.csi（游戏内屏幕顶部中段向下滑动打开 CLEO 菜单调用）与 .fxt 自定义文本。双 ABI 原生兼容，自动同步联机玩家句柄。"));
                 pathDir = ModManager.getCleoDir(ctx);
-                btnActionPrimary.setText("导入 CLEO 脚本");
+                btnActionPrimary.setText(I18n.tr("导入 CLEO 脚本"));
                 btnActionPrimary.setOnClickListener(v -> launchPicker(TAB_CLEO, new String[]{"*/*"}));
                 btnActionSecondary.setVisibility(View.GONE);
                 break;
         }
 
         final String pathStr = pathDir != null ? pathDir.getAbsolutePath() : "";
-        tvSectionPath.setText("路径（点按复制）：\n" + pathStr);
+        tvSectionPath.setText(I18n.tr("路径（点按复制）：\n") + pathStr);
         tvSectionPath.setOnClickListener(v -> {
             ClipboardManager cm = (ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
             if (cm != null) {
                 cm.setPrimaryClip(ClipData.newPlainText("mod_path", pathStr));
-                Toast.makeText(ctx, "已复制路径", Toast.LENGTH_SHORT).show();
+                Toast.makeText(ctx, I18n.tr("已复制路径"), Toast.LENGTH_SHORT).show();
             }
         });
     }
@@ -358,8 +360,8 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 for (ModManager.ModLoaderEntry e : list) {
                     RowItem r = new RowItem();
                     r.title = e.name;
-                    r.subtitle = e.fileCount + " 个文件 · " + Utils.convertBytesToString(e.totalBytes) + " · 优先级 " + e.priority;
-                    r.badge = e.enabled ? "已启用" : "已禁用";
+                    r.subtitle = e.fileCount + I18n.tr(" 个文件 · ") + Utils.convertBytesToString(e.totalBytes) + I18n.tr(" · 优先级 ") + e.priority;
+                    r.badge = e.enabled ? I18n.tr("已启用") : I18n.tr("已禁用");
                     r.badgeDanger = !e.enabled;
                     r.checked = e.enabled;
                     r.showUpDown = true;
@@ -373,9 +375,9 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                     RowItem r = new RowItem();
                     r.title = e.displayName;
                     r.subtitle = Utils.convertBytesToString(e.sizeBytes)
-                            + (e.isJPatch ? " · JPatch 补丁插件" : " · AML 原生插件")
-                            + (e.abiCompatible ? "" : " · 与当前进程架构不匹配！");
-                    r.badge = e.abiCompatible ? e.abiLabel : ("不兼容: " + e.abiLabel);
+                            + (e.isJPatch ? I18n.tr(" · JPatch 补丁插件") : I18n.tr(" · AML 原生插件"))
+                            + (e.abiCompatible ? "" : I18n.tr(" · 与当前进程架构不匹配！"));
+                    r.badge = e.abiCompatible ? e.abiLabel : (I18n.tr("不兼容: ") + e.abiLabel);
                     r.badgeDanger = !e.abiCompatible;
                     r.checked = e.enabled;
                     r.showDelete = true;
@@ -385,14 +387,14 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
             } else if (tab == TAB_JPATCH) {
                 ModManager.FileModEntry jpBin = ModManager.findJPatchBinary(appCtx);
                 if (jpBin == null) {
-                    jpatchStatusText = "未检测到 libJPatch.so — 请先点击下方导入（当前可预先编辑配置）";
+                    jpatchStatusText = I18n.tr("未检测到 libJPatch.so — 请先点击下方导入（当前可预先编辑配置）");
                     jpatchStatusOk = false;
                 } else if (!jpBin.abiCompatible) {
-                    jpatchStatusText = "已检测到 " + jpBin.displayName + "，但架构为 " + jpBin.abiLabel + "（与当前进程不匹配！）";
+                    jpatchStatusText = I18n.tr("已检测到 ") + jpBin.displayName + I18n.tr("，但架构为 ") + jpBin.abiLabel + I18n.tr("（与当前进程不匹配！）");
                     jpatchStatusOk = false;
                 } else {
-                    jpatchStatusText = "已安装：" + jpBin.displayName + " (" + jpBin.abiLabel + ") · "
-                            + (jpBin.enabled ? "已启用" : "已禁用");
+                    jpatchStatusText = I18n.tr("已安装：") + jpBin.displayName + " (" + jpBin.abiLabel + ") · "
+                            + (jpBin.enabled ? I18n.tr("已启用") : I18n.tr("已禁用"));
                     jpatchStatusOk = true;
                 }
 
@@ -402,7 +404,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                     r.title = opt.title;
                     r.subtitle = opt.key + " — " + opt.description;
                     if (!opt.safeForSamp) {
-                        r.badge = "联机慎用";
+                        r.badge = I18n.tr("联机慎用");
                         r.badgeDanger = true;
                     } else if (!opt.fromKnownCatalog) {
                         r.badge = opt.section;
@@ -424,8 +426,8 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 for (ModManager.FileModEntry e : list) {
                     RowItem r = new RowItem();
                     r.title = e.displayName;
-                    r.subtitle = Utils.convertBytesToString(e.sizeBytes) + " · Lua 脚本";
-                    r.badge = e.enabled ? "已启用" : "已禁用";
+                    r.subtitle = Utils.convertBytesToString(e.sizeBytes) + I18n.tr(" · Lua 脚本");
+                    r.badge = e.enabled ? I18n.tr("已启用") : I18n.tr("已禁用");
                     r.badgeDanger = !e.enabled;
                     r.checked = e.enabled;
                     r.showDelete = true;
@@ -437,8 +439,8 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 for (ModManager.FileModEntry e : list) {
                     RowItem r = new RowItem();
                     r.title = e.displayName;
-                    r.subtitle = Utils.convertBytesToString(e.sizeBytes) + " · CLEO 脚本";
-                    r.badge = e.enabled ? "已启用" : "已禁用";
+                    r.subtitle = Utils.convertBytesToString(e.sizeBytes) + I18n.tr(" · CLEO 脚本");
+                    r.badge = e.enabled ? I18n.tr("已启用") : I18n.tr("已禁用");
                     r.badgeDanger = !e.enabled;
                     r.checked = e.enabled;
                     r.showDelete = true;
@@ -476,15 +478,15 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
     private String emptyHintForTab(int tab) {
         switch (tab) {
             case TAB_MODLOADER:
-                return "暂无 Modloader 模组包\n点击右侧「导入皮肤/模型 (IMG+TXD)」或「导入完整 ZIP 模组包」，也可手动放入 files/modloader/";
+                return I18n.tr("暂无 Modloader 模组包\n点击右侧「导入皮肤/模型 (IMG+TXD)」或「导入完整 ZIP 模组包」，也可手动放入 files/modloader/");
             case TAB_AML:
-                return "暂无 AML 插件 (.so)\n点击右侧「导入 AML 插件 (.so)」或放入 Android/data/com.sampmobile.launcher/mods/";
+                return I18n.tr("暂无 AML 插件 (.so)\n点击右侧「导入 AML 插件 (.so)」或放入 Android/data/com.sampmobile.launcher/mods/");
             case TAB_MONET:
-                return "暂无 MonetLoader Lua 脚本\n点击右侧「导入 Lua 脚本 (.lua)」或放入 files/monetloader/";
+                return I18n.tr("暂无 MonetLoader Lua 脚本\n点击右侧「导入 Lua 脚本 (.lua)」或放入 files/monetloader/");
             case TAB_CLEO:
-                return "暂无 CLEO 脚本\n点击右侧「导入 CLEO 脚本」或放入 files/cleo/";
+                return I18n.tr("暂无 CLEO 脚本\n点击右侧「导入 CLEO 脚本」或放入 files/cleo/");
             default:
-                return "暂无条目";
+                return I18n.tr("暂无条目");
         }
     }
 
@@ -493,45 +495,45 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         try {
             filePickerLauncher.launch(mimeTypes);
         } catch (Exception e) {
-            Toast.makeText(requireContext(), "无法打开系统文件选择器: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(requireContext(), I18n.tr("无法打开系统文件选择器: ") + e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
     private void handleImportedFile(int tab, Uri uri) {
         Context appCtx = requireContext().getApplicationContext();
-        Toast.makeText(requireContext(), "正在导入…", Toast.LENGTH_SHORT).show();
+        Toast.makeText(requireContext(), I18n.tr("正在导入…"), Toast.LENGTH_SHORT).show();
         ioExecutor.execute(() -> {
             String msg;
             try {
                 if (tab == TAB_MODLOADER) {
                     String folder = ModManager.importModLoaderZip(appCtx, uri);
-                    msg = "已导入模组包：" + folder;
+                    msg = I18n.tr("已导入模组包：") + folder;
                 } else if (tab == TAB_AML || tab == TAB_JPATCH) {
                     String origName = ModManager.queryDisplayName(appCtx, uri);
                     if (origName == null || !origName.toLowerCase(Locale.ROOT).endsWith(".so")) {
-                        throw new IllegalArgumentException("请选择 .so 格式的插件文件");
+                        throw new IllegalArgumentException(I18n.tr("请选择 .so 格式的插件文件"));
                     }
                     File dest = ModManager.importFileToDir(appCtx, uri, ModManager.getAmlModsDir(appCtx),
                             tab == TAB_JPATCH ? "libJPatch.so" : "plugin.so");
                     ModManager.ElfInfo elf = ModManager.inspectElfAbi(dest);
                     if (!elf.valid) {
                         dest.delete();
-                        throw new IllegalArgumentException("导入的文件不是有效的 Android .so (ELF) 库");
+                        throw new IllegalArgumentException(I18n.tr("导入的文件不是有效的 Android .so (ELF) 库"));
                     }
                     if (!elf.matchesProcess) {
-                        msg = "已导入 " + dest.getName() + "，注意：该插件为 " + elf.abiName + "，与当前 " + ModManager.getProcessAbiLabel() + " 不匹配！";
+                        msg = I18n.tr("已导入 ") + dest.getName() + I18n.tr("，注意：该插件为 ") + elf.abiName + I18n.tr("，与当前 ") + ModManager.getProcessAbiLabel() + I18n.tr(" 不匹配！");
                     } else {
-                        msg = "已导入 " + dest.getName() + " (" + elf.abiName + ")";
+                        msg = I18n.tr("已导入 ") + dest.getName() + " (" + elf.abiName + ")";
                     }
                 } else if (tab == TAB_MONET) {
                     File dest = ModManager.importFileToDir(appCtx, uri, ModManager.getMonetDir(appCtx), "script.lua");
-                    msg = "已导入 Lua 脚本：" + dest.getName();
+                    msg = I18n.tr("已导入 Lua 脚本：") + dest.getName();
                 } else {
                     File dest = ModManager.importFileToDir(appCtx, uri, ModManager.getCleoDir(appCtx), "script.csa");
-                    msg = "已导入 CLEO 脚本：" + dest.getName();
+                    msg = I18n.tr("已导入 CLEO 脚本：") + dest.getName();
                 }
             } catch (Exception e) {
-                msg = "导入失败：" + e.getMessage();
+                msg = I18n.tr("导入失败：") + e.getMessage();
             }
 
             final String finalMsg = msg;
@@ -546,16 +548,16 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
 
     private void showCreateModFolderDialog() {
         EditText input = new EditText(requireContext());
-        input.setHint("输入模组文件夹名称（如 HD_Roads）");
+        input.setHint(I18n.tr("输入模组文件夹名称（如 HD_Roads）"));
         int pad = (int) (16 * getResources().getDisplayMetrics().density);
         LinearLayout wrap = new LinearLayout(requireContext());
         wrap.setPadding(pad, pad / 2, pad, 0);
         wrap.addView(input, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         new AlertDialog.Builder(requireContext())
-                .setTitle("新建 Modloader 目录")
+                .setTitle(I18n.tr("新建 Modloader 目录"))
                 .setView(wrap)
-                .setPositiveButton("创建", (d, w) -> {
+                .setPositiveButton(I18n.tr("创建"), (d, w) -> {
                     String name = input.getText().toString().trim();
                     if (name.isEmpty()) return;
                     Context appCtx = requireContext().getApplicationContext();
@@ -565,13 +567,13 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                         requireActivity().runOnUiThread(() -> {
                             if (!isAdded()) return;
                             Toast.makeText(requireContext(),
-                                    created != null ? ("已创建目录：" + created.getName()) : "创建目录失败",
+                                    created != null ? (I18n.tr("已创建目录：") + created.getName()) : I18n.tr("创建目录失败"),
                                     Toast.LENGTH_SHORT).show();
                             reloadCurrentTab();
                         });
                     });
                 })
-                .setNegativeButton("取消", null)
+                .setNegativeButton(I18n.tr("取消"), null)
                 .show();
     }
 
@@ -579,7 +581,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         try {
             startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
         } catch (Exception e) {
-            Toast.makeText(requireContext(), "无法打开链接: " + url, Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), I18n.tr("无法打开链接: ") + url, Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -730,9 +732,9 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
     private void confirmDelete(RowItem item) {
         Context ctx = requireContext();
         new AlertDialog.Builder(ctx)
-                .setTitle("确认删除")
-                .setMessage("确定要永久删除「" + item.title + "」吗？此操作无法撤销。")
-                .setPositiveButton("删除", (d, w) -> {
+                .setTitle(I18n.tr("确认删除"))
+                .setMessage(I18n.tr("确定要永久删除「") + item.title + I18n.tr("」吗？此操作无法撤销。"))
+                .setPositiveButton(I18n.tr("删除"), (d, w) -> {
                     Context appCtx = ctx.getApplicationContext();
                     ioExecutor.execute(() -> {
                         if (item.payload instanceof ModManager.ModLoaderEntry) {
@@ -748,12 +750,12 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                         }
                         if (!isAdded()) return;
                         requireActivity().runOnUiThread(() -> {
-                            Toast.makeText(ctx, "已删除 " + item.title, Toast.LENGTH_SHORT).show();
+                            Toast.makeText(ctx, I18n.tr("已删除 ") + item.title, Toast.LENGTH_SHORT).show();
                             reloadCurrentTab();
                         });
                     });
                 })
-                .setNegativeButton("取消", null)
+                .setNegativeButton(I18n.tr("取消"), null)
                 .show();
     }
 }

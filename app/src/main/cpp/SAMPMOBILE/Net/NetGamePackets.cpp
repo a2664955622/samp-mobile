@@ -20,6 +20,7 @@
 #include <cstdio>
 #include <fstream>
 #include <random>
+#include "../L10n.h"
 
 namespace {
 
@@ -143,7 +144,7 @@ void NetGame::Packet_AuthKey(Packet* pkt)
 void NetGame::Packet_ConnectAttemptFailed(Packet* pkt)
 {
 	if (pUI) {
-		pUI->chat()->addDebugMessage("The server didn't respond. Retrying..");
+		pUI->chat()->addDebugMessage(L10N("The server didn't respond. Retrying..", "服务器未响应，正在重试.."));
 	}
 
 	if (pAudioStream) {
@@ -158,7 +159,7 @@ void NetGame::Packet_ConnectAttemptFailed(Packet* pkt)
 void NetGame::Packet_NoFreeIncomingConnections(Packet* pkt)
 {
 	if (pUI) {
-		pUI->chat()->addDebugMessage("The server is full. Retrying..");
+		pUI->chat()->addDebugMessage(L10N("The server is full. Retrying..", "服务器已满，正在重试.."));
 	}
 
 	SessionHooks::NotifyHideOverlay();
@@ -169,7 +170,7 @@ void NetGame::Packet_NoFreeIncomingConnections(Packet* pkt)
 void NetGame::Packet_DisconnectionNotification(Packet* pkt)
 {
 	if (pUI) {
-		pUI->chat()->addDebugMessage("Server closed the connection.");
+		pUI->chat()->addDebugMessage(L10N("Server closed the connection.", "服务器关闭了连接。"));
 	}
 
 	if (pAudioStream) {
@@ -197,7 +198,7 @@ void NetGame::Packet_ConnectionSucceeded(Packet* pkt)
 	unsigned int uiChallenge = succ.challenge ^ static_cast<unsigned int>(iVersion);
 
 	if (pUI) {
-		pUI->chat()->addDebugMessage("Connected. Joining the game...");
+		pUI->chat()->addDebugMessage(L10N("Connected. Joining the game...", "已连接，正在进入游戏..."));
 	}
 
 	SetGameState(GAMESTATE_AWAIT_JOIN);
@@ -221,14 +222,14 @@ void NetGame::Packet_ConnectionSucceeded(Packet* pkt)
 void NetGame::Packet_FailedInitializeEncription(Packet* pkt)
 {
 	if (pUI) {
-		pUI->chat()->addDebugMessage("Failed to initialize encryption.");
+		pUI->chat()->addDebugMessage(L10N("Failed to initialize encryption.", "初始化加密失败。"));
 	}
 }
 
 void NetGame::Packet_ConnectionBanned(Packet* pkt)
 {
 	if (pUI) {
-		pUI->chat()->addDebugMessage("You are banned from this server.");
+		pUI->chat()->addDebugMessage(L10N("You are banned from this server.", "你已被此服务器封禁。"));
 	}
 	if (pAudioStream) {
 		pAudioStream->Stop(true);
@@ -240,7 +241,7 @@ void NetGame::Packet_ConnectionBanned(Packet* pkt)
 void NetGame::Packet_InvalidPassword(Packet* pkt)
 {
 	if (pUI) {
-		pUI->chat()->addDebugMessage("Wrong server password.");
+		pUI->chat()->addDebugMessage(L10N("Wrong server password.", "服务器密码错误。"));
 	}
 	if (pAudioStream) {
 		pAudioStream->Stop(true);
@@ -256,7 +257,7 @@ void NetGame::Packet_ConnectionLost(Packet* pkt)
 	}
 
 	if (pUI) {
-		pUI->chat()->addDebugMessage("Lost connection to the server. Reconnecting..");
+		pUI->chat()->addDebugMessage(L10N("Lost connection to the server. Reconnecting..", "与服务器失去连接，正在重连.."));
 	}
 
 	ShutdownForGameModeRestart(SessionState::ResetReason::Disconnect);

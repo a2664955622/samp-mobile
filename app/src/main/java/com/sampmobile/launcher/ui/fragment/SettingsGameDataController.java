@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.ui.fragment;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.view.LayoutInflater;
@@ -34,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Manages the Game Data Verification & Manual Download tab inside {@link SettingsPageFragment}.
  */
 final class SettingsGameDataController {
-    private static final String[] EDITION_ITEMS = {"精简版（推荐 · 约 1.04 GiB）", "完整版（含全音频 · 2.10 GiB）"};
+    private static final String[] EDITION_ITEMS = {I18n.tr("精简版（推荐 · 约 1.04 GiB）"), I18n.tr("完整版（含全音频 · 2.10 GiB）")};
 
     private final SettingsPageFragment host;
     private GtaOptionView optionEdition;
@@ -98,7 +100,7 @@ final class SettingsGameDataController {
         if (btnImport != null) {
             btnImport.setOnClickListener(v -> {
                 if (downloading.get()) {
-                    Toast.makeText(host.requireContext(), "正在下载数据包，请先取消后再导入", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(host.requireContext(), I18n.tr("正在下载数据包，请先取消后再导入"), Toast.LENGTH_SHORT).show();
                     return;
                 }
                 host.gameDataZipPicker.launch(new String[]{"application/zip", "application/octet-stream", "*/*"});
@@ -116,7 +118,7 @@ final class SettingsGameDataController {
         if (btnVerify != null) {
             btnVerify.setOnClickListener(v -> {
                 refreshVerification();
-                Toast.makeText(host.requireContext(), "正在重新验证游戏文件…", Toast.LENGTH_SHORT).show();
+                Toast.makeText(host.requireContext(), I18n.tr("正在重新验证游戏文件…"), Toast.LENGTH_SHORT).show();
             });
         }
         if (btnFilterAll != null) {
@@ -159,13 +161,13 @@ final class SettingsGameDataController {
             btnDownload.setBackgroundResource(R.drawable.launcher_btn_danger);
             btnDownload.setBackgroundTintList(null);
             btnDownload.setTextColor(host.requireContext().getResources().getColor(R.color.launcher_danger));
-            btnDownload.setText("取消下载");
+            btnDownload.setText(I18n.tr("取消下载"));
         } else {
             int accentColor = LauncherThemeManager.getAccentColor(host.requireContext());
             btnDownload.setBackgroundResource(R.drawable.launcher_btn_primary);
             btnDownload.setBackgroundTintList(ColorStateList.valueOf(accentColor));
             btnDownload.setTextColor(host.requireContext().getResources().getColor(R.color.launcher_on_accent));
-            btnDownload.setText("启动器下载");
+            btnDownload.setText(I18n.tr("启动器下载"));
         }
     }
 
@@ -191,7 +193,7 @@ final class SettingsGameDataController {
         if (task != null) {
             task.cancel();
             if (host.isAdded() && tvDlStatus != null) {
-                tvDlStatus.setText("正在取消下载…");
+                tvDlStatus.setText(I18n.tr("正在取消下载…"));
             }
         }
     }
@@ -199,38 +201,38 @@ final class SettingsGameDataController {
     private void renderReport(GameDataVerifier.Report report) {
         lastReport = report;
         String editionLabel = (report.edition == GameDataVerifier.Edition.FULL)
-                ? "完整版校验（2.10 GiB）"
-                : "精简版校验";
-        String detectedPack = report.hasFullAudio ? "已含完整版音频" : "精简版结构";
+                ? I18n.tr("完整版校验（2.10 GiB）")
+                : I18n.tr("精简版校验");
+        String detectedPack = report.hasFullAudio ? I18n.tr("已含完整版音频") : I18n.tr("精简版结构");
         if (report.problemCount() == 0) {
             tvSummary.setText(String.format(Locale.US,
-                    "状态：已就绪（%s · %s）", editionLabel, detectedPack));
+                    I18n.tr("状态：已就绪（%s · %s）"), editionLabel, detectedPack));
             tvSummary.setTextColor(host.requireContext().getResources().getColor(R.color.ui_good));
         } else if (report.coreReady && report.edition == GameDataVerifier.Edition.FULL) {
             tvSummary.setText(String.format(Locale.US,
-                    "状态：核心可进服，缺少完整版音频项 %d 处（切回精简版即可正常游玩）", report.problemCount()));
+                    I18n.tr("状态：核心可进服，缺少完整版音频项 %d 处（切回精简版即可正常游玩）"), report.problemCount()));
             tvSummary.setTextColor(host.requireContext().getResources().getColor(R.color.ui_warn));
         } else {
             tvSummary.setText(String.format(Locale.US,
-                    "状态：未就绪（缺失 %d 项，异常 %d 项）· 请导入或下载游戏数据",
+                    I18n.tr("状态：未就绪（缺失 %d 项，异常 %d 项）· 请导入或下载游戏数据"),
                     report.missingCount, report.invalidCount));
             tvSummary.setTextColor(host.requireContext().getResources().getColor(R.color.ui_bad));
         }
 
         String verText = (report.installedVersion != null && !report.installedVersion.isEmpty())
-                ? " · 清单版本 " + report.installedVersion
+                ? I18n.tr(" · 清单版本 ") + report.installedVersion
                 : "";
         tvStorageMeta.setText(String.format(Locale.US,
-                "当前占用 %s · 可用空间 %s%s · 统一提供精简版下载（完整版 2.10 GiB 暂仅支持本地导入与校验）",
+                I18n.tr("当前占用 %s · 可用空间 %s%s · 统一提供精简版下载（完整版 2.10 GiB 暂仅支持本地导入与校验）"),
                 GameDataVerifier.formatBytes(report.totalDataBytes),
                 GameDataVerifier.formatBytes(report.freeSpaceBytes),
                 verText));
 
         String skipHint = report.skippedCount > 0
-                ? String.format(Locale.US, " · 精简版跳过 %d 项", report.skippedCount)
+                ? String.format(Locale.US, I18n.tr(" · 精简版跳过 %d 项"), report.skippedCount)
                 : "";
         tvListSummary.setText(String.format(Locale.US,
-                "已通过 %d/%d · 缺失 %d · 异常 %d%s",
+                I18n.tr("已通过 %d/%d · 缺失 %d · 异常 %d%s"),
                 report.okCount, report.requiredCount(),
                 report.missingCount, report.invalidCount, skipHint));
 
@@ -260,9 +262,9 @@ final class SettingsGameDataController {
         if (!host.isAdded()) return;
         if (selectedEdition == GameDataVerifier.Edition.FULL) {
             new AlertDialog.Builder(host.requireActivity())
-                    .setTitle("完整版暂未开放下载")
-                    .setMessage("当前启动器统一提供精简版游戏资源下载，完整版（2.10 GiB）暂仅支持通过「本地导入」安装与文件校验。\n\n是否切换至精简版并开始下载？")
-                    .setPositiveButton("切换精简版并下载", (d, w) -> {
+                    .setTitle(I18n.tr("完整版暂未开放下载"))
+                    .setMessage(I18n.tr("当前启动器统一提供精简版游戏资源下载，完整版（2.10 GiB）暂仅支持通过「本地导入」安装与文件校验。\n\n是否切换至精简版并开始下载？"))
+                    .setPositiveButton(I18n.tr("切换精简版并下载"), (d, w) -> {
                         selectedEdition = GameDataVerifier.Edition.LITE;
                         if (optionEdition != null) {
                             optionEdition.setText(EDITION_ITEMS[0], false);
@@ -270,7 +272,7 @@ final class SettingsGameDataController {
                         refreshVerification();
                         proceedLiteManualDownload();
                     })
-                    .setNegativeButton("取消", null)
+                    .setNegativeButton(I18n.tr("取消"), null)
                     .show();
             return;
         }
@@ -282,11 +284,11 @@ final class SettingsGameDataController {
         String manifestUrl = GamedataState.resolveManifestUrl(host.requireContext());
         if (manifestUrl.isEmpty()) {
             new AlertDialog.Builder(host.requireActivity())
-                    .setTitle("未配置下载源")
-                    .setMessage("当前安装包未内置精简版数据下载源。\n\n请先准备好游戏数据包 .zip，点击「本地导入」直接导入到启动器中。")
-                    .setPositiveButton("去本地导入", (d, w) ->
+                    .setTitle(I18n.tr("未配置下载源"))
+                    .setMessage(I18n.tr("当前安装包未内置精简版数据下载源。\n\n请先准备好游戏数据包 .zip，点击「本地导入」直接导入到启动器中。"))
+                    .setPositiveButton(I18n.tr("去本地导入"), (d, w) ->
                             host.gameDataZipPicker.launch(new String[]{"application/zip", "application/octet-stream", "*/*"}))
-                    .setNegativeButton("知道了", null)
+                    .setNegativeButton(I18n.tr("知道了"), null)
                     .show();
             return;
         }
@@ -295,11 +297,11 @@ final class SettingsGameDataController {
         boolean hasProblems = lastReport != null && lastReport.problemCount() > 0;
         if (coreReady && !hasProblems) {
             new AlertDialog.Builder(host.requireActivity())
-                    .setTitle("本地资源已完整")
-                    .setMessage("检测到当前精简版核心文件已全部通过校验。是否仍要重新下载并覆盖修复？（您的设置与服务器列表将完整保留）")
-                    .setPositiveButton("强制重新下载", (d, w) -> startManualDownload(manifestUrl, true))
-                    .setNeutralButton("仅检查更新", (d, w) -> startManualDownload(manifestUrl, false))
-                    .setNegativeButton("取消", null)
+                    .setTitle(I18n.tr("本地资源已完整"))
+                    .setMessage(I18n.tr("检测到当前精简版核心文件已全部通过校验。是否仍要重新下载并覆盖修复？（您的设置与服务器列表将完整保留）"))
+                    .setPositiveButton(I18n.tr("强制重新下载"), (d, w) -> startManualDownload(manifestUrl, true))
+                    .setNeutralButton(I18n.tr("仅检查更新"), (d, w) -> startManualDownload(manifestUrl, false))
+                    .setNegativeButton(I18n.tr("取消"), null)
                     .show();
             return;
         }
@@ -318,7 +320,7 @@ final class SettingsGameDataController {
             pbDownload.setProgress(0);
         }
         if (tvDlStatus != null) {
-            tvDlStatus.setText("正在连接下载服务…");
+            tvDlStatus.setText(I18n.tr("正在连接下载服务…"));
             tvDlStatus.setTextColor(host.requireContext().getResources().getColor(R.color.launcher_text));
         }
         if (tvDlBytes != null) {
@@ -337,22 +339,22 @@ final class SettingsGameDataController {
                     if (tvDlStatus == null) return;
                     switch (stage) {
                         case FETCHING_MANIFEST:
-                            tvDlStatus.setText("正在获取精简版数据清单…");
+                            tvDlStatus.setText(I18n.tr("正在获取精简版数据清单…"));
                             break;
                         case CHECKING:
-                            tvDlStatus.setText("正在检查数据版本…");
+                            tvDlStatus.setText(I18n.tr("正在检查数据版本…"));
                             break;
                         case DOWNLOADING:
-                            tvDlStatus.setText("正在下载游戏数据（支持断点续传）…");
+                            tvDlStatus.setText(I18n.tr("正在下载游戏数据（支持断点续传）…"));
                             break;
                         case VERIFYING:
-                            tvDlStatus.setText("正在校验数据包完整性（SHA-256）…");
+                            tvDlStatus.setText(I18n.tr("正在校验数据包完整性（SHA-256）…"));
                             break;
                         case EXTRACTING:
-                            tvDlStatus.setText("正在解压安装游戏文件…");
+                            tvDlStatus.setText(I18n.tr("正在解压安装游戏文件…"));
                             break;
                         case ACTIVATING:
-                            tvDlStatus.setText("正在启用已安装资源…");
+                            tvDlStatus.setText(I18n.tr("正在启用已安装资源…"));
                             break;
                         case READY:
                         default:
@@ -400,7 +402,7 @@ final class SettingsGameDataController {
                 postToUi(() -> {
                     updateDownloadButtonUI();
                     if (tvDlStatus != null) {
-                        tvDlStatus.setText(message != null ? message : "下载失败");
+                        tvDlStatus.setText(message != null ? message : I18n.tr("下载失败"));
                         tvDlStatus.setTextColor(host.requireContext().getResources().getColor(R.color.ui_bad));
                     }
                     refreshVerification();
@@ -426,7 +428,7 @@ final class SettingsGameDataController {
                         tvDlBytes.setText("100%");
                     }
                     if (tvDlStatus != null) {
-                        tvDlStatus.setText(installedNow ? "精简版资源下载并安装完成" : "本地数据已是最新，无需重新下载");
+                        tvDlStatus.setText(installedNow ? I18n.tr("精简版资源下载并安装完成") : I18n.tr("本地数据已是最新，无需重新下载"));
                         tvDlStatus.setTextColor(host.requireContext().getResources().getColor(R.color.ui_good));
                     }
                     refreshVerification();
@@ -479,7 +481,7 @@ final class SettingsGameDataController {
 
             if (item.status == GameDataVerifier.Status.OK) {
                 String sizeText = item.directory
-                        ? String.format(Locale.US, "%d 个文件 · %s", item.fileCount, GameDataVerifier.formatBytes(item.bytes))
+                        ? String.format(Locale.US, I18n.tr("%d 个文件 · %s"), item.fileCount, GameDataVerifier.formatBytes(item.bytes))
                         : GameDataVerifier.formatBytes(item.bytes);
                 h.tvSize.setText(sizeText);
             } else if (item.status == GameDataVerifier.Status.INVALID) {
@@ -493,20 +495,20 @@ final class SettingsGameDataController {
             switch (item.status) {
                 case OK:
                     colorRes = R.color.ui_good;
-                    badgeText = "正常";
+                    badgeText = I18n.tr("正常");
                     break;
                 case INVALID:
                     colorRes = R.color.ui_warn;
-                    badgeText = "文件异常";
+                    badgeText = I18n.tr("文件异常");
                     break;
                 case SKIPPED_LITE:
                     colorRes = R.color.launcher_text_dim;
-                    badgeText = "精简版跳过";
+                    badgeText = I18n.tr("精简版跳过");
                     break;
                 case MISSING:
                 default:
                     colorRes = R.color.ui_bad;
-                    badgeText = "缺失";
+                    badgeText = I18n.tr("缺失");
                     break;
             }
             int color = ctx.getResources().getColor(colorRes);

@@ -49,6 +49,7 @@ float Settings::m_chatPosY = 20.0f;
 float Settings::m_chatSizeX = 360.0f;
 float Settings::m_chatSizeY = 110.0f;
 char Settings::m_charset[16] = "GBK";
+char Settings::m_language[8] = "zh";
 bool Settings::m_modloader = false;
 bool Settings::m_aml = false;
 bool Settings::m_jpatch = false;
@@ -246,6 +247,7 @@ void Settings::initialize()
 	m_chatSizeX = static_cast<float>(readIntFrom(s, "chat_sizex", 360, 64, 4096));
 	m_chatSizeY = static_cast<float>(readIntFrom(s, "chat_sizey", 110, 32, 4096));
 	readStringFrom(s, "charset", m_charset, sizeof(m_charset));
+	readStringFrom(s, "app_language", m_language, sizeof(m_language));
 
 	auto readBoolOpt = [&](const char* key, bool def) -> bool {
 		return readBoolFrom(s, key, def);

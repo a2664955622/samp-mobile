@@ -35,6 +35,8 @@ public:
 	static float chatSizeX() { return m_chatSizeX; }
 	static float chatSizeY() { return m_chatSizeY; }
 	static char* charset() { return m_charset; }
+	static const char* language() { return m_language; }
+	static bool chineseLanguage() { return m_language[0] == 'z' && m_language[1] == 'h'; }
 	static bool modloader() { return m_modloader; }
 	static bool aml() { return m_aml; }
 	static bool jpatch() { return m_jpatch; }
@@ -152,6 +154,7 @@ private:
 	static float m_chatSizeX;
 	static float m_chatSizeY;
 	static char m_charset[16];
+	static char m_language[8];
 	static bool m_modloader;
 	static bool m_aml;
 	static bool m_jpatch;

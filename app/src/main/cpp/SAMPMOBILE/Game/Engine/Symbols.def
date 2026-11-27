@@ -602,3 +602,4 @@ SYM_FN(CStreaming_SetMissionDoesntRequireModel, "_ZN10CStreaming28SetMissionDoes
 SYM_FN(CCollision_BuildCacheOfCameraCollision, "_ZN10CCollision27BuildCacheOfCameraCollisionEP10CColSphereS1_", bool, Required)
 SYM_FN(CCollision_CheckCameraCollisionObjects, "_ZN10CCollision27CheckCameraCollisionObjectsEiiP7CColBoxP10CColSphereS3_S3_", bool, Required)
 SYM_DATA(CCollision_bCamCollideWithObjects, "_ZN10CCollision22bCamCollideWithObjectsE", uint8_t, Required)
+SYM_FN(RenderQueue_Ctor, "_ZN11RenderQueueC2Ev", void*, Required)

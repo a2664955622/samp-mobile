@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
 
 DECL_HOOK(void, CRadar_ClearBlip, int32_t nIndex)
 {
@@ -677,8 +678,62 @@ void Hooks::installCrosshairFixHooks()
 	REG_HOOK(Boot, CHud_DrawCrossHairs, DrawCrosshair, "Custom crosshair position & visibility");
 }
 
+DECL_HOOK(void*, RenderQueue_Ctor, void* self)
+{
+	void* ret = RenderQueue_Ctor(self);
+	if (self)
+	{
+		// Mobile libGTASA.so allocates only 1MB (512KB on low-spec) for RenderQueue's inline
+		// command ring buffer. High-poly 0.3.DL models upload >1MB vertex buffers inline via
+		// RQVertexBuffer::Update() -> Flush() -> unconditional memcpy, overflowing into the
+		// trailing Scudo guard page (SEGV_ACCERR). Expand to 8MB here before
+		// RenderQueue::Initialize() spawns GraphicsThread (single-threaded, zero race).
+		constexpr size_t kStartOff  = VER_x32 ? 0x260u : 0x3F8u;
+		constexpr size_t kEndOff    = VER_x32 ? 0x264u : 0x400u;
+		constexpr size_t kReadOff   = VER_x32 ? 0x268u : 0x408u;
+		constexpr size_t kCommitOff = VER_x32 ? 0x270u : 0x418u;
+		constexpr size_t kCursorOff = VER_x32 ? 0x274u : 0x420u;
+		constexpr size_t kTargetBytes   = 8u * 1024u * 1024u;
+		constexpr size_t kFallbackBytes = 4u * 1024u * 1024u;
+
+		auto* base = static_cast<uint8_t*>(self);
+		auto& bufStart  = *reinterpret_cast<uint8_t**>(base + kStartOff);
+		auto& bufEnd    = *reinterpret_cast<uint8_t**>(base + kEndOff);
+		auto& readPtr   = *reinterpret_cast<uint8_t**>(base + kReadOff);
+		auto& commitPtr = *reinterpret_cast<uint8_t**>(base + kCommitOff);
+		auto& cursorPtr = *reinterpret_cast<uint8_t**>(base + kCursorOff);
+
+		if (bufStart && bufEnd > bufStart)
+		{
+			const size_t oldCap = static_cast<size_t>(bufEnd - bufStart);
+			if (oldCap < kTargetBytes)
+			{
+				size_t newCap = kTargetBytes;
+				auto* newBuf = static_cast<uint8_t*>(std::malloc(newCap));
+				if (!newBuf)
+				{
+					newCap = kFallbackBytes;
+					newBuf = static_cast<uint8_t*>(std::malloc(newCap));
+				}
+				if (newBuf)
+				{
+					std::free(bufStart);
+					bufStart  = newBuf;
+					bufEnd    = newBuf + newCap;
+					readPtr   = newBuf;
+					commitPtr = newBuf;
+					cursorPtr = newBuf;
+					spdlog::info("RenderQueue buffer expanded: {} KB -> {} KB", oldCap / 1024u, newCap / 1024u);
+				}
+			}
+		}
+	}
+	return ret;
+}
+
 void InstallRenderHooks()
 {
+	REG_HOOK(Boot, RenderQueue_Ctor, RenderQueue_Ctor, "Expand RenderQueue ring buffer for >1MB 0.3.DL VBOs");
 	REG_HOOK(Boot, CDraw_CalculateAspectRatio, CDraw_CalculateAspectRatio, "Custom aspect ratio override");
 	REG_HOOK(Boot, CObject_Render, CObject_Render, "Object custom material/text & UVAnim");
 	REG_HOOK(Boot, CRenderer_RenderEverythingBarRoads, CRenderer_RenderEverythingBarRoads, "Force-render OOB objects");

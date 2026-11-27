@@ -1,4 +1,5 @@
 #include "ArtworkManager.h"
+#include "ArtworkTelemetry.h"
 #include "DffValidator.h"
 #include "Lzma1Decoder.h"
 #include "TxdParser.h"
@@ -23,6 +24,10 @@
 #include <vector>
 
 namespace artwork {
+
+std::atomic<size_t> g_telemetryTxdBytes{0};
+std::atomic<size_t> g_telemetryLoadedSlots{0};
+std::atomic<size_t> g_telemetryLoadedTxds{0};
 
 namespace {
 
@@ -811,6 +816,12 @@ void ArtworkManager::updateVwFreezeState()
 
 void ArtworkManager::processFrame(NetGame* netGame)
 {
+	// Publish memory accounting snapshot for the telemetry thread every frame;
+	// store state only mutates on this thread so the reads are race-free.
+	g_telemetryTxdBytes.store(m_store.totalTxdBytes(), std::memory_order_relaxed);
+	g_telemetryLoadedSlots.store(m_store.loadedSlotCount(), std::memory_order_relaxed);
+	g_telemetryLoadedTxds.store(m_store.loadedTxdCount(), std::memory_order_relaxed);
+
 	if (!m_sessionActive || !netGame) {
 		return;
 	}
@@ -1014,6 +1025,9 @@ void ArtworkManager::unloadAllEngineModels()
 		m_host.onBeforeUnloadModels();
 	}
 	m_store.unloadAll(m_manifest);
+	g_telemetryTxdBytes.store(0, std::memory_order_relaxed);
+	g_telemetryLoadedSlots.store(0, std::memory_order_relaxed);
+	g_telemetryLoadedTxds.store(0, std::memory_order_relaxed);
 }
 
 } // namespace artwork

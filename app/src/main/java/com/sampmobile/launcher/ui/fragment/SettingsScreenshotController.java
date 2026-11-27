@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.ui.fragment;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.content.ContentResolver;
 import android.content.ContentValues;
 import android.content.Context;
@@ -100,7 +102,7 @@ final class SettingsScreenshotController {
                     screenshotAdapter.notifyDataSetChanged();
                     tvEmpty.setVisibility(list.isEmpty() ? View.VISIBLE : View.GONE);
                     tvSummary.setText(String.format(Locale.US,
-                            "共 %d 张截图 (%.2f MB) · 点击图片可放大预览或保存到手机相册",
+                            I18n.tr("共 %d 张截图 (%.2f MB) · 点击图片可放大预览或保存到手机相册"),
                             list.size(), finalBytes / (1024.0 * 1024.0)));
                 });
             }
@@ -109,10 +111,10 @@ final class SettingsScreenshotController {
 
     void confirmClear() {
         if (screenshotFiles.isEmpty()) {
-            Toast.makeText(host.requireContext(), "截图库已经是空的", Toast.LENGTH_SHORT).show();
+            Toast.makeText(host.requireContext(), I18n.tr("截图库已经是空的"), Toast.LENGTH_SHORT).show();
             return;
         }
-        host.showAlertDialog("确定要清空截图库中的所有 " + screenshotFiles.size() + " 张截图吗？", (d, w) -> {
+        host.showAlertDialog(I18n.tr("确定要清空截图库中的所有 ") + screenshotFiles.size() + I18n.tr(" 张截图吗？"), (d, w) -> {
             List<File> toDelete = new ArrayList<>(screenshotFiles);
             host.ioExecutor.execute(() -> {
                 for (File f : toDelete) {
@@ -123,7 +125,7 @@ final class SettingsScreenshotController {
                     act.runOnUiThread(() -> {
                         if (!host.isAdded() || host.getContext() == null) return;
                         refresh();
-                        Toast.makeText(host.getContext(), "已清空全部截图", Toast.LENGTH_SHORT).show();
+                        Toast.makeText(host.getContext(), I18n.tr("已清空全部截图"), Toast.LENGTH_SHORT).show();
                     });
                 }
             });
@@ -159,14 +161,14 @@ final class SettingsScreenshotController {
         boolean isClean = file.getName().contains("_game");
         meta.setText(String.format(Locale.US, "%dx%d  ·  %.0f KB  ·  %s",
                 opts.outWidth, opts.outHeight, file.length() / 1024.0,
-                isClean ? "仅游戏画面" : "含界面与聊天"));
+                isClean ? I18n.tr("仅游戏画面") : I18n.tr("含界面与聊天")));
         box.addView(meta);
 
         new AlertDialog.Builder(ctx)
                 .setView(box)
-                .setPositiveButton("保存到手机相册", (d, w) -> saveScreenshotToSystemGallery(file))
-                .setNeutralButton("分享截图", (d, w) -> host.shareFile(file, "image/png", "分享游戏截图"))
-                .setNegativeButton("关闭", (d, w) -> d.dismiss())
+                .setPositiveButton(I18n.tr("保存到手机相册"), (d, w) -> saveScreenshotToSystemGallery(file))
+                .setNeutralButton(I18n.tr("分享截图"), (d, w) -> host.shareFile(file, "image/png", I18n.tr("分享游戏截图")))
+                .setNegativeButton(I18n.tr("关闭"), (d, w) -> d.dismiss())
                 .show();
     }
 
@@ -185,11 +187,11 @@ final class SettingsScreenshotController {
                     values.put(MediaStore.Images.Media.IS_PENDING, 1);
                 }
                 Uri uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
-                if (uri == null) throw new Exception("相册写入失败");
+                if (uri == null) throw new Exception(I18n.tr("相册写入失败"));
 
                 try (InputStream in = new FileInputStream(file);
                      OutputStream out = resolver.openOutputStream(uri)) {
-                    if (out == null) throw new Exception("相册输出流打开失败");
+                    if (out == null) throw new Exception(I18n.tr("相册输出流打开失败"));
                     byte[] buf = new byte[8192];
                     int n;
                     while ((n = in.read(buf)) > 0) {
@@ -205,7 +207,7 @@ final class SettingsScreenshotController {
                 if (act != null && host.isAdded()) {
                     act.runOnUiThread(() -> {
                         if (!host.isAdded() || host.getContext() == null) return;
-                        Toast.makeText(host.getContext(), "已保存到手机相册", Toast.LENGTH_LONG).show();
+                        Toast.makeText(host.getContext(), I18n.tr("已保存到手机相册"), Toast.LENGTH_LONG).show();
                     });
                 }
             } catch (Exception e) {
@@ -213,7 +215,7 @@ final class SettingsScreenshotController {
                 if (act != null && host.isAdded()) {
                     act.runOnUiThread(() -> {
                         if (!host.isAdded() || host.getContext() == null) return;
-                        Toast.makeText(host.getContext(), "保存相册失败: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                        Toast.makeText(host.getContext(), I18n.tr("保存相册失败: ") + e.getMessage(), Toast.LENGTH_SHORT).show();
                     });
                 }
             }
@@ -294,9 +296,9 @@ final class SettingsScreenshotController {
             btnRow.setOrientation(LinearLayout.HORIZONTAL);
             btnRow.setPadding(0, (int) (6 * dp), 0, 0);
 
-            TextView btnSave = makeMiniButton(ctx, "存相册", R.drawable.launcher_btn_outline, R.color.launcher_accent);
-            TextView btnShare = makeMiniButton(ctx, "分享", R.drawable.launcher_btn_outline, R.color.launcher_text);
-            TextView btnDel = makeMiniButton(ctx, "删除", R.drawable.launcher_btn_danger, R.color.launcher_danger);
+            TextView btnSave = makeMiniButton(ctx, I18n.tr("存相册"), R.drawable.launcher_btn_outline, R.color.launcher_accent);
+            TextView btnShare = makeMiniButton(ctx, I18n.tr("分享"), R.drawable.launcher_btn_outline, R.color.launcher_text);
+            TextView btnDel = makeMiniButton(ctx, I18n.tr("删除"), R.drawable.launcher_btn_danger, R.color.launcher_danger);
 
             btnRow.addView(btnSave);
             btnRow.addView(btnShare);
@@ -329,19 +331,19 @@ final class SettingsScreenshotController {
             String dateStr = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(new Date(file.lastModified()));
             h.tvTitle.setText(dateStr);
             boolean isClean = file.getName().contains("_game");
-            h.tvBadge.setText(isClean ? "仅游戏画面" : "含界面与聊天");
+            h.tvBadge.setText(isClean ? I18n.tr("仅游戏画面") : I18n.tr("含界面与聊天"));
             h.tvBadge.setTextColor(accentColor);
             h.btnSave.setTextColor(accentColor);
-            h.tvMeta.setText(String.format(Locale.US, "文件大小：%.0f KB", file.length() / 1024.0));
+            h.tvMeta.setText(String.format(Locale.US, I18n.tr("文件大小：%.0f KB"), file.length() / 1024.0));
 
             h.itemView.setOnClickListener(v -> previewScreenshot(file));
             h.ivThumb.setOnClickListener(v -> previewScreenshot(file));
             h.btnSave.setOnClickListener(v -> saveScreenshotToSystemGallery(file));
-            h.btnShare.setOnClickListener(v -> host.shareFile(file, "image/png", "分享游戏截图"));
+            h.btnShare.setOnClickListener(v -> host.shareFile(file, "image/png", I18n.tr("分享游戏截图")));
             h.btnDelete.setOnClickListener(v -> {
                 file.delete();
                 refresh();
-                Toast.makeText(host.requireContext(), "截图已删除", Toast.LENGTH_SHORT).show();
+                Toast.makeText(host.requireContext(), I18n.tr("截图已删除"), Toast.LENGTH_SHORT).show();
             });
         }
 

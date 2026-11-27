@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <string>
+#include "../../L10n.h"
 
 namespace artwork {
 
@@ -65,7 +66,7 @@ void DrawDownloadOverlay(ImGuiRenderer* renderer, float displayW, float displayH
 
 	const uint32_t doneCount = snap.completedFiles + snap.failedFiles;
 	char caption[160];
-	std::snprintf(caption, sizeof(caption), "Updating models.. [%u/%u] (%.2f KB/s)",
+	std::snprintf(caption, sizeof(caption), L10N("Updating models.. [%u/%u] (%.2f KB/s)", "正在更新模型.. [%u/%u]（%.2f KB/s）"),
 		doneCount, snap.totalFiles, s_speedKBps);
 	renderer->drawText(
 		ImVec2(x0 + 12.0f, y0 + (captionH - fontSize) * 0.5f),
@@ -126,7 +127,7 @@ void DrawDownloadOverlay(ImGuiRenderer* renderer, float displayW, float displayH
 				true);
 		}
 
-		const char* typeStr = (item.type == FileType::Dff) ? "Model" : "Texture";
+		const char* typeStr = (item.type == FileType::Dff) ? l10n::tr("Model", "模型") : l10n::tr("Texture", "贴图");
 		char idStr[24];
 		std::snprintf(idStr, sizeof(idStr), "0x%X", item.crc);
 
@@ -147,9 +148,9 @@ void DrawDownloadOverlay(ImGuiRenderer* renderer, float displayW, float displayH
 			progCol = ImColor(119, 170, 119, 255); // classic SA-MP {77AA77}
 		} else {
 			if (!item.error.empty()) {
-				std::snprintf(progStr, sizeof(progStr), "Error: %.20s", item.error.c_str());
+				std::snprintf(progStr, sizeof(progStr), L10N("Error: %.20s", "错误：%.20s"), item.error.c_str());
 			} else {
-				std::snprintf(progStr, sizeof(progStr), "Error");
+				std::snprintf(progStr, sizeof(progStr), "%s", l10n::tr("Error", "错误"));
 			}
 			progCol = ImColor(204, 136, 136, 255); // classic SA-MP {CC8888}
 		}

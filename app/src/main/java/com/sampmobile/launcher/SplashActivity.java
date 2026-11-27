@@ -1,5 +1,7 @@
 package com.sampmobile.launcher;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
@@ -26,6 +28,7 @@ import javax.microedition.khronos.opengles.GL10;
 
 import pub.devrel.easypermissions.EasyPermissions;
 import com.sampmobile.launcher.utils.ClientSettings;
+import com.sampmobile.launcher.utils.LocaleManager;
 import com.sampmobile.launcher.utils.Logcat;
 import com.sampmobile.launcher.utils.Utils;
 
@@ -52,6 +55,11 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
     Logcat logcat;
 
     @Override
+    protected void attachBaseContext(Context newBase) {
+        super.attachBaseContext(LocaleManager.wrap(newBase));
+    }
+
+    @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_splash);
@@ -72,7 +80,7 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
         if (EasyPermissions.hasPermissions(this, requiredPermissions)) {
             startApp();
         } else {
-            EasyPermissions.requestPermissions(this, "请允许应用所需权限", PERMISSION_REQUEST_CODE, requiredPermissions);
+            EasyPermissions.requestPermissions(this, I18n.tr("请允许应用所需权限"), PERMISSION_REQUEST_CODE, requiredPermissions);
         }
     }
 
@@ -128,17 +136,17 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
         }
         if (!Utils.isOnline(this)) {
             new AlertDialog.Builder(this)
-                    .setTitle("没有网络连接！")
-                    .setMessage("请连接网络后重试。")
-                    .setPositiveButton("重试", (dialog, which) -> {
+                    .setTitle(I18n.tr("没有网络连接！"))
+                    .setMessage(I18n.tr("请连接网络后重试。"))
+                    .setPositiveButton(I18n.tr("重试"), (dialog, which) -> {
                         dialog.dismiss();
                         startApp();
-                    }).setNegativeButton("单机模式", (dialog, which) -> {
+                    }).setNegativeButton(I18n.tr("单机模式"), (dialog, which) -> {
                         if (isFinishing() || isDestroyed()) return;
                         AlertDialog alertDialog = new AlertDialog.Builder(this)
                                 .setTitle(R.string.offline_mode)
-                                .setMessage("确定要以单机模式启动游戏吗？")
-                                .setPositiveButton("是", (dialog2, which2) -> {
+                                .setMessage(I18n.tr("确定要以单机模式启动游戏吗？"))
+                                .setPositiveButton(I18n.tr("是"), (dialog2, which2) -> {
                                     ClientSettings.prepareOfflineLaunch(this);
                                     try {
                                         Intent intent = new Intent(this, com.sampmobile.game.SAMP.class);
@@ -148,7 +156,7 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
                                         e.printStackTrace();
                                     }
                                 })
-                                .setNegativeButton("否", (dialog2, which2) -> {
+                                .setNegativeButton(I18n.tr("否"), (dialog2, which2) -> {
                                     dialog2.dismiss();
                                     startApp();
                                 })
@@ -233,7 +241,7 @@ public class SplashActivity extends AppCompatActivity implements GLSurfaceView.R
 
     public void quitApp() {
         if ((System.currentTimeMillis() - quit_time) > 2000) {
-            Toast.makeText(this, "再按一次退出", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, I18n.tr("再按一次退出"), Toast.LENGTH_LONG).show();
             quit_time = System.currentTimeMillis();
         } else {
             finish();

@@ -49,50 +49,50 @@ final class JPatchConfigManager {
     static List<JPatchOption> buildKnownJPatchCatalog() {
         List<JPatchOption> list = new ArrayList<>();
         // Safe & high-value GTA:SA 2.10 fixes (exact keys from official net.rusjj.jpatch.ini)
-        list.add(new JPatchOption("Gameplay", "Fix210Crash", "修复 2.10 原版随机崩溃",
-                "应用 2.10 引擎崩溃补丁（推荐开启）", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "GetCompositeMatrixFixPossibleCrash", "修复矩阵合成崩溃",
-                "防止模型/骨骼矩阵空指针崩溃", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "FixCollisionAllocatingData", "修复碰撞分配异常",
-                "修复动态碰撞数据分配越界崩溃", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "FixEnterVehicleTasks", "修复上车任务异常",
-                "修复部分情形下上车动作卡住问题", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "FixChassisSwingingHighFPS", "高帧率载具防抖动",
-                "修复 60+ FPS 下车辆底盘剧烈晃动", true, "1", true));
-        list.add(new JPatchOption("Gameplay", "FixVehiclesSpeedHighFPS", "高帧率载具速度修正",
-                "修复高帧率下车辆加速与阻力异常", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixFogWall", "修复雾气背后黑墙",
-                "修复默认着色器下远景雾墙显示异常", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixWheelsRotationSpeed", "高帧率车轮转速修正",
-                "修复高帧率下车轮旋转速度过快", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixGreenTextures", "修复绿色贴图异常",
-                "修复部分 GPU/贴图组合发绿问题", true, "1", true));
-        list.add(new JPatchOption("Visual", "SP_BilinearFilterForPlate", "修复车牌双线性过滤",
-                "提升载具车牌清晰度（SilentPatch）", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixAdjustableSizeLowering", "修复 HUD 缩放偏移",
-                "修复 Adjustable.cfg 自定义 HUD 按钮尺寸偏移", true, "1", true));
-        list.add(new JPatchOption("Visual", "FixXclipseCrash", "修复 Xclipse/Adreno 着色器崩溃",
-                "增强部分新 GPU 驱动下的渲染稳定性", true, "1", true));
+        list.add(new JPatchOption("Gameplay", "Fix210Crash", I18n.tr("修复 2.10 原版随机崩溃"),
+                I18n.tr("应用 2.10 引擎崩溃补丁（推荐开启）"), true, "1", true));
+        list.add(new JPatchOption("Gameplay", "GetCompositeMatrixFixPossibleCrash", I18n.tr("修复矩阵合成崩溃"),
+                I18n.tr("防止模型/骨骼矩阵空指针崩溃"), true, "1", true));
+        list.add(new JPatchOption("Gameplay", "FixCollisionAllocatingData", I18n.tr("修复碰撞分配异常"),
+                I18n.tr("修复动态碰撞数据分配越界崩溃"), true, "1", true));
+        list.add(new JPatchOption("Gameplay", "FixEnterVehicleTasks", I18n.tr("修复上车任务异常"),
+                I18n.tr("修复部分情形下上车动作卡住问题"), true, "1", true));
+        list.add(new JPatchOption("Gameplay", "FixChassisSwingingHighFPS", I18n.tr("高帧率载具防抖动"),
+                I18n.tr("修复 60+ FPS 下车辆底盘剧烈晃动"), true, "1", true));
+        list.add(new JPatchOption("Gameplay", "FixVehiclesSpeedHighFPS", I18n.tr("高帧率载具速度修正"),
+                I18n.tr("修复高帧率下车辆加速与阻力异常"), true, "1", true));
+        list.add(new JPatchOption("Visual", "FixFogWall", I18n.tr("修复雾气背后黑墙"),
+                I18n.tr("修复默认着色器下远景雾墙显示异常"), true, "1", true));
+        list.add(new JPatchOption("Visual", "FixWheelsRotationSpeed", I18n.tr("高帧率车轮转速修正"),
+                I18n.tr("修复高帧率下车轮旋转速度过快"), true, "1", true));
+        list.add(new JPatchOption("Visual", "FixGreenTextures", I18n.tr("修复绿色贴图异常"),
+                I18n.tr("修复部分 GPU/贴图组合发绿问题"), true, "1", true));
+        list.add(new JPatchOption("Visual", "SP_BilinearFilterForPlate", I18n.tr("修复车牌双线性过滤"),
+                I18n.tr("提升载具车牌清晰度（SilentPatch）"), true, "1", true));
+        list.add(new JPatchOption("Visual", "FixAdjustableSizeLowering", I18n.tr("修复 HUD 缩放偏移"),
+                I18n.tr("修复 Adjustable.cfg 自定义 HUD 按钮尺寸偏移"), true, "1", true));
+        list.add(new JPatchOption("Visual", "FixXclipseCrash", I18n.tr("修复 Xclipse/Adreno 着色器崩溃"),
+                I18n.tr("增强部分新 GPU 驱动下的渲染稳定性"), true, "1", true));
 
         // Caution: overlap with SAMPMOBILE hooks/patches — disabled in SA-MP safe preset
-        list.add(new JPatchOption("Gameplay", "MultiTouch4", "JPatch 四指触控补丁 [联机冲突]",
-                "本端已内置 MultiTouch 拦截与 MonetLoader/CLEO 触控路由，建议关闭以免冲突", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "BuffStreamingMem", "JPatch 固定流送扩容 [联机慎用]",
-                "本端已内置 CStreaming×3 扩容，重复开启可能加大内存压力", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "DynamicStreamingMem", "JPatch 动态流送扩容 [联机慎用]",
-                "与本端内置流送内存策略重叠，联机安全预设默认关闭", false, "0", true));
-        list.add(new JPatchOption("Visual", "EnableAnimatedTextures", "JPatch UV 动画补丁 [联机冲突]",
-                "本端已自研 2.10 有界 UVAnim 驱动，建议关闭以免重复 Hook", false, "0", true));
-        list.add(new JPatchOption("Visual", "FixCrosshair", "JPatch 准星修正 [联机冲突]",
-                "本端已内置联机准星 Hook，建议关闭以免冲突", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "ForceLoadDXT", "强制 DXT 贴图格式 [联机冲突]",
-                "本端已自动按实际存在的 texdb 格式加载，开启会导致黑贴图", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "ForceLoadETC", "强制 ETC 贴图格式 [联机冲突]",
-                "本端已自动选择贴图格式，不建议强制覆盖", false, "0", true));
-        list.add(new JPatchOption("Gameplay", "ForceLoadPVR", "强制 PVR 贴图格式 [联机冲突]",
-                "本端已自动选择贴图格式，不建议强制覆盖", false, "0", true));
-        list.add(new JPatchOption("Visual", "AlwaysDrawWantedStars", "常显通缉星级 [联机慎用]",
-                "联机通缉星级由服务端控制，默认关闭", false, "0", true));
+        list.add(new JPatchOption("Gameplay", "MultiTouch4", I18n.tr("JPatch 四指触控补丁 [联机冲突]"),
+                I18n.tr("本端已内置 MultiTouch 拦截与 MonetLoader/CLEO 触控路由，建议关闭以免冲突"), false, "0", true));
+        list.add(new JPatchOption("Gameplay", "BuffStreamingMem", I18n.tr("JPatch 固定流送扩容 [联机慎用]"),
+                I18n.tr("本端已内置 CStreaming×3 扩容，重复开启可能加大内存压力"), false, "0", true));
+        list.add(new JPatchOption("Gameplay", "DynamicStreamingMem", I18n.tr("JPatch 动态流送扩容 [联机慎用]"),
+                I18n.tr("与本端内置流送内存策略重叠，联机安全预设默认关闭"), false, "0", true));
+        list.add(new JPatchOption("Visual", "EnableAnimatedTextures", I18n.tr("JPatch UV 动画补丁 [联机冲突]"),
+                I18n.tr("本端已自研 2.10 有界 UVAnim 驱动，建议关闭以免重复 Hook"), false, "0", true));
+        list.add(new JPatchOption("Visual", "FixCrosshair", I18n.tr("JPatch 准星修正 [联机冲突]"),
+                I18n.tr("本端已内置联机准星 Hook，建议关闭以免冲突"), false, "0", true));
+        list.add(new JPatchOption("Gameplay", "ForceLoadDXT", I18n.tr("强制 DXT 贴图格式 [联机冲突]"),
+                I18n.tr("本端已自动按实际存在的 texdb 格式加载，开启会导致黑贴图"), false, "0", true));
+        list.add(new JPatchOption("Gameplay", "ForceLoadETC", I18n.tr("强制 ETC 贴图格式 [联机冲突]"),
+                I18n.tr("本端已自动选择贴图格式，不建议强制覆盖"), false, "0", true));
+        list.add(new JPatchOption("Gameplay", "ForceLoadPVR", I18n.tr("强制 PVR 贴图格式 [联机冲突]"),
+                I18n.tr("本端已自动选择贴图格式，不建议强制覆盖"), false, "0", true));
+        list.add(new JPatchOption("Visual", "AlwaysDrawWantedStars", I18n.tr("常显通缉星级 [联机慎用]"),
+                I18n.tr("联机通缉星级由服务端控制，默认关闭"), false, "0", true));
         return list;
     }
 
@@ -132,7 +132,7 @@ final class JPatchConfigManager {
                 if (dupKey) continue;
 
                 boolean isBool = isBooleanLike(v);
-                JPatchOption custom = new JPatchOption(sec, k, k, "来自 " + cfgFile.getName() + " [" + sec + "]", true, v, isBool);
+                JPatchOption custom = new JPatchOption(sec, k, k, I18n.tr("来自 ") + cfgFile.getName() + " [" + sec + "]", true, v, isBool);
                 custom.value = v;
                 custom.fromKnownCatalog = false;
                 options.add(custom);

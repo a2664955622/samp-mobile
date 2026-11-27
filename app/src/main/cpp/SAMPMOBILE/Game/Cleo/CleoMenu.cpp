@@ -1,4 +1,5 @@
 #include "CleoInternal.h"
+#include "L10n.h"
 
 namespace cleo_internal {
 
@@ -103,9 +104,9 @@ void CleoEngine::renderMenu(ImGuiRenderer* renderer, float displayW, float displ
 			if (!s.invokable && s.thread.m_bActive) ++runningAuto;
 		}
 		char hdr[128];
-		snprintf(hdr, sizeof(hdr), "CLEO 菜单  (%zu .csi | %zu .csa 运行中)", inv.size(), runningAuto);
+		snprintf(hdr, sizeof(hdr), L10N("CLEO Menu  (%zu .csi | %zu .csa running)", "CLEO 菜单  (%zu .csi | %zu .csa 运行中)"), inv.size(), runningAuto);
 		title = hdr;
-		closeText = "关闭";
+		closeText = l10n::tr("Close", "关闭");
 		page = g_builtinMenu.page;
 		totalItems = static_cast<int>(inv.size());
 		int start = page * kMenuItemsPerPage;
@@ -113,7 +114,7 @@ void CleoEngine::renderMenu(ImGuiRenderer* renderer, float displayW, float displ
 		for (int i = start; i < end; ++i) {
 			const CleoScript& sc = g_scripts[inv[i]];
 			std::string label = sc.displayName;
-			if (sc.thread.m_bActive) label += "  [运行中]";
+			if (sc.thread.m_bActive) label += l10n::tr("  [running]", "  [运行中]");
 			rows.emplace_back(inv[i], label);
 		}
 	}
@@ -152,7 +153,7 @@ void CleoEngine::renderMenu(ImGuiRenderer* renderer, float displayW, float displ
 	float curY = y1 + headerH + pad * 0.5f;
 	if (rows.empty()) {
 		renderer->drawText(ImVec2(x1 + pad, curY + (rowH - itemFont) * 0.5f), dimText,
-		                   "未发现 .csi 交互脚本（.csa 脚本自动在后台运行）", true, itemFont * 0.9f);
+		                   l10n::tr("No interactive .csi scripts found (.csa scripts run automatically in the background)", "未发现 .csi 交互脚本（.csa 脚本自动在后台运行）"), true, itemFont * 0.9f);
 		curY += rowH;
 	} else {
 		for (size_t i = 0; i < rows.size(); ++i) {
@@ -190,9 +191,9 @@ void CleoEngine::renderMenu(ImGuiRenderer* renderer, float displayW, float displ
 	};
 
 	const int totalPages = std::max(1, (totalItems + kMenuItemsPerPage - 1) / kMenuItemsPerPage);
-	drawBtn(g_menuPrevRect, "< 上一页", btnBg, page > 0 ? whiteText : dimText);
+	drawBtn(g_menuPrevRect, l10n::tr("< Previous", "< 上一页"), btnBg, page > 0 ? whiteText : dimText);
 	char nextLbl[48];
-	snprintf(nextLbl, sizeof(nextLbl), "下一页 (%d/%d) >", page + 1, totalPages);
+	snprintf(nextLbl, sizeof(nextLbl), L10N("Next (%d/%d) >", "下一页 (%d/%d) >"), page + 1, totalPages);
 	drawBtn(g_menuNextRect, nextLbl, btnBg, (page + 1 < totalPages) ? whiteText : dimText);
 	drawBtn(g_menuCloseRect, closeText, ImColor(135, 34, 34, 235), whiteText);
 }

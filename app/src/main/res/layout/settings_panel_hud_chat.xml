@@ -27,7 +27,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="屏幕界面元素"
+                android:text="@string/ui_settings_panel_hud_chat_001"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -37,7 +37,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
                 android:layout_marginBottom="@dimen/_6sdp"
-                android:text="自定义 HUD、雷达小地图、准星样式、快捷按键与玩家头顶信息显示"
+                android:text="@string/ui_settings_panel_hud_chat_002"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -59,7 +59,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="显示 GTA 原版 HUD（血量/武器/金钱）"
+                        android:text="@string/ui_settings_panel_hud_chat_003"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -68,7 +68,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="显示右上角生命值、防弹衣、武器图标、通缉星级与现金"
+                        android:text="@string/ui_settings_panel_hud_chat_004"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -104,7 +104,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="显示左下角雷达小地图"
+                        android:text="@string/ui_settings_panel_hud_chat_005"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -113,7 +113,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="显示圆形雷达小地图与地图标记点"
+                        android:text="@string/ui_settings_panel_hud_chat_006"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -149,7 +149,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="点击雷达打开大地图"
+                        android:text="@string/ui_settings_panel_hud_chat_007"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -158,7 +158,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="允许轻触左下角雷达进入全屏地图，关闭可防止战斗时摇杆误触弹出地图"
+                        android:text="@string/ui_settings_panel_hud_chat_008"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -194,7 +194,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="武器准星样式"
+                        android:text="@string/ui_settings_panel_hud_chat_009"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -203,7 +203,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="切换原版准星、竞技精简十字、中心高亮圆点或隐藏准星"
+                        android:text="@string/ui_settings_panel_hud_chat_010"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -237,7 +237,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="实时帧率显示"
+                        android:text="@string/ui_settings_panel_hud_chat_011"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -246,7 +246,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="在屏幕边缘显示当前游戏运行帧数"
+                        android:text="@string/ui_settings_panel_hud_chat_012"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -282,7 +282,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="右侧击杀通报窗口"
+                        android:text="@string/ui_settings_panel_hud_chat_013"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -291,7 +291,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="显示服务器玩家之间的击杀与死亡图标列表"
+                        android:text="@string/ui_settings_panel_hud_chat_014"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -327,7 +327,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="玩家头顶昵称与血条"
+                        android:text="@string/ui_settings_panel_hud_chat_015"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -336,7 +336,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="渲染视野内其他玩家与机器人的名字、生命值与护甲条"
+                        android:text="@string/ui_settings_panel_hud_chat_016"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -372,7 +372,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="玩家名字上方显示持有武器"
+                        android:text="@string/ui_settings_panel_hud_chat_017"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -381,7 +381,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="在其他玩家头顶昵称正上方显示其当前手持的武器图标徽章"
+                        android:text="@string/ui_settings_panel_hud_chat_018"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -417,7 +417,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="底部快捷功能键盘"
+                        android:text="@string/ui_settings_panel_hud_chat_019"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -426,7 +426,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="在左下角提供可展开的 TAB、ALT、Y、N、H、G、F 快捷按键栏"
+                        android:text="@string/ui_settings_panel_hud_chat_020"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -462,7 +462,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="快捷键盘包含 F8 截图键"
+                        android:text="@string/ui_settings_panel_hud_chat_021"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -471,7 +471,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="在底部快捷功能键盘末尾显示 F8 一键截图按钮"
+                        android:text="@string/ui_settings_panel_hud_chat_022"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -507,7 +507,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="底部提示与剧情字幕"
+                        android:text="@string/ui_settings_panel_hud_chat_023"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -516,7 +516,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="显示游戏画面底部的任务字幕与提示文本"
+                        android:text="@string/ui_settings_panel_hud_chat_024"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -543,7 +543,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:tag="theme_accent_text"
-                android:text="字体、3D 文本与聊天设置"
+                android:text="@string/ui_settings_panel_hud_chat_025"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -567,7 +567,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="游戏字体样式"
+                        android:text="@string/ui_settings_panel_hud_chat_026"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -576,7 +576,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="选择聊天、头顶名字与 3D 文本字体（自定义字体请放入 SAMP/fonts/custom.ttf）"
+                        android:text="@string/ui_settings_panel_hud_chat_027"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -610,7 +610,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="玩家头顶名字与血条大小"
+                        android:text="@string/ui_settings_panel_hud_chat_028"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -619,7 +619,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="独立缩放玩家头顶昵称、生命护甲条与武器图标尺寸"
+                        android:text="@string/ui_settings_panel_hud_chat_029"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -668,7 +668,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="3D 场景文本 (3DText) 大小"
+                        android:text="@string/ui_settings_panel_hud_chat_030"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -677,7 +677,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="独立缩放服务器在建筑物、NPC 与车牌处创建的 3D 悬浮文字大小"
+                        android:text="@string/ui_settings_panel_hud_chat_031"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -727,7 +727,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="使用手机系统输入法"
+                        android:text="@string/ui_settings_panel_hud_chat_032"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -736,7 +736,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="聊天打字时直接唤起手机输入法，方便输入中文与表情"
+                        android:text="@string/ui_settings_panel_hud_chat_033"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -772,7 +772,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="显示聊天消息时间"
+                        android:text="@string/ui_settings_panel_hud_chat_034"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -781,7 +781,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="在每条聊天消息前方显示时分秒时间标记"
+                        android:text="@string/ui_settings_panel_hud_chat_035"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -817,7 +817,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="聊天文字描边阴影"
+                        android:text="@string/ui_settings_panel_hud_chat_036"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -826,7 +826,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="为聊天文字添加黑色外描边，在明亮天空背景下依然清晰易读"
+                        android:text="@string/ui_settings_panel_hud_chat_037"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -862,7 +862,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="聊天窗口显示行数"
+                        android:text="@string/ui_settings_panel_hud_chat_038"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -871,7 +871,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="单页同时展示的聊天消息行数（5 至 20 行）"
+                        android:text="@string/ui_settings_panel_hud_chat_039"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -939,7 +939,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="聊天与界面字体大小"
+                        android:text="@string/ui_settings_panel_hud_chat_040"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -948,7 +948,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="调节聊天消息与服务器弹窗文字字号（默认 25）"
+                        android:text="@string/ui_settings_panel_hud_chat_041"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -999,7 +999,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:tag="theme_accent_text"
-                        android:text="聊天窗口位置与尺寸"
+                        android:text="@string/ui_settings_panel_hud_chat_042"
                         android:textColor="@color/launcher_accent"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -1008,7 +1008,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="微调聊天框在屏幕上的坐标与宽高区域"
+                        android:text="@string/ui_settings_panel_hud_chat_043"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -1021,7 +1021,7 @@
                     android:gravity="center"
                     android:paddingHorizontal="@dimen/_8sdp"
                     android:tag="theme_accent_text"
-                    android:text="重置聊天框布局"
+                    android:text="@string/ui_settings_panel_hud_chat_044"
                     android:textColor="@color/launcher_accent"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
@@ -1039,7 +1039,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="水平位置偏移"
+                    android:text="@string/ui_settings_panel_hud_chat_045"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />
@@ -1075,7 +1075,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="垂直位置偏移"
+                    android:text="@string/ui_settings_panel_hud_chat_046"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />
@@ -1111,7 +1111,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="聊天窗口宽度"
+                    android:text="@string/ui_settings_panel_hud_chat_047"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />
@@ -1147,7 +1147,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:text="聊天窗口高度"
+                    android:text="@string/ui_settings_panel_hud_chat_048"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />

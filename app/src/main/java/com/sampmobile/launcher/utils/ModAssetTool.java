@@ -194,14 +194,14 @@ public final class ModAssetTool {
             @Nullable ProgressCallback progress
     ) throws IOException {
         if (uris == null || uris.isEmpty()) {
-            throw new IllegalArgumentException("未选择任何文件");
+            throw new IllegalArgumentException(I18n.tr("未选择任何文件"));
         }
         ModManager.ensureDirectories(ctx);
 
-        notifyProgress(progress, "正在读取所选文件…");
+        notifyProgress(progress, I18n.tr("正在读取所选文件…"));
         List<RawAsset> assets = collectAssetsFromUris(ctx, uris);
         if (assets.isEmpty()) {
-            throw new IOException("未在所选文件中找到可导入的资产（.dff / .ifp / .col / .txd / .png）");
+            throw new IOException(I18n.tr("未在所选文件中找到可导入的资产（.dff / .ifp / .col / .txd / .png）"));
         }
 
         String cleanPack = sanitizePackFolder(rawPackName);
@@ -215,7 +215,7 @@ public final class ModAssetTool {
             packDir = new File(modRoot, cleanPack + "_" + (suffix++));
         }
         if (!packDir.mkdirs()) {
-            throw new IOException("无法创建模组目录: " + packDir.getName());
+            throw new IOException(I18n.tr("无法创建模组目录: ") + packDir.getName());
         }
 
         ImportResult res = new ImportResult();
@@ -275,7 +275,7 @@ public final class ModAssetTool {
                     outName = m.baseName.toLowerCase(Locale.ROOT);
                 }
                 if (outName.length() > 23) {
-                    res.warnings.add("跳过过长模型名（>23字符）: " + outName);
+                    res.warnings.add(I18n.tr("跳过过长模型名（>23字符）: ") + outName);
                     continue;
                 }
                 if (!writtenModels.add(outName)) {
@@ -310,7 +310,7 @@ public final class ModAssetTool {
             int imgTotal = imageAssets.size();
             for (int i = 0; i < imgTotal; i++) {
                 RawAsset img = imageAssets.get(i);
-                notifyProgress(progress, "正在解码图片贴图 (" + (i + 1) + "/" + imgTotal + "): " + img.baseName);
+                notifyProgress(progress, I18n.tr("正在解码图片贴图 (") + (i + 1) + "/" + imgTotal + "): " + img.baseName);
                 String texName = stripExtension(img.baseName);
                 if (texName.isEmpty()) continue;
                 String lowerKey = texName.toLowerCase(Locale.ROOT);
@@ -321,14 +321,14 @@ public final class ModAssetTool {
                 if (dt != null) {
                     texMap.put(lowerKey, dt);
                 } else {
-                    res.warnings.add("无法解码图片: " + img.baseName);
+                    res.warnings.add(I18n.tr("无法解码图片: ") + img.baseName);
                 }
             }
 
             // 5. Decode PC RenderWare .txd archives (fill any textures not already provided by PNGs)
             for (int i = 0; i < txdAssets.size(); i++) {
                 RawAsset txd = txdAssets.get(i);
-                notifyProgress(progress, "正在解析 PC TXD 贴图库 (" + (i + 1) + "/" + txdAssets.size() + "): " + txd.baseName);
+                notifyProgress(progress, I18n.tr("正在解析 PC TXD 贴图库 (") + (i + 1) + "/" + txdAssets.size() + "): " + txd.baseName);
                 List<DecodedTexture> extracted = decodeTxdBytes(txd.bytes, res.warnings);
                 for (DecodedTexture dt : extracted) {
                     String lowerKey = dt.name.toLowerCase(Locale.ROOT);
@@ -342,14 +342,14 @@ public final class ModAssetTool {
             if (!texMap.isEmpty()) {
                 String dbName = sanitizeTexDbName(res.packName);
                 File texDbDir = new File(packDir, "texdb/" + dbName);
-                notifyProgress(progress, "正在编译 Android 贴图库 texdb/" + dbName + " (" + texMap.size() + " 张)…");
+                notifyProgress(progress, I18n.tr("正在编译 Android 贴图库 texdb/") + dbName + " (" + texMap.size() + I18n.tr(" 张)…"));
                 compileTextureDatabase(texDbDir, dbName, new ArrayList<>(texMap.values()));
                 res.compiledTextureCount = texMap.size();
                 res.texDbName = dbName;
             }
 
             if (res.modelCount == 0 && res.compiledTextureCount == 0 && res.passthroughFileCount == 0) {
-                throw new IOException("未检测到任何有效的模型 (.dff/.ifp/.col) 或贴图 (.png/.txd)");
+                throw new IOException(I18n.tr("未检测到任何有效的模型 (.dff/.ifp/.col) 或贴图 (.png/.txd)"));
             }
 
             // 7. Register pack in modloader.json at top priority so it overrides base/Remastered packs
@@ -397,19 +397,19 @@ public final class ModAssetTool {
             String lowerName = displayName.toLowerCase(Locale.ROOT);
             if (lowerName.endsWith(".zip")) {
                 try (InputStream raw = ctx.getContentResolver().openInputStream(uri)) {
-                    if (raw == null) throw new IOException("无法读取压缩包: " + displayName);
+                    if (raw == null) throw new IOException(I18n.tr("无法读取压缩包: ") + displayName);
                     try (ZipInputStream zis = new ZipInputStream(raw)) {
                         ZipEntry entry;
                         while ((entry = zis.getNextEntry()) != null) {
                             if (++entryCount > MAX_ZIP_ENTRIES) {
-                                throw new IOException("压缩包内文件数超过限制 (" + MAX_ZIP_ENTRIES + ")");
+                                throw new IOException(I18n.tr("压缩包内文件数超过限制 (") + MAX_ZIP_ENTRIES + ")");
                             }
                             if (!entry.isDirectory()) {
                                 String entryName = entry.getName().replace('\\', '/');
                                 if (!entryName.startsWith("/") && !entryName.contains("..")) {
                                     long remaining = MAX_TOTAL_IMPORT_BYTES - totalBytes;
                                     if (remaining <= 0) {
-                                        throw new IOException("导入资源总大小超过 256 MB 限制");
+                                        throw new IOException(I18n.tr("导入资源总大小超过 256 MB 限制"));
                                     }
                                     int cap = (int) Math.min(128L * 1024L * 1024L, remaining);
                                     byte[] data = readAllBytesBounded(zis, cap);
@@ -423,13 +423,13 @@ public final class ModAssetTool {
                 }
             } else {
                 if (++entryCount > MAX_ZIP_ENTRIES) {
-                    throw new IOException("导入文件数超过限制 (" + MAX_ZIP_ENTRIES + ")");
+                    throw new IOException(I18n.tr("导入文件数超过限制 (") + MAX_ZIP_ENTRIES + ")");
                 }
                 try (InputStream is = ctx.getContentResolver().openInputStream(uri)) {
-                    if (is == null) throw new IOException("无法读取文件: " + displayName);
+                    if (is == null) throw new IOException(I18n.tr("无法读取文件: ") + displayName);
                     long remaining = MAX_TOTAL_IMPORT_BYTES - totalBytes;
                     if (remaining <= 0) {
-                        throw new IOException("导入资源总大小超过 256 MB 限制");
+                        throw new IOException(I18n.tr("导入资源总大小超过 256 MB 限制"));
                     }
                     int cap = (int) Math.min(128L * 1024L * 1024L, remaining);
                     byte[] data = readAllBytesBounded(is, cap);
@@ -668,7 +668,7 @@ public final class ModAssetTool {
         while ((n = is.read(buf)) > 0) {
             total += n;
             if (total > maxBytes) {
-                throw new IOException("单个文件超过 128 MB 限制");
+                throw new IOException(I18n.tr("单个文件超过 128 MB 限制"));
             }
             bos.write(buf, 0, n);
         }

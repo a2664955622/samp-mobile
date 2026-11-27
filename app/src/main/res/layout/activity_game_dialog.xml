@@ -54,7 +54,7 @@
                 android:lines="1"
                 android:maxLines="1"
                 android:singleLine="true"
-                android:text="标题"
+                android:text="@string/title"
                 android:textColor="#ffffffff"
                 android:textSize="36.0px"
                 app:layout_constrainedWidth="true"

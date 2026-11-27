@@ -32,7 +32,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="游戏截图捕捉范围"
+                    android:text="@string/ui_settings_panel_screenshots_001"
                     android:textColor="@color/launcher_accent"
                     android:textSize="@dimen/_9ssp"
                     android:textStyle="bold" />
@@ -41,7 +41,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/_1sdp"
-                    android:text="点击底部 F8 按键或输入 /ss 时默认截取的画面内容"
+                    android:text="@string/ui_settings_panel_screenshots_002"
                     android:textColor="@color/launcher_text_dim"
                     android:textSize="@dimen/_7ssp" />
             </LinearLayout>
@@ -54,7 +54,7 @@
                 android:background="@drawable/launcher_btn_primary"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_10sdp"
-                android:text="含界面与聊天"
+                android:text="@string/ui_settings_panel_screenshots_003"
                 android:textColor="@color/launcher_on_accent"
                 android:textSize="@dimen/_8ssp"
                 android:textStyle="bold" />
@@ -66,7 +66,7 @@
                 android:background="@drawable/launcher_btn_outline"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_10sdp"
-                android:text="仅游戏画面"
+                android:text="@string/ui_settings_panel_screenshots_004"
                 android:textColor="@color/launcher_text"
                 android:textSize="@dimen/_8ssp"
                 android:textStyle="bold" />
@@ -94,7 +94,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="共 0 张截图"
+                android:text="@string/ui_settings_panel_screenshots_005"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_8ssp" />
 
@@ -106,7 +106,7 @@
                 android:background="@drawable/launcher_btn_outline"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_8sdp"
-                android:text="刷新列表"
+                android:text="@string/ui_settings_panel_screenshots_006"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_7ssp"
                 android:textStyle="bold" />
@@ -118,7 +118,7 @@
                 android:background="@drawable/launcher_btn_danger"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_8sdp"
-                android:text="清空截图"
+                android:text="@string/ui_settings_panel_screenshots_007"
                 android:textColor="@color/launcher_danger"
                 android:textSize="@dimen/_7ssp"
                 android:textStyle="bold" />
@@ -141,7 +141,7 @@
                 android:layout_height="match_parent"
                 android:gravity="center"
                 android:lineSpacingExtra="4dp"
-                android:text="暂无游戏截图\n在游戏内点击底部键盘的 F8 按钮或输入 /ss 即可随时截图"
+                android:text="@string/ui_settings_panel_screenshots_008"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_8ssp" />
         </FrameLayout>

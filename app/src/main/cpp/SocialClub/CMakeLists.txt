@@ -19,6 +19,13 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         log
 )
 
+# 16KB page size alignment (Android 15+/16 kernels), same as libSAMPMOBILE.
+if (${ANDROID_ABI} STREQUAL "arm64-v8a")
+    target_link_options(${PROJECT_NAME} PRIVATE
+            -Wl,-z,max-page-size=16384
+            -Wl,-z,common-page-size=16384)
+endif ()
+
 target_compile_options(${PROJECT_NAME} PRIVATE
         -fvisibility=default        # Export all symbols
         -Werror=return-type

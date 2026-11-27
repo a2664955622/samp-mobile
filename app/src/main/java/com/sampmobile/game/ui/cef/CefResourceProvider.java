@@ -1,5 +1,7 @@
 package com.sampmobile.game.ui.cef;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.content.Context;
 import android.util.Log;
 import android.webkit.WebResourceResponse;
@@ -100,7 +102,7 @@ final class CefResourceProvider {
 
         if (!isSafeSegment(resourceName) || !isSafeRelativePath(relativePath)) {
             Log.w(TAG, "rejected unsafe resource path: " + url);
-            return errorPage(400, "Bad Request", "资源路径非法");
+            return errorPage(400, "Bad Request", I18n.tr("资源路径非法"));
         }
 
         // 以 '.' 开头的段是内部标记（例如资源根下的 .cefhash），不对页面开放。
@@ -119,10 +121,10 @@ final class CefResourceProvider {
             String targetCanonical = target.getCanonicalPath();
             if (!targetCanonical.startsWith(rootCanonical + File.separator)) {
                 Log.w(TAG, "rejected traversal: " + url);
-                return errorPage(403, "Forbidden", "资源路径越界");
+                return errorPage(403, "Forbidden", I18n.tr("资源路径越界"));
             }
         } catch (IOException e) {
-            return errorPage(500, "Internal Error", "资源路径解析失败");
+            return errorPage(500, "Internal Error", I18n.tr("资源路径解析失败"));
         }
 
         if (!target.isFile()) {
@@ -140,7 +142,7 @@ final class CefResourceProvider {
                 Log.e(TAG, "CEF_RESOURCE_ENCRYPTED " + resourceName + "/" + relativePath
                         + " (" + data.length + " bytes) - still wrapped, extraction failed");
                 return errorPage(503, "Resource Encrypted",
-                        "该文件仍处于加密封装状态（应当由资源层解密后落盘）");
+                        I18n.tr("该文件仍处于加密封装状态（应当由资源层解密后落盘）"));
             }
             String mime = mimeOf(relativePath);
             if ("text/html".equals(mime)) {
@@ -154,7 +156,7 @@ final class CefResourceProvider {
             return response(mime, 200, "OK", data);
         } catch (IOException e) {
             Log.w(TAG, "read failed " + target, e);
-            return errorPage(500, "Internal Error", "资源读取失败");
+            return errorPage(500, "Internal Error", I18n.tr("资源读取失败"));
         }
     }
 
@@ -212,11 +214,11 @@ final class CefResourceProvider {
     }
 
     private static WebResourceResponse missingPage(String resourceName, String relativePath) {
-        String body = page("资源未同步",
-                "资源 <code>" + escape(resourceName) + "/" + escape(relativePath) + "</code>"
-                        + " 不在本机资源目录中。<br>"
-                        + "说明服务端 manifest 未声明该死链，或资源包解包时该条目缺失——"
-                        + "检查 <code>CefResources</code> 日志中的 <code>extracted: N file(s) written</code>。");
+        String body = page(I18n.tr("资源未同步"),
+                I18n.tr("资源 <code>") + escape(resourceName) + "/" + escape(relativePath) + "</code>"
+                        + I18n.tr(" 不在本机资源目录中。<br>")
+                        + I18n.tr("说明服务端 manifest 未声明该死链，或资源包解包时该条目缺失——")
+                        + I18n.tr("检查 <code>CefResources</code> 日志中的 <code>extracted: N file(s) written</code>。"));
         return response("text/html", 503, "Resource Not Downloaded",
                 CefJs.inject(body.getBytes(StandardCharsets.UTF_8)));
     }

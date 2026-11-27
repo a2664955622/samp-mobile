@@ -1,5 +1,7 @@
 package com.sampmobile.launcher.download;
 
+
+import com.sampmobile.launcher.utils.I18n;
 import android.content.Context;
 import android.util.Log;
 
@@ -123,10 +125,10 @@ public final class GamedataInstallerTask {
         try {
             if (!installer.isInstalled()) {
                 l.onStage(Stage.FETCHING_MANIFEST);
-                l.onStatus("正在获取数据包信息…");
+                l.onStatus(I18n.tr("正在获取数据包信息…"));
             } else {
                 l.onStage(Stage.CHECKING);
-                l.onStatus("正在检查数据更新…");
+                l.onStatus(I18n.tr("正在检查数据更新…"));
             }
 
             String json = fetchManifest();
@@ -139,7 +141,7 @@ public final class GamedataInstallerTask {
             }
 
             if (cancelled) {
-                fail(l, "已取消", null);
+                fail(l, I18n.tr("已取消"), null);
                 return;
             }
 
@@ -147,7 +149,7 @@ public final class GamedataInstallerTask {
             String installed = installedVersion();
             if (!forceRedownload && installed != null && installed.equals(manifest.version) && installer.isInstalled()) {
                 l.onStage(Stage.READY);
-                l.onStatus("数据已是最新（" + manifest.version + "）");
+                l.onStatus(I18n.tr("数据已是最新（") + manifest.version + "）");
                 l.onDone(false);
                 return;
             }
@@ -156,7 +158,7 @@ public final class GamedataInstallerTask {
             if (!forceRedownload && installed == null && installer.isInstalled()) {
                 writeState(manifest.version);
                 l.onStage(Stage.READY);
-                l.onStatus("已检测到本地数据，无需下载");
+                l.onStatus(I18n.tr("已检测到本地数据，无需下载"));
                 l.onDone(false);
                 return;
             }
@@ -173,11 +175,11 @@ public final class GamedataInstallerTask {
 
             for (DataManifest.Package pkg : allPackages) {
                 if (cancelled) {
-                    fail(l, "已取消", null);
+                    fail(l, I18n.tr("已取消"), null);
                     return;
                 }
                 final long base = doneBase;
-                l.onStatus("正在下载 " + pkg.label);
+                l.onStatus(I18n.tr("正在下载 ") + pkg.label);
                 boolean ok = downloader.downloadPackage(
                         baseUrlOf(manifestUrl), pkg,
                         new ChunkDownloader.Listener() {
@@ -199,14 +201,14 @@ public final class GamedataInstallerTask {
                             }
                         });
                 if (!ok) {
-                    fail(l, "下载失败：" + pkg.label, null);
+                    fail(l, I18n.tr("下载失败：") + pkg.label, null);
                     return;
                 }
                 doneBase += pkg.bytes;
             }
 
             if (cancelled) {
-                fail(l, "已取消", null);
+                fail(l, I18n.tr("已取消"), null);
                 return;
             }
 
@@ -221,7 +223,7 @@ public final class GamedataInstallerTask {
             // 2GB 包在手机上必须这样，否则"分片 2G + zip 2G + 解压 2G"三份并存直接撑爆。
             for (int i = 0; i < allPackages.size(); i++) {
                 if (cancelled) {
-                    fail(l, "已取消", null);
+                    fail(l, I18n.tr("已取消"), null);
                     return;
                 }
                 DataManifest.Package pkg = allPackages.get(i);
@@ -229,7 +231,7 @@ public final class GamedataInstallerTask {
                 File zip = new File(cacheDir(), pkg.id + ".zip");
 
                 l.onStage(Stage.VERIFYING);
-                l.onStatus("正在校验 " + pkg.label);
+                l.onStatus(I18n.tr("正在校验 ") + pkg.label);
 
                 // 已有同尺寸成品 zip 就跳过拼接（上次已到这一步）
                 if (!(zip.isFile() && zip.length() == pkg.bytes)) {
@@ -239,17 +241,17 @@ public final class GamedataInstallerTask {
                 if (!ChunkDownloader.verify(zip, pkg.sha256)) {
                     //noinspection ResultOfMethodCallIgnored
                     zip.delete();
-                    fail(l, "数据包校验失败（可能传输损坏），请重试：" + pkg.label, null);
+                    fail(l, I18n.tr("数据包校验失败（可能传输损坏），请重试：") + pkg.label, null);
                     return;
                 }
 
                 l.onStage(Stage.EXTRACTING);
-                l.onStatus("正在安装 " + (i + 1) + "/" + allPackages.size() + "：" + pkg.label);
+                l.onStatus(I18n.tr("正在安装 ") + (i + 1) + "/" + allPackages.size() + "：" + pkg.label);
                 // 第一个包清空 staging，后续包追加（覆盖同名资源）
                 installer.extractToStaging(zip, zip.length(), new GamedataInstaller.Listener() {
                     @Override
                     public void onProgress(String entryName, long bytesWritten, long bytesTotal) {
-                        if (listener != null) listener.onStatus("正在解压 " + entryName);
+                        if (listener != null) listener.onStatus(I18n.tr("正在解压 ") + entryName);
                     }
 
                     @Override
@@ -265,7 +267,7 @@ public final class GamedataInstallerTask {
             }
 
             l.onStage(Stage.ACTIVATING);
-            l.onStatus("正在启用数据…");
+            l.onStatus(I18n.tr("正在启用数据…"));
             installer.activateStaging();
 
             // 记录已安装版本
@@ -279,13 +281,13 @@ public final class GamedataInstallerTask {
             }
 
             l.onStage(Stage.READY);
-            l.onStatus("数据准备完成");
+            l.onStatus(I18n.tr("数据准备完成"));
             l.onDone(true);
 
         } catch (InterruptedException e) {
-            fail(l, "已取消", e);
+            fail(l, I18n.tr("已取消"), e);
         } catch (Exception e) {
-            Log.e(TAG, "准备数据失败", e);
+            Log.e(TAG, I18n.tr("准备数据失败"), e);
             fail(l, e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), e);
         }
     }
@@ -310,7 +312,7 @@ public final class GamedataInstallerTask {
 
             int code = conn.getResponseCode();
             if (code != HttpURLConnection.HTTP_OK) {
-                throw new IOException("获取清单失败：HTTP " + code);
+                throw new IOException(I18n.tr("获取清单失败：HTTP ") + code);
             }
 
             try (InputStream in = conn.getInputStream()) {
@@ -321,7 +323,7 @@ public final class GamedataInstallerTask {
                 while ((n = in.read(buf)) > 0) {
                     total += n;
                     if (total > MAX_MANIFEST_BYTES) {
-                        throw new IOException("清单异常大（>" + MAX_MANIFEST_BYTES + " 字节）");
+                        throw new IOException(I18n.tr("清单异常大（>") + MAX_MANIFEST_BYTES + I18n.tr(" 字节）"));
                     }
                     bos.write(buf, 0, n);
                 }
@@ -359,7 +361,7 @@ public final class GamedataInstallerTask {
             }
         } catch (JSONException | IOException e) {
             // 状态写失败不影响数据可用，下次会当作"版本未知"重新检查一遍
-            Log.w(TAG, "写入安装状态失败: " + e.getMessage());
+            Log.w(TAG, I18n.tr("写入安装状态失败: ") + e.getMessage());
         }
     }
 }

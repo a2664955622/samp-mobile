@@ -45,6 +45,15 @@ struct DffValidationResult {
 // face groups, and COL3/4 shadow meshes so libGTASA's LoadCollisionModel* cannot OOB-read.
 bool validateColBytes(const uint8_t* colData, size_t colLen, ColFormat& outFmt, std::string& outErr);
 
+// Validates a COL1/2/3/4 blob and produces a sanitized body buffer (starting at raw+32)
+// safe for mobile libGTASA.so LoadCollisionModel*:
+// - Zeroes stale non-zero section offsets whose element count is 0 (mobile CCollisionData::
+//   GetNoVectors()/GetNoShadVectors() return 1 on 0 faces, which otherwise OOB-reads 6 bytes).
+// - Normalizes 92-byte PC COL4 headers down to 88-byte COL3 (arm64 libGTASA.so's
+//   LoadCollisionModelVer4 has a broken 136-byte header ABI).
+bool prepareColBodyForEngine(const uint8_t* colData, size_t colLen,
+	ColFormat& outFmt, std::vector<uint8_t>& outBody, std::string& outErr);
+
 // Validates a PC GTA:SA RenderWare .dff file for structural integrity and safety.
 // When extractAndStripCol is true, extracts any embedded COL1/2/3/4 chunk (0x0253F2FF or
 // 0x0253F2FA) into result.embeddedCol and builds result.sanitizedDff with those chunks removed.

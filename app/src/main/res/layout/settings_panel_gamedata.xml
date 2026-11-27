@@ -31,7 +31,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="游戏资源与文件验证"
+                    android:text="@string/ui_settings_panel_gamedata_001"
                     android:textColor="@color/launcher_accent"
                     android:textSize="@dimen/_9ssp"
                     android:textStyle="bold" />
@@ -41,7 +41,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/_2sdp"
-                    android:text="正在检查本地游戏文件…"
+                    android:text="@string/ui_settings_panel_gamedata_002"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp" />
 
@@ -50,7 +50,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="@dimen/_1sdp"
-                    android:text="支持本地导入 .zip 或通过启动器手动下载精简版资源（完整版 2.10 GiB 暂仅支持本地校验）"
+                    android:text="@string/ui_settings_panel_gamedata_003"
                     android:textColor="@color/launcher_text_dim"
                     android:textSize="@dimen/_7ssp" />
             </LinearLayout>
@@ -70,7 +70,7 @@
                 android:background="@drawable/launcher_btn_outline"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_10sdp"
-                android:text="本地导入"
+                android:text="@string/ui_settings_panel_gamedata_004"
                 android:textColor="@color/launcher_text"
                 android:textSize="@dimen/_8ssp"
                 android:textStyle="bold" />
@@ -83,7 +83,7 @@
                 android:background="@drawable/launcher_btn_primary"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_10sdp"
-                android:text="启动器下载"
+                android:text="@string/ui_settings_panel_gamedata_005"
                 android:textColor="@color/launcher_on_accent"
                 android:textSize="@dimen/_8ssp"
                 android:textStyle="bold" />
@@ -113,7 +113,7 @@
                     android:layout_weight="1"
                     android:ellipsize="middle"
                     android:singleLine="true"
-                    android:text="正在连接下载服务…"
+                    android:text="@string/ui_settings_panel_gamedata_006"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp" />
 
@@ -161,7 +161,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="文件检查清单"
+                android:text="@string/ui_settings_panel_gamedata_007"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_8ssp" />
 
@@ -173,7 +173,7 @@
                 android:background="@drawable/launcher_btn_primary"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_8sdp"
-                android:text="全部"
+                android:text="@string/ui_settings_panel_gamedata_008"
                 android:textColor="@color/launcher_on_accent"
                 android:textSize="@dimen/_7ssp"
                 android:textStyle="bold" />
@@ -186,7 +186,7 @@
                 android:background="@drawable/launcher_btn_outline"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_8sdp"
-                android:text="仅异常"
+                android:text="@string/ui_settings_panel_gamedata_009"
                 android:textColor="@color/launcher_text"
                 android:textSize="@dimen/_7ssp"
                 android:textStyle="bold" />
@@ -198,7 +198,7 @@
                 android:background="@drawable/launcher_btn_outline"
                 android:gravity="center"
                 android:paddingHorizontal="@dimen/_8sdp"
-                android:text="重新验证"
+                android:text="@string/ui_settings_panel_gamedata_010"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_7ssp"
                 android:textStyle="bold" />
@@ -217,7 +217,7 @@
             android:layout_height="0dp"
             android:layout_weight="1"
             android:gravity="center"
-            android:text="当前筛选下无异常文件"
+            android:text="@string/ui_settings_panel_gamedata_011"
             android:textColor="@color/launcher_text_dim"
             android:textSize="@dimen/_8ssp"
             android:visibility="gone" />

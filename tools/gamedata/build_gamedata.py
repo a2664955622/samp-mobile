@@ -1267,8 +1267,8 @@ def main():
     )
     ap.add_argument(
         "--out",
-        default=os.path.join("dist", "gamedata.zip"),
-        help="Output .zip archive (recommended for in-launcher one-click import) or directory path (default: dist/gamedata.zip)",
+        default=os.path.join("build", "gamedata", "gamedata-lite.zip"),
+        help="Output .zip archive (recommended for in-launcher one-click import) or directory path (default: build/gamedata/gamedata-lite.zip)",
     )
     ap.add_argument(
         "--compress",

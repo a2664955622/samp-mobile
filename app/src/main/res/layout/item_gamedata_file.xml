@@ -42,7 +42,7 @@
             android:layout_marginTop="@dimen/_1sdp"
             android:ellipsize="end"
             android:singleLine="true"
-            android:text="GTA:SA 核心 · 主世界模型档案"
+            android:text="@string/ui_item_gamedata_file_001"
             android:textColor="@color/launcher_text_dim"
             android:textSize="@dimen/_7ssp" />
     </LinearLayout>
@@ -63,7 +63,7 @@
         android:background="@drawable/ui_pill"
         android:paddingHorizontal="@dimen/_6sdp"
         android:paddingVertical="@dimen/_2sdp"
-        android:text="正常"
+        android:text="@string/ui_item_gamedata_file_002"
         android:textColor="@color/ui_good"
         android:textSize="@dimen/_7ssp"
         android:textStyle="bold" />

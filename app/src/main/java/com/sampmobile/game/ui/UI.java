@@ -6,6 +6,7 @@ import android.view.MotionEvent;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
 import com.joom.paranoid.Obfuscate;
 
+import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.util.Arrays;
 
@@ -139,6 +140,7 @@ public class UI implements Dialog.Listener, Keyboard.Listener, HeightProvider.Li
         } catch (Throwable ignored) {
             // FirebaseInitProvider only runs in the main launcher process, not :game.
         }
+        deleteSessionAliveMarker();
         Thread exitWatchdog = new Thread(() -> {
             try {
                 Thread.sleep(150);
@@ -149,6 +151,18 @@ public class UI implements Dialog.Listener, Keyboard.Listener, HeightProvider.Li
         exitWatchdog.setDaemon(true);
         exitWatchdog.start();
         samp.runOnUiThread(samp::finish);
+    }
+
+    // Native writes logcat/session_alive at client init and only intentional
+    // exits delete it; a leftover means the previous session died abnormally.
+    private void deleteSessionAliveMarker() {
+        try {
+            File extDir = samp.getExternalFilesDir(null);
+            if (extDir != null) {
+                new File(extDir, "logcat/session_alive").delete();
+            }
+        } catch (Throwable ignored) {
+        }
     }
 
     public void onResumeEvent() {

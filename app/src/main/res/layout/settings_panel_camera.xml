@@ -27,7 +27,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="视角转动灵敏度"
+                android:text="@string/ui_settings_panel_camera_001"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -37,7 +37,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
                 android:layout_marginBottom="@dimen/_6sdp"
-                android:text="分别调节手指在屏幕上左右与上下滑动时的视角跟随速度"
+                android:text="@string/ui_settings_panel_camera_002"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -59,7 +59,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="水平转向灵敏度"
+                        android:text="@string/ui_settings_panel_camera_003"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -68,7 +68,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="左右划屏旋转镜头与准星的速度"
+                        android:text="@string/ui_settings_panel_camera_004"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -117,7 +117,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="垂直俯仰灵敏度"
+                        android:text="@string/ui_settings_panel_camera_005"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -126,7 +126,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="上下划屏抬起或压低镜头的速度"
+                        android:text="@string/ui_settings_panel_camera_006"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -175,7 +175,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="步行镜头灵敏度"
+                        android:text="@string/ui_settings_panel_camera_007"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -184,7 +184,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="人物徒步走动与奔跑时的镜头划屏灵敏度比例"
+                        android:text="@string/ui_settings_panel_camera_008"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -233,7 +233,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="载具镜头灵敏度"
+                        android:text="@string/ui_settings_panel_camera_009"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -242,7 +242,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="驾驶汽车、摩托或飞机时环视四周镜头的灵敏度比例"
+                        android:text="@string/ui_settings_panel_camera_010"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -291,7 +291,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="开镜与瞄准灵敏度"
+                        android:text="@string/ui_settings_panel_camera_011"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -300,7 +300,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="持枪进入准星瞄准或狙击镜状态时的精准微调灵敏度比例"
+                        android:text="@string/ui_settings_panel_camera_012"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -349,7 +349,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="反转垂直视角"
+                        android:text="@string/ui_settings_panel_camera_013"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -358,7 +358,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="开启后向上划屏镜头下移，向下划屏镜头抬高"
+                        android:text="@string/ui_settings_panel_camera_014"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -384,7 +384,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="镜头机位与角色表现"
+                android:text="@string/ui_settings_panel_camera_015"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -394,7 +394,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
                 android:layout_marginBottom="@dimen/_6sdp"
-                android:text="设置自由镜头、步战与驾车默认跟拍机位以及角色头部动作"
+                android:text="@string/ui_settings_panel_camera_016"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -416,7 +416,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="自由镜头（镜头不自动回正）"
+                        android:text="@string/ui_settings_panel_camera_017"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -425,7 +425,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="开启后镜头始终停留在你转到的方向，行走或驾车时不会自动转回角色身后（也可输入 /freecam 切换）"
+                        android:text="@string/ui_settings_panel_camera_018"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -461,7 +461,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="第一人称自由环视"
+                        android:text="@string/ui_settings_panel_camera_019"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -470,7 +470,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="保留原版单机第一人称环视观察功能"
+                        android:text="@string/ui_settings_panel_camera_020"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -506,7 +506,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="步战默认视角距离"
+                        android:text="@string/ui_settings_panel_camera_021"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -515,7 +515,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="人物步行时的镜头远近，游戏内也可点右上角镜头键切换"
+                        android:text="@string/ui_settings_panel_camera_022"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -549,7 +549,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="载具默认视角高度"
+                        android:text="@string/ui_settings_panel_camera_023"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -558,7 +558,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="驾驶汽车时的镜头俯视角度，高视角更易观察前方路况"
+                        android:text="@string/ui_settings_panel_camera_024"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -592,7 +592,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="角色头部朝向跟随"
+                        android:text="@string/ui_settings_panel_camera_025"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -601,7 +601,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="角色头部随镜头方向自然转动，关闭后保持正视前方"
+                        android:text="@string/ui_settings_panel_camera_026"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>

@@ -189,6 +189,7 @@ public final class ClientSettings {
     static {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("offline_mode", false);
+        d.put("app_language", LocaleManager.LANG_AUTO);
         d.put("nick_name", "samp_player");
         d.put("samp_version", SAMP_VER_037);
         d.put("system_keyboard", true);
@@ -350,28 +351,28 @@ public final class ClientSettings {
     public static String labelForStringOption(StringOption[] options, String id) {
         if (id != null) {
             for (StringOption o : options) {
-                if (o.id.equalsIgnoreCase(id)) return o.label;
+                if (o.id.equalsIgnoreCase(id)) return I18n.tr(o.label);
             }
         }
-        return options[0].label;
+        return I18n.tr(options[0].label);
     }
 
     public static String[] labelsOf(StringOption[] options) {
         String[] out = new String[options.length];
-        for (int i = 0; i < options.length; i++) out[i] = options[i].label;
+        for (int i = 0; i < options.length; i++) out[i] = I18n.tr(options[i].label);
         return out;
     }
 
     public static String labelForIntOption(IntOption[] options, int value) {
         for (IntOption o : options) {
-            if (o.value == value) return o.label;
+            if (o.value == value) return I18n.tr(o.label);
         }
-        return options[0].label;
+        return I18n.tr(options[0].label);
     }
 
     public static String[] labelsOf(IntOption[] options) {
         String[] out = new String[options.length];
-        for (int i = 0; i < options.length; i++) out[i] = options[i].label;
+        for (int i = 0; i < options.length; i++) out[i] = I18n.tr(options[i].label);
         return out;
     }
 
@@ -732,6 +733,7 @@ public final class ClientSettings {
             ClientSettings prev = loadLauncher(appCtx);
             ClientSettings fresh = createDefaults();
             fresh.setServer(prev.serverHost, prev.serverPort, prev.serverPassword);
+            fresh.put("app_language", prev.getString("app_language"));
             sLauncherCache = fresh.copy();
             ++sWriteGeneration;
             if (file != null) {

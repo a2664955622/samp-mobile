@@ -1,6 +1,7 @@
 #include "ClientCmds.h"
 #include "Client.h"
 #include "Settings.h"
+#include "L10n.h"
 #include "UI/UI.h"
 #include "UI/UISettings.h"
 #include "UI/SAMPWidgets/Chat.h"
@@ -39,7 +40,7 @@ void cmdQuit(const std::string& params)
 {
 	(void) params;
 	if (pUI) {
-		pUI->chat()->addInfoMessage("-> Exiting game...");
+		pUI->chat()->addInfoMessage(L10N("-> Exiting game...", "-> 退出游戏..."));
 	}
 	Hooks::requestGracefulExit("/q");
 }
@@ -71,7 +72,7 @@ void cmdSave(const std::string& params)
 
 	if (!fileOut) {
 		if (pUI) {
-			pUI->chat()->addInfoMessage("Save failed");
+			pUI->chat()->addInfoMessage(L10N("Save failed", "保存失败"));
 		}
 
 		return;
@@ -98,7 +99,7 @@ void cmdSave(const std::string& params)
 		fclose(fileOut);
 
 		if (pUI) {
-			pUI->chat()->addInfoMessage("-> Successfully saved vehicle position");
+			pUI->chat()->addInfoMessage(L10N("-> Successfully saved vehicle position", "-> 成功保存车辆位置"));
 		}
 
 		return;
@@ -118,7 +119,7 @@ void cmdSave(const std::string& params)
 			params.c_str());
 
 	if (pUI) {
-		pUI->chat()->addInfoMessage("-> Successfully saved onfoot position");
+		pUI->chat()->addInfoMessage(L10N("-> Successfully saved onfoot position", "-> 成功保存步行位置"));
 	}
 
 	fclose(fileOut);
@@ -129,7 +130,7 @@ void cmdDL(const std::string& params)
 	if (pUI && pUI->debuglabels()) {
 		const bool next = !pUI->debuglabels()->vehicleLabelsVisible();
 		pUI->debuglabels()->setVehicleLabelsVisible(next);
-		pUI->chat()->addInfoMessage("-> DebugLabels %s", next ? "ON" : "OFF");
+		pUI->chat()->addInfoMessage("-> DebugLabels %s", l10n::onOff(next));
 	}
 }
 
@@ -161,7 +162,7 @@ void cmdSaveRaw(const std::string& params)
 				pVehicle->m_nSecondaryColor,
 				params.c_str());
 		fclose(fileOut);
-		if (pUI) pUI->chat()->addDebugMessage("-> InCar pos saved");
+		if (pUI) pUI->chat()->addDebugMessage(L10N("-> InCar pos saved", "-> InCar pos 已保存"));
 		return;
 	}
 
@@ -180,49 +181,49 @@ void cmdSaveRaw(const std::string& params)
 			fZAngle,
 			params.c_str());
 	fclose(fileOut);
-	if (pUI) pUI->chat()->addDebugMessage("-> OnFoot pos saved");
+	if (pUI) pUI->chat()->addDebugMessage(L10N("-> OnFoot pos saved", "-> OnFoot 位置已保存"));
 }
 
 void cmdFontSize(const std::string& params)
 {
 	if (!pUI) return;
 	if (params.empty()) {
-		pUI->chat()->addDebugMessage("Valid fontsize: -3 to 5 (Current: %d)", Settings::fontSizeOffset());
+		pUI->chat()->addDebugMessage(L10N("Valid fontsize: -3 to 5 (Current: %d)", "有效字体大小：-3 到 5（当前：%d）"), Settings::fontSizeOffset());
 		return;
 	}
 	char* endPtr = nullptr;
 	long size = std::strtol(params.c_str(), &endPtr, 10);
 	if (endPtr == params.c_str() || size < -3 || size > 5) {
-		pUI->chat()->addDebugMessage("Valid fontsize: -3 to 5");
+		pUI->chat()->addDebugMessage(L10N("Valid fontsize: -3 to 5", "有效字体大小：-3 到 5"));
 		return;
 	}
 	UISettings::setFontSizeOffset(static_cast<int>(size));
 	pUI->chat()->setItemSize(UISettings::chatItemSize());
 	pUI->chat()->setFixedSize(UISettings::chatSize());
 	pUI->chat()->performLayout();
-	pUI->chat()->addInfoMessage("-> Chat FontSize set to %ld", size);
+	pUI->chat()->addInfoMessage(L10N("-> Chat FontSize set to %ld", "-> 聊天字体大小设置为 %ld"), size);
 }
 
 void cmdFpsLimit(const std::string& params)
 {
 	if (!pUI) return;
 	if (params.empty()) {
-		pUI->chat()->addInfoMessage("-> Frame Limiter: %d (valid amounts are 20-120, 0 = unlimited)", Settings::fpslimit());
+		pUI->chat()->addInfoMessage(L10N("-> Frame Limiter: %d (valid amounts are 20-120, 0 = unlimited)", "-> 帧限制器：%d（有效数量为 20-120，0 = 无限制）"), Settings::fpslimit());
 		return;
 	}
 	char* endPtr = nullptr;
 	long value = std::strtol(params.c_str(), &endPtr, 10);
 	if (endPtr == params.c_str() || (value != 0 && (value < 20 || value > 120))) {
-		pUI->chat()->addInfoMessage("-> Frame Limiter: valid amounts are 20-120 (0 = unlimited)");
+		pUI->chat()->addInfoMessage(L10N("-> Frame Limiter: valid amounts are 20-120 (0 = unlimited)", "-> 帧限制器：有效数量为 20-120（0 = 无限制）"));
 		return;
 	}
 	Settings::setFpsLimit(static_cast<int>(value));
 	Settings::applyFpsLimitPatch();
 	if (value == 0) {
-		pUI->chat()->addInfoMessage("-> Frame Limiter: Unlimited");
+		pUI->chat()->addInfoMessage(L10N("-> Frame Limiter: Unlimited", "-> 帧限制器：无限制"));
 	}
 	else {
-		pUI->chat()->addInfoMessage("-> Frame Limiter: %ld", value);
+		pUI->chat()->addInfoMessage(L10N("-> Frame Limiter: %ld", "-> 帧限制器：%ld"), value);
 	}
 }
 
@@ -231,7 +232,7 @@ void cmdInterior(const std::string& params)
 	if (!pUI) return;
 	uint32_t interior = 0;
 	ScriptCommand(&get_active_interior, &interior);
-	pUI->chat()->addDebugMessage("Current Interior: %u", interior);
+	pUI->chat()->addDebugMessage(L10N("Current Interior: %u", "当前内饰：%u"), interior);
 }
 
 void cmdNameTagStatus(const std::string& params)
@@ -239,7 +240,7 @@ void cmdNameTagStatus(const std::string& params)
 	const bool next = !Settings::showNameTagStatus();
 	Settings::setShowNameTagStatus(next);
 	if (pUI) {
-		pUI->chat()->addInfoMessage("-> NameTag Status: %s", next ? "ON" : "OFF");
+		pUI->chat()->addInfoMessage("-> NameTag Status: %s", l10n::onOff(next));
 	}
 }
 
@@ -248,7 +249,7 @@ void cmdAudioMsg(const std::string& params)
 	const bool next = !Settings::audioMsg();
 	Settings::setAudioMsg(next);
 	if (pUI) {
-		pUI->chat()->addInfoMessage("Audio messages: %s", next ? "On" : "Off");
+		pUI->chat()->addInfoMessage(L10N("Audio messages: %s", "音频消息：%s"), l10n::onOffTitle(next));
 	}
 }
 
@@ -257,7 +258,7 @@ void cmdLogUrls(const std::string& params)
 	const bool next = !Settings::logUrls();
 	Settings::setLogUrls(next);
 	if (pUI) {
-		pUI->chat()->addInfoMessage("URL messages: %s", next ? "On" : "Off");
+		pUI->chat()->addInfoMessage(L10N("URL messages: %s", "URL消息：%s"), l10n::onOffTitle(next));
 	}
 }
 
@@ -273,7 +274,7 @@ void cmdMem(const std::string& params)
 				static_cast<double>(*pAvail) / (1024.0 * 1024.0));
 	}
 	else {
-		pUI->chat()->addDebugMessage("Memory: unavailable");
+		pUI->chat()->addDebugMessage(L10N("Memory: unavailable", "内存：不可用"));
 	}
 }
 
@@ -282,7 +283,7 @@ void cmdCameraTargetDebug(const std::string& params)
 	if (pUI && pUI->debuglabels()) {
 		const bool next = !pUI->debuglabels()->cameraTargetsVisible();
 		pUI->debuglabels()->setCameraTargetsVisible(next);
-		pUI->chat()->addInfoMessage("-> CameraTarget Debug: %s", next ? "ON" : "OFF");
+		pUI->chat()->addInfoMessage("-> CameraTarget Debug: %s", l10n::onOff(next));
 	}
 }
 
@@ -301,7 +302,7 @@ void cmdNetStats(const std::string& params)
 	if (pUI && pUI->netstats()) {
 		const bool next = !pUI->netstats()->clientStatsVisible();
 		pUI->netstats()->setClientStatsVisible(next);
-		pUI->chat()->addInfoMessage("-> Client NetStats: %s", next ? "ON" : "OFF");
+		pUI->chat()->addInfoMessage("-> Client NetStats: %s", l10n::onOff(next));
 	}
 }
 
@@ -310,14 +311,14 @@ void cmdSvrNetStats(const std::string& params)
 	if (pUI && pUI->netstats()) {
 		const bool next = !pUI->netstats()->serverStatsVisible();
 		pUI->netstats()->setServerStatsVisible(next);
-		pUI->chat()->addInfoMessage("-> Server NetStats: %s", next ? "ON" : "OFF");
+		pUI->chat()->addInfoMessage("-> Server NetStats: %s", l10n::onOff(next));
 	}
 }
 
 void cmdDW(const std::string& params)
 {
 	if (pUI) {
-		pUI->chat()->addInfoMessage("-> DeathWindow: %s", pUI->deathwindow()->visible() ? "OFF" : "ON");
+		pUI->chat()->addInfoMessage("-> DeathWindow: %s", l10n::onOff(!pUI->deathwindow()->visible()));
 		pUI->deathwindow()->setVisible(!pUI->deathwindow()->visible());
 	}
 }
@@ -340,7 +341,7 @@ void cmdTimestamp(const std::string& params)
 		Chat::setTimestamp(next);
 		Settings::setTimestamp(next);
 		pUI->chat()->performLayout();
-		pUI->chat()->addInfoMessage("-> Timestamp %s", next ? "ON" : "OFF");
+		pUI->chat()->addInfoMessage("-> Timestamp %s", l10n::onOff(next));
 	}
 }
 
@@ -348,7 +349,7 @@ void cmdHeadMove(const std::string& params)
 {
 	Settings::setHeadMove(!Settings::headMove());
 	if (pUI) {
-		pUI->chat()->addInfoMessage("-> HeadMove: %s", Settings::headMove() ? "ON" : "OFF");
+		pUI->chat()->addInfoMessage("-> HeadMove: %s", l10n::onOff(Settings::headMove()));
 	}
 }
 
@@ -357,7 +358,7 @@ void cmdFreeCam(const std::string& params)
 	Settings::setFreeCam(!Settings::freeCam());
 	Settings::applyDynamicCameraAndFreeCam();
 	if (pUI) {
-		pUI->chat()->addInfoMessage("-> FreeCamera (自由镜头): %s", Settings::freeCam() ? "ON" : "OFF");
+		pUI->chat()->addInfoMessage(L10N("-> FreeCamera: %s", "-> 自由镜头：%s"), l10n::onOff(Settings::freeCam()));
 	}
 }
 
@@ -370,18 +371,18 @@ void cmdPageSize(const std::string& params)
 {
 	if (!pUI) return;
 	if (params.empty()) {
-		pUI->chat()->addInfoMessage("-> Usage: /pagesize [5-20] (Current: %d)", Settings::chatstrings());
+		pUI->chat()->addInfoMessage(L10N("-> Usage: /pagesize [5-20] (Current: %d)", "-> 用法：/pagesize [5-20]（当前：%d）"), Settings::chatstrings());
 		return;
 	}
 	int lines = std::atoi(params.c_str());
 	if (lines < 5 || lines > 20) {
-		pUI->chat()->addInfoMessage("-> PageSize must be between 5 and 20 lines");
+		pUI->chat()->addInfoMessage(L10N("-> PageSize must be between 5 and 20 lines", "-> PageSize 必须在 5 到 20 行之间"));
 		return;
 	}
 	UISettings::setChatStrings(lines);
 	pUI->chat()->setFixedSize(UISettings::chatSize());
 	pUI->chat()->performLayout();
-	pUI->chat()->addInfoMessage("-> Chat PageSize set to %d lines", lines);
+	pUI->chat()->addInfoMessage(L10N("-> Chat PageSize set to %d lines", "-> 聊天页面大小设置为 %d 行"), lines);
 }
 
 void cmdScreenshot(const std::string& params)
@@ -400,23 +401,23 @@ void cmdCmds(const std::string& params)
 {
 	if (pUI) {
 		pUI->chat()->addInfoMessage(" ");
-		pUI->chat()->addInfoMessage("Client Commands:");
-		pUI->chat()->addInfoMessage("/quit (/q) -> Exit Game");
-		pUI->chat()->addInfoMessage("/ss (/screenshot) [hud|game] -> Take Screenshot (or F8 key)");
-		pUI->chat()->addInfoMessage("/hudedit -> Open Touch Button Position Editor");
-		pUI->chat()->addInfoMessage("/freecam -> Toggle Free Camera (No Auto-Center)");
-		pUI->chat()->addInfoMessage("/headmove -> Toggle Character Head Rotation");
-		pUI->chat()->addInfoMessage("/pagesize [5-20] -> Change Chat Line Count");
-		pUI->chat()->addInfoMessage("/fontsize [-3..5] -> Change Chat Font Size");
-		pUI->chat()->addInfoMessage("/fpslimit [20-120|0] -> Set Frame Rate Limit");
-		pUI->chat()->addInfoMessage("/timestamp -> Toggle Chat Timestamp");
-		pUI->chat()->addInfoMessage("/nametagstatus -> Toggle AFK Hourglass Icon");
-		pUI->chat()->addInfoMessage("/audiomsg -> Toggle Audio Stream Chat Messages");
-		pUI->chat()->addInfoMessage("/logurls -> Toggle Logging Audio Stream URLs");
-		pUI->chat()->addInfoMessage("/interior -> Show Current Interior ID");
-		pUI->chat()->addInfoMessage("/mem -> Show GTA Streaming Memory Usage");
-		pUI->chat()->addInfoMessage("/clearmychat -> Clear Local Chat Window");
-		pUI->chat()->addInfoMessage("/save [note] / /rs [note] -> Save Position (Script / Raw)");
+		pUI->chat()->addInfoMessage(L10N("Client Commands:", "客户端命令："));
+		pUI->chat()->addInfoMessage(L10N("/quit (/q) -> Exit Game", "/quit (/q) -> 退出游戏"));
+		pUI->chat()->addInfoMessage(L10N("/ss (/screenshot) [hud|game] -> Take Screenshot (or F8 key)", "/ss (/screenshot) [hud|game] -> 截屏（或 F8 键）"));
+		pUI->chat()->addInfoMessage(L10N("/hudedit -> Open Touch Button Position Editor", "/hudedit -> 打开触摸按钮位置编辑器"));
+		pUI->chat()->addInfoMessage(L10N("/freecam -> Toggle Free Camera (No Auto-Center)", "/freecam -> 切换自由相机（无自动居中）"));
+		pUI->chat()->addInfoMessage(L10N("/headmove -> Toggle Character Head Rotation", "/headmove -> 切换角色头部旋转"));
+		pUI->chat()->addInfoMessage(L10N("/pagesize [5-20] -> Change Chat Line Count", "/pagesize [5-20] -> 更改聊天行数"));
+		pUI->chat()->addInfoMessage(L10N("/fontsize [-3..5] -> Change Chat Font Size", "/fontsize [-3..5] -> 更改聊天字体大小"));
+		pUI->chat()->addInfoMessage(L10N("/fpslimit [20-120|0] -> Set Frame Rate Limit", "/fpslimit [20-120|0] -> 设置帧速率限制"));
+		pUI->chat()->addInfoMessage(L10N("/timestamp -> Toggle Chat Timestamp", "/timestamp -> 切换聊天时间戳"));
+		pUI->chat()->addInfoMessage(L10N("/nametagstatus -> Toggle AFK Hourglass Icon", "/nametagstatus -> 切换 AFK 沙漏图标"));
+		pUI->chat()->addInfoMessage(L10N("/audiomsg -> Toggle Audio Stream Chat Messages", "/audiomsg -> 切换音频流聊天消息"));
+		pUI->chat()->addInfoMessage(L10N("/logurls -> Toggle Logging Audio Stream URLs", "/logurls -> 切换记录音频流 URL"));
+		pUI->chat()->addInfoMessage(L10N("/interior -> Show Current Interior ID", "/interior -> 显示当前内部 ID"));
+		pUI->chat()->addInfoMessage(L10N("/mem -> Show GTA Streaming Memory Usage", "/mem -> 显示 GTA 流内存使用情况"));
+		pUI->chat()->addInfoMessage(L10N("/clearmychat -> Clear Local Chat Window", "/clearmychat -> 清除本地聊天窗口"));
+		pUI->chat()->addInfoMessage(L10N("/save [note] / /rs [note] -> Save Position (Script / Raw)", "/save [note] / /rs [note] -> 保存位置（脚本/原始）"));
 		pUI->chat()->addInfoMessage("/dl / /ctd -> Toggle Vehicle / CameraTarget Debug Labels");
 		pUI->chat()->addInfoMessage("/netstats / /svrnetstats -> Toggle Network Stats (F5 / F10)");
 		pUI->chat()->addInfoMessage("/dw / /testdw -> Toggle / Test Death Window");
@@ -433,18 +434,18 @@ void cmdCmds(const std::string& params)
 void cmdJetpack(const std::string& params)
 {
 	if (pGame->FindPlayerPed()->IsInVehicle()) {
-		pUI->chat()->addInfoMessage("-> You can't use jetpack while in vehicle");
+		pUI->chat()->addInfoMessage(L10N("-> You can't use jetpack while in vehicle", "-> 你不能在车内使用喷气背包"));
 		return;
 	}
 
 	pGame->FindPlayerPed()->StartJetpack();
-	pUI->chat()->addInfoMessage("-> Jetpack started");
+	pUI->chat()->addInfoMessage(L10N("-> Jetpack started", "-> 喷气背包启动"));
 }
 
 void cmdCleo(const std::string& params)
 {
 	if (!CleoEngine::isEnabled()) {
-		if (pUI) pUI->chat()->addInfoMessage("-> CLEO 未开启（请在启动器设置/模组管理中启用 CLEO）");
+		if (pUI) pUI->chat()->addInfoMessage(L10N("-> CLEO is disabled (enable it in Launcher Settings / Mod Manager)", "-> CLEO 未开启（请在启动器设置/模组管理中启用 CLEO）"));
 		return;
 	}
 	CleoEngine::toggleMenu();
@@ -552,7 +553,7 @@ void cmdClassSelection(const std::string& params)
 	if (!pLocal->WantsAnotherClass()) {
 		pLocal->ReturnToClassSelection();
 		if (pUI && pUI->chat()) {
-			pUI->chat()->addInfoMessage("Returning to class selection after next death");
+			pUI->chat()->addInfoMessage(L10N("Returning to class selection after next death", "下次死亡后返回职业选择"));
 		}
 	}
 }

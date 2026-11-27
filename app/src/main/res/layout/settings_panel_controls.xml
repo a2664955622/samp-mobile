@@ -29,7 +29,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:tag="theme_accent_text"
-                android:text="自定义游戏按键位置与大小"
+                android:text="@string/ui_settings_panel_controls_001"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -38,7 +38,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
-                android:text="调用 GTA:SA 原生按键位置编辑器（Change Button Position），支持在游戏内自由拖拽移动、双指缩放步行与载具按键（游戏内也可随时点击底部快捷面板 HUD 键或输入 /hudedit 打开）"
+                android:text="@string/ui_settings_panel_controls_002"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -57,7 +57,7 @@
                     android:background="@drawable/launcher_btn_primary"
                     android:gravity="center"
                     android:tag="theme_accent_bg"
-                    android:text="进入游戏时自动打开按键位置调整"
+                    android:text="@string/ui_settings_panel_controls_003"
                     android:textColor="@color/launcher_on_accent"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />
@@ -69,7 +69,7 @@
                     android:background="@drawable/launcher_btn_outline"
                     android:gravity="center"
                     android:paddingHorizontal="@dimen/_12sdp"
-                    android:text="恢复默认按键位置"
+                    android:text="@string/ui_settings_panel_controls_004"
                     android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_8ssp"
                     android:textStyle="bold" />
@@ -87,7 +87,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="步战操控与瞄准"
+                android:text="@string/ui_settings_panel_controls_005"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -97,7 +97,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
                 android:layout_marginBottom="@dimen/_6sdp"
-                android:text="调整左侧移动摇杆尺寸、自动翻越障碍物以及持枪瞄准模式"
+                android:text="@string/ui_settings_panel_controls_006"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -119,7 +119,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="虚拟摇杆大小"
+                        android:text="@string/ui_settings_panel_controls_007"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -128,7 +128,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="缩放虚拟摇杆图标与推杆行程半径（50% 至 150%）"
+                        android:text="@string/ui_settings_panel_controls_008"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -177,7 +177,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="射击按键响应灵敏度"
+                        android:text="@string/ui_settings_panel_controls_009"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -186,7 +186,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="原版单机开火键判定阈值，调节按压开火与划动准星的区分度"
+                        android:text="@string/ui_settings_panel_controls_010"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -235,7 +235,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="自动攀爬障碍物"
+                        android:text="@string/ui_settings_panel_controls_011"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -244,7 +244,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="推摇杆贴近矮墙时自动翻越，关闭后仅在点击跳跃键时攀爬"
+                        android:text="@string/ui_settings_panel_controls_012"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -280,7 +280,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="武器瞄准方式"
+                        android:text="@string/ui_settings_panel_controls_013"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -289,7 +289,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="锁定辅助会自动吸附附近目标，自由准星为纯手动瞄准"
+                        android:text="@string/ui_settings_panel_controls_014"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -313,7 +313,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="载具驾驶与触控反馈"
+                android:text="@string/ui_settings_panel_controls_015"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -323,7 +323,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
                 android:layout_marginBottom="@dimen/_6sdp"
-                android:text="选择习惯的汽车方向盘操控方式、按键布局、体感与震动反馈"
+                android:text="@string/ui_settings_panel_controls_016"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -345,7 +345,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="载具转向方式"
+                        android:text="@string/ui_settings_panel_controls_017"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -354,7 +354,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="驾驶载具时使用摇杆、左右方向键或滑动控制方向"
+                        android:text="@string/ui_settings_panel_controls_018"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -388,7 +388,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="触控按键布局"
+                        android:text="@string/ui_settings_panel_controls_019"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -397,7 +397,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="切换传统按键排布或双侧自适应操作布局"
+                        android:text="@string/ui_settings_panel_controls_020"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -431,7 +431,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="重力感应驾驶"
+                        android:text="@string/ui_settings_panel_controls_021"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -440,7 +440,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="倾斜手机辅助控制车辆方向与空中俯仰姿态"
+                        android:text="@string/ui_settings_panel_controls_022"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -474,7 +474,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="摩托车摇杆转向"
+                        android:text="@string/ui_settings_panel_controls_023"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -483,7 +483,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="骑乘摩托车与自行车时使用摇杆同时控制转向与前后翘头"
+                        android:text="@string/ui_settings_panel_controls_024"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -519,7 +519,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="触控震动反馈"
+                        android:text="@string/ui_settings_panel_controls_025"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -528,7 +528,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="碰撞、射击与爆炸时调用手机震动马达反馈"
+                        android:text="@string/ui_settings_panel_controls_026"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -565,7 +565,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="摇杆方向盘转向灵敏度"
+                        android:text="@string/ui_settings_panel_controls_027"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -574,7 +574,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="原版单机模拟摇杆驾驶汽车时的车轮打方向响应速度"
+                        android:text="@string/ui_settings_panel_controls_028"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -623,7 +623,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="滑动转向灵敏度"
+                        android:text="@string/ui_settings_panel_controls_029"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -632,7 +632,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="选择滑动转向模式时的方向盘跟随灵敏度"
+                        android:text="@string/ui_settings_panel_controls_030"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -671,7 +671,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:tag="theme_accent_text"
-                android:text="外接键鼠与手柄操作映射"
+                android:text="@string/ui_settings_panel_controls_031"
                 android:textColor="@color/launcher_accent"
                 android:textSize="@dimen/_9ssp"
                 android:textStyle="bold" />
@@ -681,7 +681,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_2sdp"
                 android:layout_marginBottom="@dimen/_6sdp"
-                android:text="支持蓝牙/OTG 外接键盘鼠标、模拟器按键映射以及游戏手柄摇杆方向设置"
+                android:text="@string/ui_settings_panel_controls_032"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
 
@@ -703,7 +703,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="启用外接键盘与鼠标快捷键映射"
+                        android:text="@string/ui_settings_panel_controls_033"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -712,7 +712,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="将物理键盘按键映射为电脑端 SA-MP 标准联机指令与移动操作"
+                        android:text="@string/ui_settings_panel_controls_034"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -748,7 +748,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="手柄右摇杆水平视角反转"
+                        android:text="@string/ui_settings_panel_controls_035"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -757,7 +757,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="反转外接蓝牙手柄右摇杆的左右镜头旋转方向"
+                        android:text="@string/ui_settings_panel_controls_036"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -793,7 +793,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="手柄右摇杆垂直视角反转"
+                        android:text="@string/ui_settings_panel_controls_037"
                         android:textColor="@color/launcher_text"
                         android:textSize="@dimen/_9ssp"
                         android:textStyle="bold" />
@@ -802,7 +802,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/_1sdp"
-                        android:text="反转外接蓝牙手柄右摇杆的上下镜头俯仰方向"
+                        android:text="@string/ui_settings_panel_controls_038"
                         android:textColor="@color/launcher_text_dim"
                         android:textSize="@dimen/_7ssp" />
                 </LinearLayout>
@@ -823,7 +823,7 @@
                 android:background="@drawable/launcher_input_bg"
                 android:lineSpacingExtra="@dimen/_2sdp"
                 android:padding="@dimen/_8sdp"
-                android:text="【电脑端标准键鼠映射表】\n• W / A / S / D 或方向键：人物行走 / 载具转向 / 选人切换\n• T 或 F6：打开聊天输入框　　• TAB：查看在线玩家计分板\n• F 或 Enter：驾驶位上车/下车　• G：副驾驶/乘客位上车\n• 左 Ctrl：开火攻击 / 出生确认　• 左 Alt：慢走 / 载具武器开火\n• 空格 或 左 Shift：冲刺跑 / 载具手刹　• C：蹲下　• H：鸣笛 / 互动\n• Y / N / 2：服务器菜单确认/取消/副任务　• Q / E：左右侧看\n• 小键盘 8 / 4 / 6 / 2：飞机俯仰与液压控制　• B 或 V：语音麦克风发言\n• F7：显示/隐藏聊天框　　• F8：立即保存高清游戏截图"
+                android:text="@string/ui_settings_panel_controls_039"
                 android:textColor="@color/launcher_text_dim"
                 android:textSize="@dimen/_7ssp" />
         </LinearLayout>

@@ -27,6 +27,7 @@
 #include <encoding.h>
 #include <spdlog/spdlog.h>
 #include <cmath>
+#include "../L10n.h"
 
 namespace {
 inline bool isFinite3(float x, float y, float z) {
@@ -652,7 +653,7 @@ void RpcHandlers::OnPlayAudioStream(const proto::PlayAudioStream& p)
 	spdlog::debug("ScriptRPC: ScrPlayAudioStream");
 
 	if (Settings::audioMsg() && pUI && pUI->chat()) {
-		pUI->chat()->addInfoMessage("[Audio Stream]: %s", p.url.c_str());
+		pUI->chat()->addInfoMessage(L10N("[Audio Stream]: %s", "[音频流]：%s"), p.url.c_str());
 	}
 
 	if (Settings::logUrls() && Client::gameDir()) {

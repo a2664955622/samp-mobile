@@ -134,7 +134,8 @@ std::vector<uint8_t> buildValidCol3(uint32_t colFourCc = 0x334C4F43u)
 }
 
 std::vector<uint8_t> buildMinimalDff(const char* texName, uint32_t colChunkId, uint32_t colFourCc,
-	const char* nodeName = nullptr, const std::vector<uint8_t>* geomExtChild = nullptr)
+	const char* nodeName = nullptr, const std::vector<uint8_t>* geomExtChild = nullptr,
+	float morphSphereRadius = 1.0f)
 {
 	// Clump struct: numAtomics=1, numLights=0, numCameras=0
 	std::vector<uint8_t> clumpStruct;
@@ -200,7 +201,7 @@ std::vector<uint8_t> buildMinimalDff(const char* texName, uint32_t colChunkId, u
 	pushF32(gStruct, 0.0f);
 	pushF32(gStruct, 0.0f);
 	pushF32(gStruct, 0.0f);
-	pushF32(gStruct, 1.0f);
+	pushF32(gStruct, morphSphereRadius);
 	pushLE32(gStruct, 1);
 	pushLE32(gStruct, 0);
 	// 3 vertices
@@ -679,6 +680,68 @@ static void testDffValidatorAndColExtraction()
 		overCol[6] = static_cast<uint8_t>((tooBig >> 16) & 0xFFu);
 		overCol[7] = static_cast<uint8_t>((tooBig >> 24) & 0xFFu);
 		CHECK(!validateColBytes(overCol.data(), overCol.size(), fmt, err));
+
+		// 2b. Exact vivo V2312A crash regression: COL3 with numShadowFaces == 0 but stale
+		// non-zero offShadowVerts pointing 4 bytes before EOF (mobile GetNoShadVectors()
+		// returns 1 and reads 6 bytes -> 2-byte OOB into Scudo guard page).
+		// Must be ACCEPTED (valid collision mesh preserved) and sanitized to offShadowVerts=0.
+		auto readU32 = [](const uint8_t* p) -> uint32_t {
+			return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8)
+				| (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+		};
+		auto writeU32 = [](uint8_t* p, uint32_t v) {
+			p[0] = static_cast<uint8_t>(v & 0xFFu);
+			p[1] = static_cast<uint8_t>((v >> 8) & 0xFFu);
+			p[2] = static_cast<uint8_t>((v >> 16) & 0xFFu);
+			p[3] = static_cast<uint8_t>((v >> 24) & 0xFFu);
+		};
+
+		auto staleShCol = goodCol;
+		const uint32_t bodyLen = static_cast<uint32_t>(staleShCol.size() - 32u);
+		// numShadowFaces (body+76) = 0, offShadowVerts (body+80) = EOF - 4 (in raw+4 coords)
+		writeU32(staleShCol.data() + 32u + 76u, 0u);
+		writeU32(staleShCol.data() + 32u + 80u, bodyLen + 28u - 4u);
+		writeU32(staleShCol.data() + 32u + 84u, bodyLen + 28u - 4u);
+		std::vector<uint8_t> preparedBody;
+		CHECK(prepareColBodyForEngine(staleShCol.data(), staleShCol.size(), fmt, preparedBody, err));
+		CHECK(fmt == ColFormat::Col3);
+		CHECK_EQ(preparedBody.size(), bodyLen);
+		CHECK_EQ(readU32(preparedBody.data() + 76u), 0u);
+		CHECK_EQ(readU32(preparedBody.data() + 80u), 0u);
+		CHECK_EQ(readU32(preparedBody.data() + 84u), 0u);
+		CHECK(readU32(preparedBody.data() + 64u) != 0u); // main vertices preserved
+		CHECK(readU32(preparedBody.data() + 68u) != 0u); // main faces preserved
+
+		// 2c. COL3 with numFaces == 0 and stale offVerts -> cleared to 0 so GetNoVectors() isn't called.
+		auto emptyMeshCol = goodCol;
+		emptyMeshCol[32u + 44u] = 0u; // numFaces lo = 0
+		emptyMeshCol[32u + 45u] = 0u; // numFaces hi = 0
+		CHECK(prepareColBodyForEngine(emptyMeshCol.data(), emptyMeshCol.size(), fmt, preparedBody, err));
+		CHECK_EQ(readU32(preparedBody.data() + 64u), 0u);
+		CHECK_EQ(readU32(preparedBody.data() + 68u), 0u);
+
+		// 2d. COL3 with numFaces == 32768 (signed int16 overflow in mobile ldrsh) -> must reject.
+		auto hugeFacesCol = goodCol;
+		hugeFacesCol[32u + 44u] = 0x00u;
+		hugeFacesCol[32u + 45u] = 0x80u;
+		CHECK(!validateColBytes(hugeFacesCol.data(), hugeFacesCol.size(), fmt, err));
+
+		// 2e. PC COL4 (92B header) normalized down to COL3 (88B header, offsets shifted by -4).
+		auto col4 = goodCol;
+		col4[3] = '4'; // "COL4"
+		const uint32_t col4EncSize = readU32(col4.data() + 4u) + 4u;
+		writeU32(col4.data() + 4u, col4EncSize);
+		// Shift existing non-zero offsets (+4) and insert 4 trailing header bytes at body+88
+		const uint32_t origOffVerts = readU32(col4.data() + 32u + 64u);
+		const uint32_t origOffFaces = readU32(col4.data() + 32u + 68u);
+		writeU32(col4.data() + 32u + 64u, origOffVerts + 4u);
+		writeU32(col4.data() + 32u + 68u, origOffFaces + 4u);
+		col4.insert(col4.begin() + 32 + 88, 4, 0u);
+		CHECK(prepareColBodyForEngine(col4.data(), col4.size(), fmt, preparedBody, err));
+		CHECK(fmt == ColFormat::Col3);
+		CHECK_EQ(preparedBody.size(), bodyLen);
+		CHECK_EQ(readU32(preparedBody.data() + 64u), origOffVerts);
+		CHECK_EQ(readU32(preparedBody.data() + 68u), origOffFaces);
 	}
 
 	// 3. Valid DFF without collision -> zero-copy (sanitizedDff empty)
@@ -689,6 +752,31 @@ static void testDffValidatorAndColExtraction()
 		CHECK(!res.hasEmbeddedColChunk);
 		CHECK(res.colFormat == ColFormat::None);
 		CHECK(res.sanitizedDff.empty());
+	}
+
+	// 3b. Huge-but-finite morph bounding sphere radius (real-world exporter artifact, e.g. big map
+	// objects with radius ~1e25) must be ACCEPTED: RW uses it only for culling, and PC clients load
+	// these models fine. Only non-finite values indicate corruption.
+	{
+		auto dff = buildMinimalDff("custom_wall", 0, 0, nullptr, nullptr, 5.8e25f);
+		auto res = validateAndPrepareDff(dff.data(), dff.size(), true);
+		CHECK(res.ok);
+
+		auto nanDff = buildMinimalDff("custom_wall", 0, 0, nullptr, nullptr, 1.0f);
+		// patch radius (last of the 4 sphere floats) to NaN -> still rejected
+		// locate morph sphere: search for the exact byte sequence of the 3 zero center floats + radius 1.0f
+		const uint8_t needle[16] = {
+			0,0,0,0, 0,0,0,0, 0,0,0,0,
+			0x00, 0x00, 0x80, 0x3F, // 1.0f
+		};
+		size_t pos = std::string(reinterpret_cast<const char*>(nanDff.data()), nanDff.size()).find(
+			std::string(reinterpret_cast<const char*>(needle), sizeof(needle)));
+		CHECK(pos != std::string::npos);
+		nanDff[pos + 12] = 0xFF;
+		nanDff[pos + 13] = 0xFF;
+		nanDff[pos + 14] = 0xFF;
+		nanDff[pos + 15] = 0x7F; // NaN
+		CHECK(!validateAndPrepareDff(nanDff.data(), nanDff.size(), true).ok);
 	}
 
 	// 4. Truncated / corrupt DFF and oversized rwID_NODENAME (>=24B) must be rejected cleanly
