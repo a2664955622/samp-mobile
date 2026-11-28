@@ -369,6 +369,108 @@ void testCustomComboAndCommandButtonsAndJsonRoundTrip()
 	EXPECT(!deserializeLayoutJson("{not valid json", bad));
 }
 
+void testPcSampDirectionalQuantizationAndSpectating()
+{
+	// 1) Pure 8-way sector quantization: cardinal slight drift stays exact +/-128 on 1 axis;
+	// 45-degree diagonal emits exact +/-128 on BOTH axes (matching PC WASD)!
+	int16_t sLR = 0, sUD = 0;
+	quantizeJoystickToPcSamp(0, 0, sLR, sUD);
+	EXPECT(sLR == 0 && sUD == 0);
+
+	// Inside deadzone / micro-tilt (< 32) -> 0
+	quantizeJoystickToPcSamp(18, -20, sLR, sUD);
+	EXPECT(sLR == 0 && sUD == 0);
+
+	// Slight 15-degree thumb drift while pushing UP -> pure KEY_UP (-128), no cross-axis leak!
+	quantizeJoystickToPcSamp(28, -110, sLR, sUD);
+	EXPECT(sLR == 0 && sUD == -128);
+
+	// 45-degree diagonal Up-Right -> exact KEY_RIGHT (+128) + KEY_UP (-128)
+	quantizeJoystickToPcSamp(88, -88, sLR, sUD);
+	EXPECT(sLR == 128 && sUD == -128);
+
+	// Partial cardinal tilt (e.g. 50% push left) -> smooth local walk, exact KEY_LEFT (-128) sync!
+	TouchHudCore hud;
+	hud.setScreenSize(1920.0f, 1080.0f);
+	hud.setLayout(makePresetLayout(PresetId::RoleplayHeavy));
+	hud.setCapabilities(makeOnFootCaps(), 8000);
+
+	const auto joyC = hud.controlCircle(ControlId::Joystick);
+	hud.onTouch(TouchAction::Down, 0, joyC.cx, joyC.cy, 8000);
+	hud.onTouch(TouchAction::Move, 0, joyC.cx - joyC.r * 0.55f, joyC.cy, 8010);
+
+	const auto halfLeft = hud.stepFrame(8020);
+	EXPECT(halfLeft.moveLR < -40 && halfLeft.moveLR > -100); // Smooth continuous local walk
+	EXPECT(halfLeft.syncLR == -128 && halfLeft.syncUD == 0); // Exact PC KEY_LEFT (-128)!
+
+	// 2) Holding ALT (slow walk) keeps syncLR == -128!
+	std::array<RpStripLayoutItem, static_cast<size_t>(RpStripItem::Count)> items{};
+	hud.computeRpStripItems(items);
+	const auto& altR = items[static_cast<size_t>(RpStripItem::KeyAlt)].rect;
+	hud.onTouch(TouchAction::Down, 1, altR.x + 8.0f, altR.y + 8.0f, 8030);
+	const auto slowLeft = hud.stepFrame(8040);
+	EXPECT(slowLeft.slowWalkHeld);
+	EXPECT(slowLeft.isKeyActive(SampKey::Walk));
+	EXPECT(slowLeft.syncLR == -128);
+	hud.onTouch(TouchAction::Up, 1, altR.x + 8.0f, altR.y + 8.0f, 8350);
+
+	// 3) Ultra-fast 20ms directional flick latches syncLR/UD for >=110ms so menus never miss a tap,
+	// while immediately flipping if flicked the opposite way!
+	hud.onTouch(TouchAction::Up, 0, joyC.cx, joyC.cy, 8400);
+	hud.stepFrame(8550); // Let prior pulse expire
+
+	hud.onTouch(TouchAction::Down, 0, joyC.cx, joyC.cy, 8600);
+	hud.onTouch(TouchAction::Move, 0, joyC.cx + joyC.r * 0.8f, joyC.cy, 8610);
+	hud.onTouch(TouchAction::Up,   0, joyC.cx + joyC.r * 0.8f, joyC.cy, 8620);
+
+	const auto flickMid = hud.stepFrame(8660);
+	EXPECT(flickMid.moveLR == 0);     // Local movement stops immediately on finger release
+	EXPECT(flickMid.syncLR == 128);   // Sync pulse holds KEY_RIGHT (+128) for next SA-MP packet!
+
+	// Immediate opposite flick overrides pulse without lag
+	hud.onTouch(TouchAction::Down, 0, joyC.cx, joyC.cy, 8670);
+	hud.onTouch(TouchAction::Move, 0, joyC.cx - joyC.r * 0.8f, joyC.cy, 8675);
+	const auto flickFlip = hud.stepFrame(8680);
+	EXPECT(flickFlip.syncLR == -128);
+	hud.onTouch(TouchAction::Up, 0, joyC.cx, joyC.cy, 8690);
+	const auto flickExpired = hud.stepFrame(8820);
+	EXPECT(flickExpired.syncLR == 0);
+
+	// 4) Spectating context (/flymode, spectator target switch): Joystick + FreeCameraLook + Sprint/Jump/Fire active!
+	ContextCapabilities specCaps{};
+	specCaps.context = HudContext::Spectating;
+	hud.setCapabilities(specCaps, 9000);
+	EXPECT(hud.isControlActive(ControlId::Joystick));
+	EXPECT(hud.isControlActive(ControlId::Sprint));
+	EXPECT(hud.isControlActive(ControlId::Jump));
+	EXPECT(hud.isControlActive(ControlId::FireRight));
+	EXPECT(hud.isControlActive(ControlId::RpStrip));
+	EXPECT(!hud.isControlActive(ControlId::Aim));
+	EXPECT(!hud.isControlActive(ControlId::Crouch));
+
+	// Camera drag on right half + Joystick push forward-left in Spectating
+	hud.onTouch(TouchAction::Down, 0, joyC.cx, joyC.cy, 9010);
+	hud.onTouch(TouchAction::Move, 0, joyC.cx - joyC.r * 0.7f, joyC.cy - joyC.r * 0.7f, 9020);
+	hud.onTouch(TouchAction::Down, 1, 1300.0f, 500.0f, 9010);
+	hud.onTouch(TouchAction::Move, 1, 1360.0f, 480.0f, 9020);
+	const auto specOut = hud.stepFrame(9030);
+	EXPECT(specOut.syncLR == -128 && specOut.syncUD == -128);
+	EXPECT(specOut.lookActive && std::fabs(specOut.lookDeltaX - 60.0f) < 0.01f);
+
+	// 5) Passenger context exposes left VehJoystick for in-car directional menus without driving vehicle pedals
+	ContextCapabilities passCaps{};
+	passCaps.context = HudContext::InVehiclePassenger;
+	hud.setCapabilities(passCaps, 9200);
+	EXPECT(hud.isControlActive(ControlId::VehJoystick));
+	EXPECT(!hud.isControlActive(ControlId::VehAccel));
+	const auto vJoy = hud.controlCircle(ControlId::VehJoystick);
+	hud.onTouch(TouchAction::Down, 0, vJoy.cx, vJoy.cy, 9210);
+	hud.onTouch(TouchAction::Move, 0, vJoy.cx, vJoy.cy + vJoy.r * 0.8f, 9220);
+	const auto passOut = hud.stepFrame(9230);
+	EXPECT(passOut.vehSteerUD == 0);   // Passenger doesn't steer driver's vehicle
+	EXPECT(passOut.syncUD == 128);     // Server receives KEY_DOWN (+128) in PassengerSync!
+}
+
 } // namespace
 
 int main()
@@ -379,6 +481,7 @@ int main()
 	testPubgAutoSprintLockAndRpOverlay();
 	testVehicleControlsAndQELookBehind();
 	testCustomComboAndCommandButtonsAndJsonRoundTrip();
+	testPcSampDirectionalQuantizationAndSpectating();
 
 	if (g_failures > 0) {
 		std::fprintf(stderr, "touch_hud_core: %d failure(s)\n", g_failures);

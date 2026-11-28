@@ -117,7 +117,7 @@ void CTextDraw::LoadTexture()
 		strncpy(rawTextureName, texturename, sizeof(rawTextureName) - 1);
 		rawTextureName[sizeof(rawTextureName) - 1] = '\0';
 
-		spdlog::info("LOADTEXTURE: txdname: {}, texture: {}", txdname, texturename);
+		spdlog::debug("LOADTEXTURE: txdname: {}, texture: {}", txdname, texturename);
 
 		if (!strcasecmp(txdname, "ld_shtr") && !strcasecmp(texturename, "ship")) {
 			strcpy(texturename, "ship_ld_shtr");
@@ -243,6 +243,15 @@ void CTextDraw::ComputeRectArea()
 		m_rectArea.bottom = fUseY;
 		m_rectArea.top = fUseY + fLineHeight;
 	}
+
+	const float x0 = m_rectArea.left;
+	const float x1 = m_rectArea.right;
+	const float y0 = m_rectArea.bottom;
+	const float y1 = m_rectArea.top;
+	m_rectArea.left = std::min(x0, x1);
+	m_rectArea.right = std::max(x0, x1);
+	m_rectArea.bottom = std::min(y0, y1);
+	m_rectArea.top = std::max(y0, y1);
 
 	m_TextDrawData.bHasRectArea = true;
 }
@@ -617,10 +626,14 @@ void CTextDraw::DrawTextured()
 	float scaleX = sa::RsGlobal->screenWidth * (1.0f / 640.0f);
 	float scaleY = sa::RsGlobal->screenHeight * (1.0f / 448.0f);
 
-	m_rectArea.left = m_TextDrawData.fX * scaleX;
-	m_rectArea.bottom = m_TextDrawData.fY * scaleY;
-	m_rectArea.right = (m_TextDrawData.fX + m_TextDrawData.fLineWidth) * scaleX;
-	m_rectArea.top = (m_TextDrawData.fY + m_TextDrawData.fLineHeight) * scaleY;
+	const float x0 = m_TextDrawData.fX * scaleX;
+	const float y0 = m_TextDrawData.fY * scaleY;
+	const float x1 = (m_TextDrawData.fX + m_TextDrawData.fLineWidth) * scaleX;
+	const float y1 = (m_TextDrawData.fY + m_TextDrawData.fLineHeight) * scaleY;
+	m_rectArea.left = std::min(x0, x1);
+	m_rectArea.right = std::max(x0, x1);
+	m_rectArea.bottom = std::min(y0, y1);
+	m_rectArea.top = std::max(y0, y1);
 
 	static float uv_reflected[8] = {
 			0.0f, 1.0f,

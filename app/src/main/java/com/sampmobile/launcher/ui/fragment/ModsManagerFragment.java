@@ -77,6 +77,11 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
 
     private final List<RowItem> rows = new ArrayList<>();
     private final List<ModManager.ModLoaderEntry> modLoaderCache = new ArrayList<>();
+    @SuppressWarnings("unchecked")
+    private final List<RowItem>[] tabRowsCache = new List[5];
+    private String cachedJpatchStatus = null;
+    private boolean cachedJpatchOk = false;
+    private boolean pageEverShown = false;
     private ModListAdapter adapter;
 
     static final int IMPORT_MODE_ASSET_TOOL_ZIP = 100;
@@ -132,19 +137,23 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         tvAbi.setText(ModManager.getProcessAbiLabel());
 
         v.findViewById(R.id.btn_mods_logs).setOnClickListener(view -> configDialogs.showLogsDialog());
-        v.findViewById(R.id.btn_mods_refresh).setOnClickListener(view -> reloadCurrentTab());
+        v.findViewById(R.id.btn_mods_refresh).setOnClickListener(view -> {
+            invalidateTabCache(currentTab);
+            reloadCurrentTab();
+        });
 
         modsContent = v.findViewById(R.id.mods_content);
         GtaTabStrip modTabs = v.findViewById(R.id.mod_tabs);
         modTabs.setTabs("Modloader", I18n.tr("AML 插件"), I18n.tr("JPatch 补丁"), "MonetLoader", I18n.tr("CLEO 脚本"));
         modTabs.setOnTabSelectedListener((index, reselected) -> {
             if (reselected) {
+                invalidateTabCache(currentTab);
                 reloadCurrentTab();
             } else {
                 selectTab(index);
                 modsContent.animate().cancel();
                 modsContent.setAlpha(0f);
-                modsContent.animate().alpha(1f).setDuration(180).start();
+                modsContent.animate().alpha(1f).withLayer().setDuration(120).start();
             }
         });
 
@@ -168,9 +177,34 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         ioExecutor.execute(() -> ModManager.ensureDirectories(requireContext().getApplicationContext()));
 
         LauncherThemeManager.addListener(this);
-        selectTab(TAB_MODLOADER);
+        configureSectionPanel();
         onThemeColorChanged(LauncherThemeManager.getAccentColor(requireContext()));
+        View parent = (View) v.getParent();
+        if (parent != null && parent.getVisibility() == View.VISIBLE) {
+            onPageShown();
+        }
         return v;
+    }
+
+    public void onPageShown() {
+        if (!isAdded() || rootView == null) return;
+        boolean firstShow = !pageEverShown;
+        pageEverShown = true;
+        configureSectionPanel();
+        if (firstShow || tabRowsCache[currentTab] == null) {
+            showCurrentTabCachedOrLoad();
+        }
+    }
+
+    void invalidateTabCache(int tab) {
+        if (tab >= 0 && tab < tabRowsCache.length) {
+            tabRowsCache[tab] = null;
+        }
+        if (tab == TAB_AML || tab == TAB_JPATCH) {
+            tabRowsCache[TAB_AML] = null;
+            tabRowsCache[TAB_JPATCH] = null;
+            cachedJpatchStatus = null;
+        }
     }
 
     @Override
@@ -198,7 +232,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
     private void selectTab(int tab) {
         currentTab = tab;
         configureSectionPanel();
-        reloadCurrentTab();
+        showCurrentTabCachedOrLoad();
     }
 
     private String prefKeyForTab(int tab) {
@@ -235,6 +269,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
             } else {
                 ClientSettings.setSync(ctx, key, isChecked);
             }
+            invalidateTabCache(currentTab);
             reloadCurrentTab();
         });
 
@@ -342,8 +377,33 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
         });
     }
 
+    private void showCurrentTabCachedOrLoad() {
+        final int tab = currentTab;
+        List<RowItem> cached = (tab >= 0 && tab < tabRowsCache.length) ? tabRowsCache[tab] : null;
+        if (cached != null) {
+            if (tab == TAB_JPATCH && cachedJpatchStatus != null) {
+                tvSectionStatus.setText(cachedJpatchStatus);
+                tvSectionStatus.setTextColor(cachedJpatchOk
+                        ? LauncherThemeManager.getAccentColor(requireContext())
+                        : requireContext().getColor(R.color.launcher_danger));
+            }
+            rows.clear();
+            rows.addAll(cached);
+            adapter.notifyDataSetChanged();
+            if (rows.isEmpty()) {
+                tvModEmpty.setVisibility(View.VISIBLE);
+                tvModEmpty.setText(emptyHintForTab(tab));
+            } else {
+                tvModEmpty.setVisibility(View.GONE);
+            }
+            return;
+        }
+        reloadCurrentTab();
+    }
+
     void reloadCurrentTab() {
         final int tab = currentTab;
+        invalidateTabCache(tab);
         final Context appCtx = requireContext().getApplicationContext();
 
         ioExecutor.execute(() -> {
@@ -454,7 +514,15 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
 
             if (!isAdded()) return;
             requireActivity().runOnUiThread(() -> {
-                if (!isAdded() || currentTab != tab) return;
+                if (!isAdded()) return;
+                if (tab >= 0 && tab < tabRowsCache.length) {
+                    tabRowsCache[tab] = new ArrayList<>(loaded);
+                }
+                if (tab == TAB_JPATCH && finalJpStatus != null) {
+                    cachedJpatchStatus = finalJpStatus;
+                    cachedJpatchOk = finalJpOk;
+                }
+                if (currentTab != tab) return;
                 if (tab == TAB_JPATCH && finalJpStatus != null) {
                     tvSectionStatus.setText(finalJpStatus);
                     tvSectionStatus.setTextColor(finalJpOk
@@ -541,6 +609,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
             requireActivity().runOnUiThread(() -> {
                 if (!isAdded()) return;
                 Toast.makeText(requireContext(), finalMsg, Toast.LENGTH_LONG).show();
+                invalidateTabCache(tab);
                 reloadCurrentTab();
             });
         });
@@ -569,6 +638,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                             Toast.makeText(requireContext(),
                                     created != null ? (I18n.tr("已创建目录：") + created.getName()) : I18n.tr("创建目录失败"),
                                     Toast.LENGTH_SHORT).show();
+                            invalidateTabCache(TAB_MODLOADER);
                             reloadCurrentTab();
                         });
                     });
@@ -603,7 +673,10 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 ModManager.saveModLoaderConfig(appCtx, modLoaderCache);
             }
             if (!isAdded()) return;
-            requireActivity().runOnUiThread(this::reloadCurrentTab);
+            requireActivity().runOnUiThread(() -> {
+                invalidateTabCache(TAB_MODLOADER);
+                reloadCurrentTab();
+            });
         });
     }
 
@@ -719,7 +792,10 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                 androidx.fragment.app.FragmentActivity act = getActivity();
                 if (act == null || !isAdded()) return;
                 act.runOnUiThread(() -> {
-                    if (isAdded()) reloadCurrentTab();
+                    if (isAdded()) {
+                        invalidateTabCache(currentTab);
+                        reloadCurrentTab();
+                    }
                 });
             });
         } else if (item.payload instanceof ModManager.JPatchOption) {
@@ -751,6 +827,7 @@ public class ModsManagerFragment extends Fragment implements LauncherThemeManage
                         if (!isAdded()) return;
                         requireActivity().runOnUiThread(() -> {
                             Toast.makeText(ctx, I18n.tr("已删除 ") + item.title, Toast.LENGTH_SHORT).show();
+                            invalidateTabCache(currentTab);
                             reloadCurrentTab();
                         });
                     });

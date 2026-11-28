@@ -29,6 +29,19 @@ CObjectPool::CObjectPool()
 		m_pObjects[ObjectID] = nullptr;
 	}
 	m_iObjectCount = 0;
+	m_iLargestObjectId = -1;
+}
+
+void CObjectPool::UpdateLargestObjectId()
+{
+	int largest = -1;
+	for (int i = MAX_OBJECTS - 1; i >= 0; --i) {
+		if (m_bObjectSlotState[i] && m_pObjects[i]) {
+			largest = i;
+			break;
+		}
+	}
+	m_iLargestObjectId = largest;
 }
 
 CObjectPool::~CObjectPool()
@@ -44,6 +57,7 @@ void CObjectPool::Reset()
 	}
 	m_mapGtaPtrToID.clear();
 	m_iObjectCount = 0;
+	m_iLargestObjectId = -1;
 	m_dwLastTick = 0;
 	std::lock_guard<std::mutex> lock(m_touchMutex);
 	m_pendingTouches.clear();
@@ -60,7 +74,7 @@ void CObjectPool::Reset()
  */
 bool CObjectPool::New(OBJECTID ObjectID, int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDrawDistance)
 {
-	spdlog::info("obj id: {} modelid: {}", ObjectID, iModel);
+	spdlog::debug("obj id: {} modelid: {}", ObjectID, iModel);
 
 	if (ObjectID >= MAX_OBJECTS) return false;
 
@@ -85,13 +99,17 @@ bool CObjectPool::New(OBJECTID ObjectID, int iModel, sa::CVector vecPos, sa::CVe
 	m_mapGtaPtrToID[m_pObjects[ObjectID]->m_entity] = ObjectID;
 	m_bObjectSlotState[ObjectID] = true;
 	m_iObjectCount++;
+	if (static_cast<int>(ObjectID) > m_iLargestObjectId) {
+		m_iLargestObjectId = static_cast<int>(ObjectID);
+	}
 	return true;
 }
 
 void CObjectPool::RefreshCustomModels()
 {
 	int refreshed = 0;
-	for (OBJECTID id = 0; id < MAX_OBJECTS; ++id) {
+	const int largest = m_iLargestObjectId;
+	for (int id = 0; id <= largest && id < MAX_OBJECTS; ++id) {
 		if (!m_bObjectSlotState[id] || !m_pObjects[id]) {
 			continue;
 		}
@@ -127,7 +145,8 @@ void CObjectPool::RefreshCustomModels()
 void CObjectPool::RevertCustomModelsBeforeUnload()
 {
 	int reverted = 0;
-	for (OBJECTID id = 0; id < MAX_OBJECTS; ++id) {
+	const int largest = m_iLargestObjectId;
+	for (int id = 0; id <= largest && id < MAX_OBJECTS; ++id) {
 		if (!m_bObjectSlotState[id] || !m_pObjects[id]) {
 			continue;
 		}
@@ -159,8 +178,9 @@ bool CObjectPool::Delete(OBJECTID ObjectID)
 	CObject* pObject = m_pObjects[ObjectID];
 	if (pObject) {
 		// Detach any child objects attached to this parent before destroying its GTA entity
-		for (OBJECTID childId = 0; childId < MAX_OBJECTS; ++childId) {
-			if (childId != ObjectID && m_bObjectSlotState[childId] && m_pObjects[childId]
+		const int largest = m_iLargestObjectId;
+		for (int childId = 0; childId <= largest && childId < MAX_OBJECTS; ++childId) {
+			if (childId != static_cast<int>(ObjectID) && m_bObjectSlotState[childId] && m_pObjects[childId]
 					&& m_pObjects[childId]->m_AttachedObjectID == ObjectID) {
 				m_pObjects[childId]->Detach();
 			}
@@ -180,6 +200,9 @@ bool CObjectPool::Delete(OBJECTID ObjectID)
 	}
 	m_bObjectSlotState[ObjectID] = false;
 	m_iObjectCount--;
+	if (static_cast<int>(ObjectID) == m_iLargestObjectId) {
+		UpdateLargestObjectId();
+	}
 
 	return true;
 }
@@ -227,7 +250,8 @@ void CObjectPool::Process()
 		fElapsedTime = 0.25f;
 	}
 
-	for (OBJECTID i = 0; i < MAX_OBJECTS; i++) {
+	const int largest = m_iLargestObjectId;
+	for (int i = 0; i <= largest && i < MAX_OBJECTS; i++) {
 		if (m_bObjectSlotState[i] && m_pObjects[i]) {
 			m_pObjects[i]->Process(fElapsedTime);
 		}
@@ -243,8 +267,12 @@ void CObjectPool::Process()
 
 void CObjectPool::ProcessMaterialText()
 {
-	for (OBJECTID ObjectID = 0; ObjectID < MAX_OBJECTS; ObjectID++) {
-		if (m_pObjects[ObjectID] && m_bObjectSlotState[ObjectID]) {
+	if (!CObject::HasAnyCustomMaterialObjects()) {
+		return;
+	}
+	const int largest = m_iLargestObjectId;
+	for (int ObjectID = 0; ObjectID <= largest && ObjectID < MAX_OBJECTS; ObjectID++) {
+		if (m_bObjectSlotState[ObjectID] && m_pObjects[ObjectID]) {
 			m_pObjects[ObjectID]->ProcessMaterialText();
 		}
 	}

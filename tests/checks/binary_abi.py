@@ -29,7 +29,7 @@ SO_GTASA = {
     "armeabi-v7a": REPO_ROOT / "app/src/main/jniLibs/armeabi-v7a/libGTASA.so",
 }
 
-OWN_LIBS = ("libSAMPMOBILE.so", "libSCAnd.so")
+OWN_LIBS = ("libSAMPMOBILE.so", "libSAMPArchive.so", "libSCAnd.so")
 
 # arm64 libraries on the core game path that MUST ship with 16KB-aligned PT_LOAD
 # segments (Android 15+/16 16KB-page kernels). Mod-ecosystem libs (AML/luajit/

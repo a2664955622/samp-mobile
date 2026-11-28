@@ -10,6 +10,8 @@
 #include "Game/Artwork/TxdParser.h"
 
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -275,7 +277,12 @@ static void testCrc32AndHelpers()
 	CHECK_EQ(parsedCrc, 0xABCDEFu);
 	CHECK(parsedType == FileType::Txd);
 	CHECK(!parseCacheFileHash("not_a_hash.dff", parsedCrc, parsedType));
+	CHECK(!parseCacheFileHash("infernus.dff", parsedCrc, parsedType));
+	CHECK(!parseCacheFileHash("0x0.dff", parsedCrc, parsedType));
 	CHECK(!parseCacheFileHash("0x1234.png", parsedCrc, parsedType));
+	CHECK(parseCacheFileHash("0X0099bae0 (1).DFF", parsedCrc, parsedType));
+	CHECK_EQ(parsedCrc, 0x99BAE0u);
+	CHECK(parsedType == FileType::Dff);
 
 	CHECK(isSafeHttpUrl("http://192.168.1.10:7777/skin.dff"));
 	CHECK(isSafeHttpUrl("https://cdn.example.com/models/box.txd"));
@@ -841,6 +848,43 @@ static void testDffValidatorAndColExtraction()
 		auto res80 = validateAndPrepareDff(dff80.data(), dff80.size(), true);
 		CHECK(res80.ok);
 		CHECK(res80.sanitizedDff.empty());
+
+		// Mixed 2dfx chunk (merged LOD DFFs like lc_s1_11_guardpost_chunk2_1.dff):
+		// entry[0] = genuine 100B (20B hdr + 80B payload, size=0x50) +
+		// entry[1] = mis-stamped 96B (20B hdr + 76B payload, size=0x50 -> must become 0x4C).
+		std::vector<uint8_t> fxMixed;
+		pushLE32(fxMixed, 2u);
+		// entry 0: true 80B payload
+		pushF32(fxMixed, 8.5f); pushF32(fxMixed, 27.2f); pushF32(fxMixed, 11.8f);
+		pushLE32(fxMixed, 0u);
+		pushLE32(fxMixed, 0x50u);
+		fxMixed.insert(fxMixed.end(), 80u, 0x11u);
+		// entry 1: buggy 76B payload stamped 0x50
+		pushF32(fxMixed, 15.9f); pushF32(fxMixed, 33.2f); pushF32(fxMixed, 13.2f);
+		pushLE32(fxMixed, 0u);
+		pushLE32(fxMixed, 0x50u);
+		fxMixed.insert(fxMixed.end(), 76u, 0x22u);
+
+		auto fxMixedChunk = wrapChunk(0x0253F2F8u, fxMixed);
+		auto dffMixed = buildMinimalDff("torch_wall", 0x0253F2FFu, 0x334C4F43u, nullptr, &fxMixedChunk);
+		auto resMixed = validateAndPrepareDff(dffMixed.data(), dffMixed.size(), true);
+		CHECK(resMixed.ok);
+		CHECK(!resMixed.sanitizedDff.empty());
+		size_t fxMixedPos = 0;
+		for (size_t i = 0; i + 4 <= resMixed.sanitizedDff.size(); ++i) {
+			if (resMixed.sanitizedDff[i] == 0xF8u && resMixed.sanitizedDff[i + 1] == 0xF2u
+				&& resMixed.sanitizedDff[i + 2] == 0x53u && resMixed.sanitizedDff[i + 3] == 0x02u) {
+				fxMixedPos = i;
+				break;
+			}
+		}
+		CHECK(fxMixedPos > 0);
+		const size_t mixedPay = fxMixedPos + 12u;
+		CHECK_EQ(resMixed.sanitizedDff[mixedPay + 4u + 16u], 0x50u);         // entry 0 preserved!
+		CHECK_EQ(resMixed.sanitizedDff[mixedPay + 4u + 100u + 16u], 0x4Cu);  // entry 1 patched to 0x4C!
+		auto resMixedReval = validateAndPrepareDff(resMixed.sanitizedDff.data(), resMixed.sanitizedDff.size(), true);
+		CHECK(resMixedReval.ok);
+		CHECK(resMixedReval.sanitizedDff.empty());
 	}
 }
 
@@ -1186,6 +1230,67 @@ static void testRetryBackoffAndAdaptiveConcurrency()
 	CHECK_EQ(m.effectiveConcurrencyLimit(), kMaxConcurrentDownloads);
 }
 
+static void testLooseDiskCacheIndexPrecedenceAndCaseSensitivity()
+{
+	namespace fs = std::filesystem;
+	const fs::path base = fs::temp_directory_path() / "samp_artwork_cache_idx_test";
+	std::error_code ec;
+	fs::remove_all(base, ec);
+
+	const fs::path localDir = base / "local";
+	const fs::path srvDir = base / "cn-1.server.com.7777";
+	// Simulate PC hyphen-stripped / uppercase domain & nested SAMP/cache/cache/ folders
+	const fs::path pcFallbackDir = base / "cache" / "Play.Server.COM.7777";
+	fs::create_directories(localDir);
+	fs::create_directories(srvDir);
+	fs::create_directories(pcFallbackDir);
+
+	auto writeDummy = [](const fs::path& p, size_t len) {
+		std::ofstream ofs(p, std::ios::binary);
+		std::vector<char> buf(len, 'A');
+		ofs.write(buf.data(), static_cast<std::streamsize>(buf.size()));
+	};
+
+	// 1. Lowercase hex + leading zero + uppercase .DFF inside nested PC folder -> must preserve exact path on Linux!
+	const fs::path fallbackOnly = pcFallbackDir / "0x0012abcd.DFF";
+	writeDummy(fallbackOnly, 120u);
+
+	// 2. Duplicate suffix file in fallback vs canonical override in local/ -> local/ must win!
+	writeDummy(pcFallbackDir / "0x99bae090 (1).txd", 200u);
+	const fs::path localOverride = localDir / "0x99BAE090.txd";
+	writeDummy(localOverride, 240u);
+
+	// 3. Server-specific cache overrides both fallback and local/!
+	writeDummy(localDir / "0xDEADBEEF.dff", 300u);
+	const fs::path srvOverride = srvDir / "0xDEADBEEF.dff";
+	writeDummy(srvOverride, 360u);
+
+	// 4. Non-0x files (Modloader / temp) must be ignored
+	writeDummy(localDir / "infernus.dff", 500u);
+	writeDummy(srvDir / "0xCAFEBABE.dff.tmp", 500u);
+
+	DiskCacheMap idx;
+	buildDiskCacheIndex(base.generic_string(), localDir.generic_string(), srvDir.generic_string(), idx);
+	CHECK_EQ(idx.size(), 3u);
+
+	auto it1 = idx.find(ResourceKey{FileType::Dff, 0x12ABCDu});
+	CHECK(it1 != idx.end());
+	CHECK_EQ(it1->second.size, 120u);
+	CHECK(it1->second.path == fallbackOnly.generic_string());
+
+	auto it2 = idx.find(ResourceKey{FileType::Txd, 0x99BAE090u});
+	CHECK(it2 != idx.end());
+	CHECK_EQ(it2->second.size, 240u);
+	CHECK(it2->second.path == localOverride.generic_string());
+
+	auto it3 = idx.find(ResourceKey{FileType::Dff, 0xDEADBEEFu});
+	CHECK(it3 != idx.end());
+	CHECK_EQ(it3->second.size, 360u);
+	CHECK(it3->second.path == srvOverride.generic_string());
+
+	fs::remove_all(base, ec);
+}
+
 int main()
 {
 	testCrc32AndHelpers();
@@ -1198,5 +1303,6 @@ int main()
 	testStrictFsmCorruptRecoveryUrlRedactionAndHistoryCap();
 	testTxdMip0TruncatedAndStreaming();
 	testLzma1DirectChunkDecoder();
+	testLooseDiskCacheIndexPrecedenceAndCaseSensitivity();
 	return check::finish();
 }

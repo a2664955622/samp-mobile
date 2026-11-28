@@ -16,6 +16,7 @@
 #include "../ClientSubsystems.h"
 #include "../InputArbiter.h"
 #include "../Settings.h"
+#include "../Java/EditObject.h"
 #include "../Game/Game.h"
 #include "../Game/PlayerPed.h"
 #include "../Net/NetGame.h"
@@ -303,6 +304,7 @@ void UI::drawList()
 	ClientSubsystems::onUiRender(renderer(), displaySize().x, displaySize().y, pNetGame != nullptr, hideVoiceSpeakers);
 
 	TouchHud::render(renderer());
+	EditObject::render(renderer());
 
 	draw(renderer());
 }

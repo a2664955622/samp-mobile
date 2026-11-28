@@ -49,7 +49,7 @@ def run_apk_checks(
             missing.append(entry)
 
     for abi, libs in REPO_JNILIBS.items():
-        expected = libs + ["libSAMPMOBILE.so", "libSCAnd.so"]
+        expected = libs + ["libSAMPMOBILE.so", "libSAMPArchive.so", "libSCAnd.so"]
         if require_gtasa:
             expected += PROPRIETARY_JNILIBS[abi]
         for lib in expected:

@@ -1,22 +1,31 @@
 package com.sampmobile.launcher.ui;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Typeface;
+import android.text.InputType;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.ArrayAdapter;
 import android.widget.EditText;
+import android.widget.ListPopupWindow;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AlertDialog;
 
 import com.sampmobile.launcher.R;
 import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
+import com.sampmobile.launcher.utils.ServerJoinProfileStore;
 import com.sampmobile.launcher.utils.ServerModel;
 import com.sampmobile.launcher.utils.Utils;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,13 +49,27 @@ public final class LauncherServerDialogs {
         Objects.requireNonNull(dialog.getWindow()).setBackgroundDrawableResource(android.R.color.transparent);
 
         ClientSettings settings = ClientSettings.loadLauncher(activity);
+        ServerJoinProfileStore profileStore = ServerJoinProfileStore.get(activity);
+        String serverKey = ServerJoinProfileStore.normalizeServerKey(server.server_host, server.server_port);
+        String fallbackGlobalNick = settings.getString("nick_name");
 
         TextView serverName = v.findViewById(R.id.join_server_name);
         serverName.setText(server.server_name);
 
+        View nicknameRow = v.findViewById(R.id.join_nickname_row);
         EditText nickname = v.findViewById(R.id.join_nickname);
-        nickname.setText(settings.getString("nick_name"));
+        String initialNick = profileStore.resolveNicknameForServer(serverKey, fallbackGlobalNick);
+        nickname.setText(initialNick);
         nickname.setSelection(Objects.requireNonNull(nickname.getText()).length());
+
+        View historyBtn = v.findViewById(R.id.join_nickname_history);
+        final ListPopupWindow[] activePopup = {null};
+        dialog.setOnDismissListener(d -> {
+            if (activePopup[0] != null) {
+                activePopup[0].dismiss();
+                activePopup[0] = null;
+            }
+        });
 
         TextView[] versionButtons = {
                 v.findViewById(R.id.join_version_0),
@@ -66,6 +89,63 @@ public final class LauncherServerDialogs {
         View joinConnectBtn = v.findViewById(R.id.join_connect);
         if (joinConnectBtn != null) {
             joinConnectBtn.setBackgroundTintList(ColorStateList.valueOf(accentColor));
+        }
+
+        if (historyBtn != null) {
+            List<String> initialHistory = profileStore.getNicknameHistory(fallbackGlobalNick);
+            historyBtn.setAlpha(initialHistory.isEmpty() ? 0.55f : 1.0f);
+            historyBtn.setOnClickListener(view -> {
+                List<String> history = profileStore.getNicknameHistory(fallbackGlobalNick);
+                if (history.isEmpty()) {
+                    Toast.makeText(activity, R.string.nickname_history_empty, Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                InputMethodManager imm = (InputMethodManager) activity.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (imm != null) {
+                    imm.hideSoftInputFromWindow(nickname.getWindowToken(), 0);
+                }
+                if (activePopup[0] != null && activePopup[0].isShowing()) {
+                    activePopup[0].dismiss();
+                }
+
+                View anchor = nicknameRow != null ? nicknameRow : nickname;
+                ListPopupWindow popup = new ListPopupWindow(activity);
+                popup.setAnchorView(anchor);
+                popup.setModal(true);
+                popup.setWidth(Math.max(anchor.getWidth(),
+                        activity.getResources().getDimensionPixelSize(com.intuit.sdp.R.dimen._140sdp)));
+                popup.setBackgroundDrawable(activity.getDrawable(R.drawable.ui_popup_bg));
+                popup.setVerticalOffset(activity.getResources().getDimensionPixelSize(com.intuit.sdp.R.dimen._3sdp));
+
+                final String currentInput = Objects.requireNonNull(nickname.getText()).toString().trim();
+                popup.setAdapter(new ArrayAdapter<String>(activity, R.layout.layout_setting_version, history) {
+                    @NonNull
+                    @Override
+                    public View getView(int position, View convertView, @NonNull ViewGroup parent) {
+                        TextView tv = (TextView) super.getView(position, convertView, parent);
+                        String item = history.get(position);
+                        boolean selected = item.equals(currentInput);
+                        tv.setTextColor(selected ? accentColor : activity.getColor(R.color.launcher_text));
+                        tv.setTypeface(selected ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+                        return tv;
+                    }
+                });
+                popup.setOnItemClickListener((parent, itemView, position, id) -> {
+                    if (position >= 0 && position < history.size()) {
+                        String chosen = history.get(position);
+                        nickname.setText(chosen);
+                        nickname.setSelection(chosen.length());
+                    }
+                    popup.dismiss();
+                });
+                popup.setOnDismissListener(() -> {
+                    if (activePopup[0] == popup) {
+                        activePopup[0] = null;
+                    }
+                });
+                activePopup[0] = popup;
+                popup.show();
+            });
         }
 
         Runnable applyVersionStyles = () -> {
@@ -88,9 +168,40 @@ public final class LauncherServerDialogs {
             });
         }
 
-        boolean hasPassword = "1".equals(server.server_password);
+        String savedPassword = profileStore.getSavedPassword(serverKey);
+        boolean showPassword = "1".equals(server.server_password)
+                || (!server.ping_queried && !savedPassword.isEmpty());
+        View passwordGroup = v.findViewById(R.id.join_password_group);
         EditText password = v.findViewById(R.id.join_password);
-        password.setVisibility(hasPassword ? View.VISIBLE : View.GONE);
+        TextView passwordToggle = v.findViewById(R.id.join_password_toggle);
+        if (passwordGroup != null) {
+            passwordGroup.setVisibility(showPassword ? View.VISIBLE : View.GONE);
+        } else {
+            password.setVisibility(showPassword ? View.VISIBLE : View.GONE);
+        }
+        if (showPassword && !savedPassword.isEmpty()) {
+            password.setText(savedPassword);
+            password.setSelection(savedPassword.length());
+        }
+        if (passwordToggle != null) {
+            final boolean[] passwordVisible = {false};
+            final Typeface origTypeface = password.getTypeface();
+            passwordToggle.setOnClickListener(view -> {
+                passwordVisible[0] = !passwordVisible[0];
+                int sel = password.getSelectionEnd();
+                password.setInputType(InputType.TYPE_CLASS_TEXT | (passwordVisible[0]
+                        ? InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                        : InputType.TYPE_TEXT_VARIATION_PASSWORD));
+                password.setTypeface(origTypeface);
+                if (sel >= 0 && sel <= password.length()) {
+                    password.setSelection(sel);
+                }
+                passwordToggle.setText(passwordVisible[0] ? R.string.password_hide : R.string.password_show);
+                passwordToggle.setTextColor(passwordVisible[0]
+                        ? accentColor
+                        : activity.getColor(R.color.launcher_text_dim));
+            });
+        }
 
         v.findViewById(R.id.join_cancel).setOnClickListener(view -> dialog.dismiss());
 
@@ -110,7 +221,8 @@ public final class LauncherServerDialogs {
                 port = Integer.parseInt(server.server_port);
             } catch (NumberFormatException ignored) {
             }
-            String pass = hasPassword ? Objects.requireNonNull(password.getText()).toString() : "";
+            String pass = showPassword ? Objects.requireNonNull(password.getText()).toString() : "";
+            ServerJoinProfileStore.recordJoinAndSave(activity, server.server_host, port, nick, showPassword, pass);
             ClientSettings.prepareOnlineLaunch(activity, server.server_host, port, pass, nick, versionIds[version[0]]);
             Utils.addServerToRecent(activity, server.address());
 

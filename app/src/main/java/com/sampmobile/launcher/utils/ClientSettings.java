@@ -190,6 +190,8 @@ public final class ClientSettings {
         Map<String, Object> d = new LinkedHashMap<>();
         d.put("offline_mode", false);
         d.put("app_language", LocaleManager.LANG_AUTO);
+        d.put("regional_countries", "auto");
+        d.put("internet_languages", "");
         d.put("nick_name", "samp_player");
         d.put("samp_version", SAMP_VER_037);
         d.put("system_keyboard", true);
@@ -303,6 +305,12 @@ public final class ClientSettings {
     private static ClientSettings sLauncherCache = null;
     private static long sLauncherLoadedMtime = -1L;
     private static long sWriteGeneration = 0L;
+
+    public static long currentGeneration() {
+        synchronized (LOCK) {
+            return sWriteGeneration;
+        }
+    }
 
     private String serverHost = "127.0.0.1";
     private int serverPort = 7777;
@@ -606,6 +614,7 @@ public final class ClientSettings {
             }
 
             sLauncherCache = loaded.copy();
+            ++sWriteGeneration;
             if (needsWrite && file != null) {
                 writeLocked(file, sLauncherCache);
             } else {

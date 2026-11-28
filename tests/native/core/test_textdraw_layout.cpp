@@ -4,6 +4,7 @@
 #include "check.h"
 
 #include "Game/TextDrawLayout.h"
+#include "Game/TextDrawHitCore.h"
 
 #include <string>
 
@@ -242,6 +243,78 @@ static void testNonProportionalAndOutlineSpacing()
 	CHECK_NEAR(m.dropOffsetY, 2.0f, 1e-4);
 }
 
+static void testMobileTouchHaloAndClosestRowDiscrimination()
+{
+	// Simulate Medieval RP kit.pwn tiny selectable rows on 1920x1080 (KIT_ROW=10 -> ~24px tall):
+	// Row 10: y = [300..324], Row 11: y = [330..354] (6px gap), Isolated Close [X] id 12: [900..930] x [120..146]
+	const HitBox boxes[] = {
+		makeNormalizedHitBox(10, 400.0f, 300.0f, 760.0f, 324.0f),
+		makeNormalizedHitBox(11, 400.0f, 330.0f, 760.0f, 354.0f),
+		// Deliberately pass inverted coordinates (x0 > x1, y0 > y1) to verify normalization:
+		makeNormalizedHitBox(12, 930.0f, 146.0f, 900.0f, 120.0f),
+		// Zero-height dummy TextDraw should never steal halo clicks:
+		makeNormalizedHitBox(13, 400.0f, 290.0f, 760.0f, 290.0f),
+	};
+	const TouchSelectRadii radii = computeTouchSelectRadii(1920.0f, 1080.0f);
+
+	// 1. Exact hits always win
+	CHECK_EQ(findBestSelectableHit(boxes, 4, 500.0f, 312.0f, radii.haloRadiusPx), 10);
+	CHECK_EQ(findBestSelectableHit(boxes, 4, 500.0f, 340.0f, radii.haloRadiusPx), 11);
+	CHECK_EQ(findBestSelectableHit(boxes, 4, 915.0f, 133.0f, radii.haloRadiusPx), 12);
+
+	// 2. Narrow miss above Row 10 (y = 286, 14px above Row 10; dummy id 13 at y=290 is ignored!)
+	CHECK_EQ(findBestSelectableHit(boxes, 4, 500.0f, 286.0f, radii.haloRadiusPx), 10);
+
+	// 3. In the 6px gap between Row 10 (maxY=324) and Row 11 (minY=330), closest edge wins cleanly
+	CHECK_EQ(findBestSelectableHit(boxes, 4, 500.0f, 325.5f, radii.haloRadiusPx), 10);
+	CHECK_EQ(findBestSelectableHit(boxes, 4, 500.0f, 328.5f, radii.haloRadiusPx), 11);
+
+	// 4. Far miss outside halo returns -1
+	CHECK_EQ(findBestSelectableHit(boxes, 4, 500.0f, 240.0f, radii.haloRadiusPx), -1);
+}
+
+static void testTouchTrackerLiftOffRollSlideAndMultiTouch()
+{
+	const HitBox boxes[] = {
+		makeNormalizedHitBox(20, 400.0f, 300.0f, 760.0f, 324.0f),
+		makeNormalizedHitBox(21, 400.0f, 328.0f, 760.0f, 352.0f),
+	};
+	const TouchSelectRadii radii = computeTouchSelectRadii(1920.0f, 1080.0f);
+	TouchSelectTracker tracker;
+
+	// Case A: Press Row 20, thumb rolls 18px upward into empty margin on lift-off -> STILL clicks Row 20!
+	auto downA = tracker.onTouch(2, 0, 520.0f, 310.0f, boxes, 2, radii);
+	CHECK_EQ(downA.hoveredId, 20);
+	CHECK_EQ(downA.clickedId, -1);
+
+	auto upA = tracker.onTouch(1, 0, 522.0f, 282.0f, boxes, 2, radii);
+	CHECK_EQ(upA.hoveredId, -1);
+	CHECK_EQ(upA.clickedId, 20);
+
+	// Case B: Stationary tap on Row 20 (y=318) whose lift-off rolls 11px down (y=329, 1px inside Row 21,
+	// total finger movement < tapLockDragPx) -> keeps Row 20 locked instead of mis-clicking Row 21!
+	auto downB = tracker.onTouch(2, 0, 520.0f, 318.0f, boxes, 2, radii);
+	CHECK_EQ(downB.hoveredId, 20);
+	auto upB = tracker.onTouch(1, 0, 520.0f, 329.0f, boxes, 2, radii);
+	CHECK_EQ(upB.clickedId, 20);
+
+	// Case C: Secondary finger (pointerId=1) touching empty screen never hijacks primary finger's hover/click
+	CHECK_EQ(tracker.onTouch(2, 0, 520.0f, 312.0f, boxes, 2, radii).hoveredId, 20);
+	CHECK_EQ(tracker.onTouch(2, 1, 100.0f, 100.0f, boxes, 2, radii).hoveredId, 20);
+	CHECK_EQ(tracker.onTouch(1, 1, 100.0f, 100.0f, boxes, 2, radii).clickedId, -1);
+	CHECK_EQ(tracker.onTouch(1, 0, 520.0f, 312.0f, boxes, 2, radii).clickedId, 20);
+
+	// Case D: Intentional slide across menu (30px > tapLockDragPx) switches target to Row 21;
+	// intentional drag far into empty space (> retainMaxDragPx) cancels cleanly!
+	CHECK_EQ(tracker.onTouch(2, 0, 520.0f, 310.0f, boxes, 2, radii).hoveredId, 20);
+	CHECK_EQ(tracker.onTouch(3, 0, 520.0f, 342.0f, boxes, 2, radii).hoveredId, 21);
+	CHECK_EQ(tracker.onTouch(1, 0, 520.0f, 342.0f, boxes, 2, radii).clickedId, 21);
+
+	CHECK_EQ(tracker.onTouch(2, 0, 520.0f, 310.0f, boxes, 2, radii).hoveredId, 20);
+	CHECK_EQ(tracker.onTouch(3, 0, 520.0f, 200.0f, boxes, 2, radii).hoveredId, -1);
+	CHECK_EQ(tracker.onTouch(1, 0, 520.0f, 200.0f, boxes, 2, radii).clickedId, -1);
+}
+
 int main()
 {
 	RUN(testScaleAndLineHeightParity);
@@ -250,5 +323,7 @@ int main()
 	RUN(testLeftAlignedAutoWrapAndColorCarry);
 	RUN(testMixedAsciiWordWrapAndNewlines);
 	RUN(testNonProportionalAndOutlineSpacing);
+	RUN(testMobileTouchHaloAndClosestRowDiscrimination);
+	RUN(testTouchTrackerLiftOffRollSlideAndMultiTouch);
 	return check::finish();
 }

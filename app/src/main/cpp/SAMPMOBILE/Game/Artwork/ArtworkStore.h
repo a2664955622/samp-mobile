@@ -36,8 +36,20 @@ public:
 		std::function<bool(FileType, uint32_t)> invalidateCorrupt;
 	};
 
-	static constexpr size_t kMaxSessionTxdBytes = 288u * 1024u * 1024u; // 288 MiB hard VRAM budget
+#if defined(__aarch64__) || defined(__x86_64__)
+	// DXT1/DXT5 PC textures expand 4x-8x when decoded to RGBA8888 on mobile; 64-bit devices
+	// need headroom for large multi-chunk 0.3.DL open-world maps (e.g. ~4k custom models).
+	static constexpr size_t kMaxSessionTxdBytes = 512u * 1024u * 1024u; // 512 MiB hard VRAM budget
+	static constexpr size_t kSoftEvictTxdBytes  = 384u * 1024u * 1024u; // 384 MiB proactive VW-switch trim
+	static constexpr size_t kSoftIdleModelBytes = 96u * 1024u * 1024u;  // 96 MiB soft cap for m_numRefs==0 DFF+VBO+COL slots
+	static constexpr size_t kMaxIdleModelSlots  = 96u;
+#else
+	static constexpr size_t kMaxSessionTxdBytes = 288u * 1024u * 1024u; // 288 MiB hard VRAM budget (32-bit VA safe)
 	static constexpr size_t kSoftEvictTxdBytes  = 200u * 1024u * 1024u; // 200 MiB proactive VW-switch trim
+	static constexpr size_t kSoftIdleModelBytes = 48u * 1024u * 1024u;  // 48 MiB soft cap for m_numRefs==0 DFF+VBO+COL slots
+	static constexpr size_t kMaxIdleModelSlots  = 48u;
+#endif
+	static constexpr uint32_t kIdleModelCooldownMs = 12000u; // 12s hysteresis before streaming-idle DFF eviction
 
 	int32_t ensureCustomSkinLoaded(ArtworkManifest& manifest, const CacheAccess& cache, int32_t serverSkinId);
 	int32_t ensureCustomObjectLoaded(ArtworkManifest& manifest, const CacheAccess& cache, int32_t serverModelId);
@@ -45,8 +57,11 @@ public:
 	RwTexture* findTextureInCustomModel(ArtworkManifest& manifest, const CacheAccess& cache,
 		int32_t serverModelId, const char* texName);
 
-	// Proactively evicts idle (m_numRefs == 0) slots & unreferenced TXDs when above soft VRAM watermark.
+	// Proactively evicts idle (m_numRefs == 0) slots & unreferenced TXDs on VW switch.
 	void evictIdleIfAboveWatermark(ArtworkManifest& manifest);
+
+	// Periodic gameplay sweep: reclaims long-idle (m_numRefs == 0) DFF/VBO/COL slots above soft cap.
+	void evictIdlePeriodic(ArtworkManifest& manifest, uint32_t nowMs);
 
 	// Destroys all loaded models, collisions, and TXDs. Caller MUST detach/revert live entities first.
 	void unloadAll(ArtworkManifest& manifest);
@@ -70,21 +85,29 @@ private:
 		bool isPed = false;
 		sa::CBaseModelInfo* modelInfo = nullptr;
 		sa::CColModel* ownedCol = nullptr;
+		size_t estimatedBytes = 0;
 		uint64_t lastUseSeq = 0;
+		uint32_t idleSinceMs = 0;
 	};
 
 	RwTexDictionary* ensureTxdLoaded(ArtworkManifest& manifest, const CacheAccess& cache, uint32_t txdCrc);
 	bool evictOneIdleSlot(ArtworkManifest& manifest);
 	void evictIdleToBudget(ArtworkManifest& manifest, size_t targetTotalBytes);
+	void evictIdleModelsToCap(ArtworkManifest& manifest, size_t maxIdleSlots, size_t maxIdleBytes,
+		uint32_t nowMs, uint32_t minIdleAgeMs);
 	void destroyLoadedSlot(ArtworkManifest& manifest, LoadedSlot& ls);
 	void releaseTxdRef(uint32_t txdCrc);
 
 	std::unordered_map<uint32_t, LoadedTxd> m_loadedTxds;
 	std::unordered_set<uint32_t> m_failedTxds;
-	std::unordered_map<int32_t, LoadedSlot> m_loadedSlots; // key = internalSlot
-	std::unordered_set<int32_t> m_failedModels;            // key = serverModelId
+	std::unordered_map<uint32_t, size_t> m_projectedTxdBytes; // cached decoded RGBA footprint per TXD CRC
+	std::unordered_set<uint32_t> m_budgetWarnedTxds;          // log VRAM refusal once per TXD CRC
+	std::unordered_map<int32_t, LoadedSlot> m_loadedSlots;    // key = internalSlot
+	std::unordered_set<int32_t> m_failedModels;               // key = serverModelId
 	size_t m_totalTxdBytes = 0;
+	size_t m_totalModelBytes = 0;
 	uint64_t m_useSeq = 0;
+	uint32_t m_lastBudgetEvictCheckMs = 0;
 };
 
 // Priority lookup called from RwTextureRead hook while loading a custom 0.3.DL DFF.

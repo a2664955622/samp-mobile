@@ -140,9 +140,8 @@ void CActor::ApplyAnimation(const char* szAnimName, const char* szAnimLib, float
 				return;
 			}
 		}
+		spdlog::debug("Animation {} loaded!", szAnimLib);
 	}
-
-	spdlog::info("Animation {} loaded!", szAnimLib);
 
 	ScriptCommand(&apply_animation, m_gtaId, szAnimName, szAnimLib, fDelta, bLoop, bLockX, bLockY, bFreeze, iTime);
 }

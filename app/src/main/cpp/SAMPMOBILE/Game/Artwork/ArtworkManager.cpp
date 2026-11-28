@@ -36,6 +36,7 @@ constexpr uint32_t kRpc185WatchdogMs = 12000u;
 constexpr uint32_t kVwUnfreezeDelayMs = 800u;
 constexpr uint32_t kManifestSettleIdleMs = 600u;
 constexpr uint32_t kSnapshotRebuildIntervalMs = 100u;
+constexpr uint32_t kIdleModelSweepIntervalMs = 3000u;
 
 inline uint32_t nonZeroTickMs() noexcept
 {
@@ -141,9 +142,9 @@ void ArtworkManager::ensureCacheDirectories()
 	if (!root.empty() && root.back() != '/') {
 		root.push_back('/');
 	}
-	const std::string base = root + "SAMP/cache";
-	m_localCacheDir = base + "/local";
-	m_serverCacheDir = base + "/" + formatServerCacheDirName(m_serverHost, m_serverPort);
+	m_cacheBaseDir = root + "SAMP/cache";
+	m_localCacheDir = m_cacheBaseDir + "/local";
+	m_serverCacheDir = m_cacheBaseDir + "/" + formatServerCacheDirName(m_serverHost, m_serverPort);
 
 	mkdirRecursive(m_localCacheDir);
 	mkdirRecursive(m_serverCacheDir);
@@ -167,18 +168,25 @@ bool ArtworkManager::resolveCachedFilePath(FileType type, uint32_t crc, std::str
 	if (type == FileType::None || crc == 0) {
 		return false;
 	}
-	const std::string name = formatCacheFileName(crc, type);
 	struct stat st{};
+	auto it = m_diskCacheIndex.find(ResourceKey{type, crc});
+	if (it != m_diskCacheIndex.end() && !it->second.path.empty()) {
+		if (stat(it->second.path.c_str(), &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) {
+			outPath = it->second.path;
+			return true;
+		}
+	}
+	const std::string name = formatCacheFileName(crc, type);
 	if (!m_serverCacheDir.empty()) {
 		std::string p = m_serverCacheDir + "/" + name;
-		if (stat(p.c_str(), &st) == 0 && st.st_size > 0) {
+		if (stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) {
 			outPath = std::move(p);
 			return true;
 		}
 	}
 	if (!m_localCacheDir.empty()) {
 		std::string p = m_localCacheDir + "/" + name;
-		if (stat(p.c_str(), &st) == 0 && st.st_size > 0) {
+		if (stat(p.c_str(), &st) == 0 && S_ISREG(st.st_mode) && st.st_size > 0) {
 			outPath = std::move(p);
 			return true;
 		}
@@ -191,11 +199,23 @@ bool ArtworkManager::invalidateServerCacheFile(FileType type, uint32_t crc)
 	if (m_serverCacheDir.empty() || crc == 0) {
 		return false;
 	}
-	const std::string path = serverCachePathFor(type, crc);
-	if (!path.empty() && unlink(path.c_str()) == 0) {
-		spdlog::warn("Artwork: removed corrupt cached file {}", path);
+	const std::string srvPath = serverCachePathFor(type, crc);
+	if (!srvPath.empty() && unlink(srvPath.c_str()) == 0) {
+		spdlog::warn("Artwork: removed corrupt cached file {}", srvPath);
 	}
-	m_diskCacheIndex.erase(ResourceKey{type, crc});
+	auto it = m_diskCacheIndex.find(ResourceKey{type, crc});
+	if (it != m_diskCacheIndex.end()) {
+		const std::string& indexedPath = it->second.path;
+		if (!indexedPath.empty() && indexedPath != srvPath) {
+			const std::string srvPrefix = m_serverCacheDir + "/";
+			if (indexedPath.compare(0, srvPrefix.size(), srvPrefix) == 0 && unlink(indexedPath.c_str()) == 0) {
+				spdlog::warn("Artwork: removed corrupt server cached file {}", indexedPath);
+			} else {
+				spdlog::warn("Artwork: ignoring corrupt fallback cached file {} and re-downloading", indexedPath);
+			}
+		}
+		m_diskCacheIndex.erase(it);
+	}
 	return m_manifest.requeueCorruptCacheResource(type, crc);
 }
 
@@ -211,42 +231,9 @@ ArtworkStore::CacheAccess ArtworkManager::makeCacheAccess()
 	return access;
 }
 
-void ArtworkManager::indexCacheDirectory(const std::string& dir)
-{
-	if (dir.empty()) {
-		return;
-	}
-	DIR* d = opendir(dir.c_str());
-	if (!d) {
-		return;
-	}
-	struct dirent* e = nullptr;
-	while ((e = readdir(d)) != nullptr) {
-		const std::string name = e->d_name;
-		if (name == "." || name == "..") {
-			continue;
-		}
-		uint32_t crc = 0;
-		FileType type = FileType::None;
-		if (!parseCacheFileHash(name, crc, type) || crc == 0 || type == FileType::None) {
-			continue;
-		}
-		const std::string full = dir + "/" + name;
-		struct stat st{};
-		if (stat(full.c_str(), &st) == 0 && S_ISREG(st.st_mode)
-			&& st.st_size > 0 && static_cast<uint64_t>(st.st_size) <= kMaxArtworkFileBytes) {
-			m_diskCacheIndex[ResourceKey{type, crc}] = static_cast<uint64_t>(st.st_size);
-		}
-	}
-	closedir(d);
-}
-
 void ArtworkManager::rebuildDiskCacheIndex()
 {
-	m_diskCacheIndex.clear();
-	// Index local cache first so server-specific cache overrides on CRC collision.
-	indexCacheDirectory(m_localCacheDir);
-	indexCacheDirectory(m_serverCacheDir);
+	buildDiskCacheIndex(m_cacheBaseDir, m_localCacheDir, m_serverCacheDir, m_diskCacheIndex);
 }
 
 bool ArtworkManager::isDiskCached(FileType type, uint32_t crc, uint32_t expectedSize) const noexcept
@@ -255,10 +242,10 @@ bool ArtworkManager::isDiskCached(FileType type, uint32_t crc, uint32_t expected
 		return false;
 	}
 	auto it = m_diskCacheIndex.find(ResourceKey{type, crc});
-	if (it == m_diskCacheIndex.end() || it->second == 0) {
+	if (it == m_diskCacheIndex.end() || it->second.size == 0 || it->second.path.empty()) {
 		return false;
 	}
-	return expectedSize == 0 || it->second == static_cast<uint64_t>(expectedSize);
+	return expectedSize == 0 || it->second.size == static_cast<uint64_t>(expectedSize);
 }
 
 void ArtworkManager::recordDiskCached(FileType type, uint32_t crc, uint32_t fallbackSize)
@@ -269,9 +256,9 @@ void ArtworkManager::recordDiskCached(FileType type, uint32_t crc, uint32_t fall
 	const std::string path = serverCachePathFor(type, crc);
 	struct stat st{};
 	if (!path.empty() && stat(path.c_str(), &st) == 0 && st.st_size > 0) {
-		m_diskCacheIndex[ResourceKey{type, crc}] = static_cast<uint64_t>(st.st_size);
-	} else if (fallbackSize > 0) {
-		m_diskCacheIndex[ResourceKey{type, crc}] = static_cast<uint64_t>(fallbackSize);
+		m_diskCacheIndex[ResourceKey{type, crc}] = DiskCacheEntry{static_cast<uint64_t>(st.st_size), path};
+	} else if (fallbackSize > 0 && !path.empty()) {
+		m_diskCacheIndex[ResourceKey{type, crc}] = DiskCacheEntry{static_cast<uint64_t>(fallbackSize), path};
 	}
 }
 
@@ -482,6 +469,7 @@ void ArtworkManager::onSessionStart(const std::string& serverHost, uint16_t serv
 	m_pendingHostRefresh = false;
 	m_lastSnapshotRevision = 0;
 	m_lastSnapshotPublishMs = 0;
+	m_lastIdleSweepMs = 0;
 	m_lastPublishedGateActive = false;
 
 	ensureCacheDirectories();
@@ -514,6 +502,7 @@ void ArtworkManager::onGameModeRestart()
 	m_pendingHostRefresh = false;
 	m_lastSnapshotRevision = 0;
 	m_lastSnapshotPublishMs = 0;
+	m_lastIdleSweepMs = 0;
 	m_lastPublishedGateActive = false;
 	spdlog::info("Artwork: cleaned up for GMX / restart");
 }
@@ -543,6 +532,7 @@ void ArtworkManager::onSessionEnd()
 	m_pendingHostRefresh = false;
 	m_lastSnapshotRevision = 0;
 	m_lastSnapshotPublishMs = 0;
+	m_lastIdleSweepMs = 0;
 	m_lastPublishedGateActive = false;
 }
 
@@ -918,6 +908,10 @@ void ArtworkManager::processFrame(NetGame* netGame)
 			DownloadProgressSnapshot emptySnap{};
 			std::lock_guard<std::mutex> lock(m_eventMutex);
 			m_cachedSnapshot = std::move(emptySnap);
+		}
+		if (m_lastIdleSweepMs == 0u || (nowTick - m_lastIdleSweepMs) >= kIdleModelSweepIntervalMs) {
+			m_lastIdleSweepMs = nowTick;
+			m_store.evictIdlePeriodic(m_manifest, nowTick);
 		}
 	} else {
 		const bool justActivated = !m_lastPublishedGateActive;

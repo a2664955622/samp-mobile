@@ -855,6 +855,28 @@ final class I18nZhEn {
         EN.put("完整版", "full-edition");
         EN.put("精简版", "lite-edition");
         EN.put("）。\n\n本安装包已内置游戏资源，点击下方「解压内置资源」即可自动安装，无需联网下载。", ").\n\nThis package embeds the game data. Tap \"Extract built-in data\" below to install it automatically - no download needed.");
+        EN.put("导入文件夹", "Import Folder");
+        EN.put("导入压缩包/文件", "Import Archive/File");
+        EN.put("无法打开系统文件夹选择器: ", "Unable to open system folder picker: ");
+        EN.put("压缩包体积超出安全上限", "Archive size exceeds safety limit");
+        EN.put("压缩包设有密码保护", "Archive is password-protected");
+        EN.put("检测到该压缩包需要解压密码。请先用手机文件管理器（如 MT管理器 / ZArchiver）输入密码将其解压到任意目录，再点击下方「导入文件夹」一键导入。", "This archive requires a password. Please extract it with a file manager (e.g. ZArchiver / MT Manager) first, then tap \"Import Folder\" below.");
+        EN.put("所选压缩包或文件夹中未检测到 0x<CRC>.dff 或 0x<CRC>.txd 格式的服务器模型缓存文件（普通单机/Modloader 模型请前往「模组」板块导入）。", "No 0x<CRC>.dff or 0x<CRC>.txd server model cache files were found in the selected archive/folder (use the \"Mods\" tab for regular single-player / Modloader mods).");
+        EN.put("导入完成：%,d 个文件（%s）已归入 local 全服缓存，跳过 %,d 项", "Imported %,d files (%s) into shared local cache (skipped %,d items)");
+        EN.put("内存分配失败", "Out of memory");
+        EN.put("无法打开 .7z 压缩包", "Unable to open .7z archive");
+        EN.put(".7z 压缩包使用了加密或暂不支持的过滤算法", ".7z archive is encrypted or uses an unsupported filter");
+        EN.put(".7z 压缩包损坏或格式无效", ".7z archive is corrupted or invalid");
+        EN.put(".7z 压缩包设有密码保护或使用了不支持的压缩方法", ".7z archive is password-protected or uses an unsupported method");
+        EN.put(".7z 固实分块超出内存安全上限，请先用文件管理器解压后导入文件夹", ".7z solid block exceeds memory limit; please extract it first and tap Import Folder");
+        EN.put(".7z 解压校验失败", ".7z extraction checksum failed");
+        EN.put(".rar 压缩包设有密码保护", ".rar archive is password-protected");
+        EN.put(".rar 压缩包已加密文件名与内容", ".rar archive headers and contents are encrypted");
+        EN.put("无法读取 .rar 压缩包（文件损坏或分卷缺失）", "Unable to read .rar archive (corrupted or missing volume)");
+        EN.put(".rar 条目头损坏", ".rar entry header is corrupted");
+        EN.put(".rar 解压数据校验失败", ".rar extraction checksum failed");
+        EN.put("未识别的压缩包文件头", "Unrecognized archive header");
+        EN.put("无效的压缩包路径或缓存目录", "Invalid archive path or cache directory");
     }
 
     private I18nZhEn() {}

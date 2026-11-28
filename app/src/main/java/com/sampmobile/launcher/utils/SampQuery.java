@@ -29,14 +29,26 @@ public class SampQuery {
     private final Random f = new Random();
     private boolean isValidAddr = true;
     private final String charset;
+    private final String langHint;
+    private final boolean smartDecode;
     private final Random random = new Random();
 
     public SampQuery(String srvip, int srvport) {
-        this(srvip, srvport, "GBK");
+        this(srvip, srvport, "GBK", 2000, null, false);
     }
 
     public SampQuery(String srvip, int srvport, String charset) {
+        this(srvip, srvport, charset, 2000, null, false);
+    }
+
+    public SampQuery(String srvip, int srvport, String charset, int timeoutMs) {
+        this(srvip, srvport, charset, timeoutMs, null, false);
+    }
+
+    public SampQuery(String srvip, int srvport, String charset, int timeoutMs, String langHint, boolean smartDecode) {
         this.charset = charset;
+        this.langHint = langHint;
+        this.smartDecode = smartDecode;
         this.serverport = srvport;
         try {
             serverip = InetAddress.getByName(srvip);
@@ -48,7 +60,7 @@ public class SampQuery {
 
         try {
             socket = new DatagramSocket();
-            socket.setSoTimeout(2000);
+            socket.setSoTimeout(Math.max(300, timeoutMs));
         } catch (SocketException e) {
             this.isValidAddr = false;
             serveraddress = null;
@@ -327,6 +339,9 @@ public class SampQuery {
     }
 
     private String decode(byte[] bytes) {
+        if (smartDecode) {
+            return decodeSmart(bytes, charset, langHint);
+        }
         if (!"UTF-8".equalsIgnoreCase(charset)) {
             try {
                 return StandardCharsets.UTF_8.newDecoder()
@@ -340,6 +355,86 @@ public class SampQuery {
             return new String(bytes, charset);
         } catch (UnsupportedEncodingException e) {
             return new String(bytes, StandardCharsets.UTF_8);
+        }
+    }
+
+    /**
+     * Multi-encoding UDP packet decoder for global server directories.
+     * Prevents Spanish/Portuguese ISO-8859-1 (e.g. "español" 0xF1 0x6F) and Russian CP1251
+     * (e.g. "Русский") from being misdecoded as fake GBK Chinese characters ("espa駉l", "畜耨觇").
+     */
+    public static String decodeSmart(byte[] bytes, String preferredCjkCharset, String serverLangHint) {
+        if (bytes == null || bytes.length == 0) return "";
+        boolean allAscii = true;
+        for (byte b : bytes) {
+            if ((b & 0x80) != 0) {
+                allAscii = false;
+                break;
+            }
+        }
+        if (allAscii) {
+            return new String(bytes, StandardCharsets.US_ASCII);
+        }
+
+        // 1. Valid UTF-8 always wins
+        try {
+            return StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes)).toString();
+        } catch (CharacterCodingException ignored) {
+        }
+
+        String hint = serverLangHint == null ? "" : serverLangHint.toLowerCase(java.util.Locale.US);
+        boolean hintCjk = hint.contains("chin") || hint.contains("zh") || hint.contains("中文")
+                || ServerFilterEngine.containsWord(hint, "cn") || ServerFilterEngine.containsWord(hint, "tw");
+        if (!hintCjk) {
+            if (ServerFilterEngine.isKoreanHint(hint)) return decodeWithCharset(bytes, "EUC-KR");
+            if (ServerFilterEngine.isJapaneseHint(hint)) return decodeWithCharset(bytes, "Shift_JIS");
+            if (ServerFilterEngine.isCyrillicHint(hint)) return decodeWithCharset(bytes, "windows-1251");
+            if (ServerFilterEngine.isExplicitNonChineseForeignLang(hint) || hasIsolatedLatinAccentInWord(bytes)) {
+                return decodeWithCharset(bytes, "windows-1252");
+            }
+        }
+        if ("BIG5".equalsIgnoreCase(preferredCjkCharset)) {
+            String big5 = ServerFilterEngine.tryStrictDecode(bytes, ServerFilterEngine.charsetOrNull("Big5"));
+            if (big5 != null && ServerFilterEngine.containsHan(big5)) return big5;
+        }
+        if (hintCjk || ServerFilterEngine.hasGb2312Level1Density(bytes)) {
+            String gbk = ServerFilterEngine.tryStrictDecode(bytes, ServerFilterEngine.charsetOrNull("GBK"));
+            if (gbk != null && ServerFilterEngine.containsHan(gbk)) return gbk;
+        }
+        return decodeWithCharset(bytes, looksLikeCyrillicRun(bytes) ? "windows-1251" : "windows-1252");
+    }
+
+    private static boolean hasIsolatedLatinAccentInWord(byte[] bytes) {
+        for (int i = 1; i + 1 < bytes.length; i++) {
+            if ((bytes[i] & 0xFF) >= 0xC0
+                    && ServerFilterEngine.isAsciiAlpha(bytes[i - 1] & 0xFF)
+                    && ServerFilterEngine.isAsciiAlpha(bytes[i + 1] & 0xFF)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean looksLikeCyrillicRun(byte[] bytes) {
+        int cyrRange = 0, highTotal = 0;
+        for (byte raw : bytes) {
+            int b = raw & 0xFF;
+            if (b >= 0x80) {
+                highTotal++;
+                if (b >= 0xC0 || b == 0xA8 || b == 0xB8) cyrRange++;
+            }
+        }
+        return highTotal >= 2 && cyrRange * 4 >= highTotal * 3;
+    }
+
+    private static String decodeWithCharset(byte[] bytes, String csName) {
+        try {
+            return new String(bytes, csName);
+        } catch (UnsupportedEncodingException e) {
+            return new String(bytes, StandardCharsets.ISO_8859_1);
         }
     }
 }

@@ -117,3 +117,24 @@ target_compile_options(${PROJECT_NAME} PRIVATE
 )
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE RAKSAMP_CLIENT)
+
+# Standalone lightweight archive extractor (.7z & .rar) loaded on-demand in the
+# launcher UI process (never touches libGTASA.so or :game hooks).
+add_library(SAMPArchive SHARED
+        Archive/ArchiveExtractor.h
+        Archive/ArchiveExtractor.cpp
+        Archive/ArchiveJni.cpp)
+target_link_libraries(SAMPArchive PRIVATE
+        dec7z
+        decunrar
+        log)
+target_compile_options(SAMPArchive PRIVATE -O2 -fexceptions -fstack-protector)
+if (${ANDROID_ABI} STREQUAL "arm64-v8a")
+    target_link_options(SAMPArchive PRIVATE
+            -Wl,-z,max-page-size=16384
+            -Wl,-z,common-page-size=16384
+            -Wl,--exclude-libs,ALL)
+else ()
+    target_link_options(SAMPArchive PRIVATE
+            -Wl,--exclude-libs,ALL)
+endif ()

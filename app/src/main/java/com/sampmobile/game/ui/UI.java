@@ -13,7 +13,6 @@ import java.util.Arrays;
 import com.sampmobile.game.SAMP;
 import com.sampmobile.game.ui.cef.CefManager;
 import com.sampmobile.game.ui.widgets.Dialog;
-import com.sampmobile.game.ui.widgets.EditObject;
 import com.sampmobile.game.ui.widgets.HeightProvider;
 import com.sampmobile.game.ui.widgets.Keyboard;
 import com.sampmobile.game.ui.widgets.LoadingScreen;
@@ -31,7 +30,6 @@ public class UI implements Dialog.Listener, Keyboard.Listener, HeightProvider.Li
     private Dialog dialog;
     private Keyboard keyboard;
     private WantedLevel wantedLevel;
-    private EditObject editObject = null;
     private HeightProvider heightProvider = null;
 
     private native void keyboardSend(byte[] str);
@@ -52,7 +50,6 @@ public class UI implements Dialog.Listener, Keyboard.Listener, HeightProvider.Li
     public void initializeUI() {
         heightProvider = new HeightProvider(samp).init(samp.GetMainView()).setHeightListener(this);
         loadingScreen = new LoadingScreen(samp);
-        editObject = new EditObject(samp);
         dialog = new Dialog(samp, this, charset);
         keyboard = new Keyboard(samp, this);
         wantedLevel = new WantedLevel(samp);
@@ -83,9 +80,6 @@ public class UI implements Dialog.Listener, Keyboard.Listener, HeightProvider.Li
         if (heightProvider != null) {
             heightProvider.destroy();
             heightProvider = null;
-        }
-        if (editObject != null) {
-            editObject.show(false);
         }
         _onDialogVisibilityChanged(false);
         _onKeyboardVisibilityChanged(false);
@@ -175,21 +169,15 @@ public class UI implements Dialog.Listener, Keyboard.Listener, HeightProvider.Li
         samp.runOnUiThread(() -> loadingScreen.show(z));
     }
 
-    public void showEditObject(boolean z) {
-        samp.runOnUiThread(() -> editObject.show(z));
-    }
-
     public void setPauseState(boolean pause) {
         samp.runOnUiThread(() -> {
             if (pause) {
                 keyboard.show(false);
                 wantedLevel.show(false);
                 dialog.showWithoutReset(false);
-                editObject.showWithoutReset(false);
             } else {
                 wantedLevel.show(true);
                 dialog.showWithoutReset(true);
-                editObject.showWithoutReset(true);
             }
         });
     }

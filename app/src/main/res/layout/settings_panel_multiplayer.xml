@@ -680,9 +680,22 @@
                     android:layout_marginEnd="@dimen/_5sdp"
                     android:background="@drawable/launcher_btn_primary"
                     android:gravity="center"
-                    android:paddingHorizontal="@dimen/_9sdp"
+                    android:paddingHorizontal="@dimen/_8sdp"
                     android:text="@string/ui_settings_panel_multiplayer_021"
                     android:textColor="@color/launcher_on_accent"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_dl_cache_import_folder"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginEnd="@dimen/_5sdp"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:paddingHorizontal="@dimen/_8sdp"
+                    android:text="@string/ui_settings_panel_multiplayer_042"
+                    android:textColor="@color/launcher_text"
                     android:textSize="@dimen/_7ssp"
                     android:textStyle="bold" />
 

@@ -13,6 +13,7 @@ class CColModel;
 // comment in OobCollision.cpp.
 bool PinOobColSlot(sa::CColModel* pCM, int& iPinnedSlot);
 void RequestOobColSlot(sa::CColModel* pCM, int iPinnedSlot, uint32_t& dwLastReqTick);
+bool IsOobColSlotSettled(int iSlot);
 void LogOobColPin(int iModel, int iSlot);
 
 // Per-frame col-slot pinning for out-of-bounds pool vehicles.

@@ -57,8 +57,8 @@ android {
         applicationId "com.sampmobile.launcher"
         minSdk 24
         targetSdk 35
-        versionCode 10007
-        versionName "1.0.0.106"
+        versionCode 10009
+        versionName "1.0.0.108"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 

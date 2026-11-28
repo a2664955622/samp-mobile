@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <unordered_set>
 
 namespace artwork {
 
@@ -267,6 +268,82 @@ bool parseMaterialList(const uint8_t* data, const ChunkView& ml, uint32_t& outMa
 	return true;
 }
 
+bool collect2dfxLightSizePatches(const uint8_t* data, const ChunkView& ec, std::vector<size_t>& outPatches)
+{
+	if (ec.length < 4u) {
+		return false;
+	}
+	const uint32_t fxCount = readLE32(data + ec.payloadStart);
+	if (fxCount == 0u || fxCount > 1024u) {
+		return false;
+	}
+	const uint8_t* buf = data + ec.payloadStart + 4u;
+	const size_t n = ec.length - 4u;
+	if (n < static_cast<size_t>(fxCount) * 20u) {
+		return false;
+	}
+
+	// Known 3dsMax/Blender/merged-LOD 2dfx exporter bug: Light entries (type == 0) sometimes carry
+	// a 76-byte (0x4C) v1 payload (96B total with 20B header) while erroneously stamping size == 0x50
+	// (80B), and merged LOD chunks can mix genuine 100B (0x50) and 96B (0x4C-stamped-as-0x50) Light
+	// entries in the same 0x0253F2F8 chunk. Use memoized exact-fit backtracking so every entry boundary
+	// lands strictly on ec.payloadEnd; genuine 80B entries are preferred first and kept untouched.
+	std::unordered_set<uint64_t> failedStates;
+	std::vector<size_t> chosen;
+
+	auto dfs = [&](auto& self, uint32_t idx, size_t off) -> bool {
+		if (idx == fxCount) {
+			return off == n;
+		}
+		if (n - off < 20u) {
+			return false;
+		}
+		const uint64_t stateKey = (static_cast<uint64_t>(idx) << 32) | static_cast<uint64_t>(off);
+		if (failedStates.find(stateKey) != failedStates.end()) {
+			return false;
+		}
+		for (size_t f = 0; f < 3u; ++f) {
+			const float v = readLEFloat(buf + off + f * 4u);
+			if (!std::isfinite(v) || std::fabs(v) > 1.0e6f) {
+				failedStates.insert(stateKey);
+				return false;
+			}
+		}
+		const uint32_t fxType = readLE32(buf + off + 12u);
+		const uint32_t fxSize = readLE32(buf + off + 16u);
+		if (fxType > 16u) {
+			failedStates.insert(stateKey);
+			return false;
+		}
+
+		if (fxType == 0u && fxSize == 0x50u) {
+			if (n - off >= 100u && self(self, idx + 1u, off + 100u)) {
+				return true;
+			}
+			if (n - off >= 96u) {
+				chosen.push_back(ec.payloadStart + 4u + off + 16u);
+				if (self(self, idx + 1u, off + 96u)) {
+					return true;
+				}
+				chosen.pop_back();
+			}
+		} else if (fxSize <= n - (off + 20u)) {
+			if (self(self, idx + 1u, off + 20u + fxSize)) {
+				return true;
+			}
+		}
+
+		failedStates.insert(stateKey);
+		return false;
+	};
+
+	if (!dfs(dfs, 0u, 0u) || chosen.empty()) {
+		return false;
+	}
+	outPatches.insert(outPatches.end(), chosen.begin(), chosen.end());
+	return true;
+}
+
 bool validateGeometry(const uint8_t* data, const ChunkView& geom, DffValidationResult& res,
 	std::vector<size_t>& out2dfxLightSizePatches, std::string& err)
 {
@@ -383,31 +460,7 @@ bool validateGeometry(const uint8_t* data, const ChunkView& geom, DffValidationR
 						}
 					}
 				} else if (ec.type == kRw2dEffectPlg && ec.length >= 4u) {
-					// Known 3dsMax/Blender 2dfx exporter bug: Light entries (type == 0) contain a
-					// 76-byte (0x4C) payload (total 96B per entry: 12B pos + 4B type + 4B size + 76B)
-					// while erroneously writing size == 0x50 (80B). RpGeometry2dEffectStreamRead then
-					// overreads 4B per entry into the following Atomic chunk, failing RpClumpStreamRead.
-					// Patch each affected entry's size field to 0x4C (natively handled by GTA:SA).
-					const uint32_t fxCount = readLE32(data + ec.payloadStart);
-					if (fxCount > 0u && fxCount <= 1024u
-						&& ec.length == 4u + static_cast<size_t>(fxCount) * 96u) {
-						bool allMismatchedLights = true;
-						for (uint32_t i = 0; i < fxCount; ++i) {
-							const size_t entryOff = ec.payloadStart + 4u + static_cast<size_t>(i) * 96u;
-							const uint32_t fxType = readLE32(data + entryOff + 12u);
-							const uint32_t fxSize = readLE32(data + entryOff + 16u);
-							if (fxType != 0u || fxSize != 0x50u) {
-								allMismatchedLights = false;
-								break;
-							}
-						}
-						if (allMismatchedLights) {
-							for (uint32_t i = 0; i < fxCount; ++i) {
-								const size_t sizeFieldOff = ec.payloadStart + 4u + static_cast<size_t>(i) * 96u + 16u;
-								out2dfxLightSizePatches.push_back(sizeFieldOff);
-							}
-						}
-					}
+					collect2dfxLightSizePatches(data, ec, out2dfxLightSizePatches);
 				}
 				eOff = ec.payloadEnd;
 			}

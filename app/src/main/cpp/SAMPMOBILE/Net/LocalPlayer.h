@@ -317,6 +317,9 @@ private:
 	uint32_t m_dwLastUnoccupiedSyncTick;
 	uint32_t m_dwLastAimDataSyncTick;
 	uint32_t m_dwLastSendSpecTick;
+	uint16_t m_lastSpecKeys = 0;
+	uint16_t m_lastSpecLR = 0;
+	uint16_t m_lastSpecUD = 0;
 	uint32_t m_dwLastWeaponsUpdateTick;
 	uint32_t m_dwLastHeadUpdate = 0;
 	uint32_t m_dwLastCameraTargetTick = 0;

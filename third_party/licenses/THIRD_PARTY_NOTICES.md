@@ -23,10 +23,13 @@ libraries, prebuilt binaries, and fonts used by **SA-MP Mobile**.
 | **BLAKE2 reference implementation** | `app/src/main/cpp/SAMPMOBILE/Cef/thirdparty/blake2*` | CC0-1.0 / [Apache-2.0](Apache-2.0.txt) | https://github.com/BLAKE2/BLAKE2 |
 | **tiny-AES-c** | `app/src/main/cpp/SAMPMOBILE/Cef/thirdparty/aes.{c,h}` | Unlicense (Public Domain) | https://github.com/kokke/tiny-AES-c |
 | **TweetNaCl** | `app/src/main/cpp/SAMPMOBILE/Cef/thirdparty/tweetnacl.{c,h}` | Public Domain | https://tweetnacl.cr.yp.to/ |
+| **7-Zip C SDK (`dec7z`)** | `app/src/main/cpp/SAMPMOBILE/Deps/7zip/` | Public Domain | https://www.7-zip.org/sdk.html |
+| **UnRAR (`decunrar`, `libSAMPArchive.so`)** | `app/src/main/cpp/SAMPMOBILE/Deps/Unrar/` | [UnRAR License](UnRAR-License.txt) | https://www.rarlab.com/rar_add.htm |
 | **OpenAL Soft (`libOpenAL*.so`)** | `app/src/main/jniLibs/*/libOpenAL*.so` | [LGPL-2.1](LGPL-2.1.txt) | https://github.com/kcat/openal-soft |
 | **LLVM `libc++_shared.so`** | `app/src/main/jniLibs/*/libc++_shared.so` | [Apache-2.0 WITH LLVM-exception](LLVM-Apache-2.0-Exception.txt) | https://llvm.org/ |
 | **Roboto Fonts** | `app/src/main/res/font/roboto*.ttf` | [Apache-2.0](Apache-2.0.txt) | https://github.com/googlefonts/roboto-2 |
 | **Montserrat Font (Downloadable Font XML)** | `app/src/main/res/font/montserrat*.xml` | SIL OFL 1.1 | https://fonts.google.com/specimen/Montserrat |
+| **IP Location DB (`geo-whois-asn-country`, `ipv4_country.bin`)** | `app/src/main/res/raw/ipv4_country.bin` | CC0-1.0 (Public Domain) | https://github.com/sapics/ip-location-db |
 | **AndroidX / Material / OkHttp / Glide / JUnit** | Resolved via Gradle (`gradle/libs.versions.toml`) | Apache-2.0 / BSD / EPL-1.0 | Maven Central / Google Maven |
 
 ## Non-Commercial / Proprietary Third-Party Components

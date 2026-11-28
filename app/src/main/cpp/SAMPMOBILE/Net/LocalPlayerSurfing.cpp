@@ -41,6 +41,9 @@ void CLocalPlayer::ToggleSpectating(bool bToggle)
 	m_byteSpectateType = SPECTATE_TYPE_NONE;
 	m_bSpectateProcessed = false;
 	m_SpectateID = 0xFFFFFFFF;
+	m_lastSpecKeys = 0;
+	m_lastSpecLR = 0;
+	m_lastSpecUD = 0;
 }
 
 void CLocalPlayer::ProcessSpectating()
@@ -64,15 +67,22 @@ void CLocalPlayer::ProcessSpectating()
 	spSync.vecPos.y = matPos.pos.y;
 	spSync.vecPos.z = matPos.pos.z;
 
-	if ((GetTickCount() - m_dwLastSendSpecTick) > GetOptimumOnFootSendRate()) {
-		uint16_t lrAnalog = 0, udAnalog = 0;
-		uint8_t exKeys = 0;
-		uint16_t wKeys = m_pPlayerPed->GetKeys(&lrAnalog, &udAnalog, &exKeys);
+	uint16_t lrAnalog = 0, udAnalog = 0;
+	uint8_t exKeys = 0;
+	const uint16_t wKeys = m_pPlayerPed->GetKeys(&lrAnalog, &udAnalog, &exKeys);
+	const bool keysChanged = (wKeys != m_lastSpecKeys || lrAnalog != m_lastSpecLR || udAnalog != m_lastSpecUD);
+	const uint32_t nowTick = GetTickCount();
+
+	if (keysChanged || (nowTick - m_dwLastSendSpecTick) > static_cast<uint32_t>(GetOptimumOnFootSendRate())) {
 		spSync.lrAnalog = lrAnalog;
 		spSync.udAnalog = udAnalog;
 		spSync.wKeys = wKeys;
 
-		m_dwLastSendSpecTick = GetTickCount();
+		m_lastSpecKeys = wKeys;
+		m_lastSpecLR = lrAnalog;
+		m_lastSpecUD = udAnalog;
+		m_dwLastSendSpecTick = nowTick;
+
 		proto::OutboundSpectatorSync pkt{};
 		pkt.lrAnalog = spSync.lrAnalog;
 		pkt.udAnalog = spSync.udAnalog;
@@ -82,8 +92,8 @@ void CLocalPlayer::ProcessSpectating()
 		pkt.serialize(w, proto::ProtoVersion::V037);
 		pNetGame->GetRakClient()->Send(&bsSpectatorSync, HIGH_PRIORITY, UNRELIABLE, 0);
 
-		if ((GetTickCount() - m_dwLastSendAimSyncTick) > (GetOptimumOnFootSendRate() * 2)) {
-			m_dwLastSendAimSyncTick = GetTickCount();
+		if ((nowTick - m_dwLastSendAimSyncTick) > static_cast<uint32_t>(GetOptimumOnFootSendRate() * 2)) {
+			m_dwLastSendAimSyncTick = nowTick;
 			SendAimSyncData();
 		}
 	}

@@ -89,6 +89,9 @@ void CTextDrawPool::SetSelectState(bool bState, uint32_t dwColor, bool bSendCanc
 		// CTextDraw::Draw / DrawUnicode / DrawTextureUV consume ABGR (0xAABBGGRR).
 		m_dwHoverColor = __builtin_bswap32(dwColor);
 		m_wClickedTextDrawID = 0xFFFF;
+		if (!alreadySelecting) {
+			m_touchTracker.reset();
+		}
 		if (!alreadySelecting && pGame) {
 			pGame->SetHudHidden(Game::HUD_HIDE_TEXTDRAW_SELECT, true);
 		}
@@ -97,6 +100,7 @@ void CTextDrawPool::SetSelectState(bool bState, uint32_t dwColor, bool bSendCanc
 		const bool wasSelecting = m_bSelectState.exchange(false, std::memory_order_acq_rel);
 		m_dwHoverColor = 0;
 		m_wClickedTextDrawID = 0xFFFF;
+		m_touchTracker.reset();
 		{
 			std::lock_guard<std::mutex> lock(m_touchMutex);
 			m_pendingTouches.clear();
@@ -130,7 +134,7 @@ void CTextDrawPool::SendClick()
 	pNetGame->GetRakClient()->RPC(&RPC_ClickTextDraw, &bsClick, HIGH_PRIORITY, RELIABLE_ORDERED, 0, false, UNASSIGNED_NETWORK_ID, nullptr);
 }
 
-bool CTextDrawPool::enqueueTouchEvent(int type, int x, int y)
+bool CTextDrawPool::enqueueTouchEvent(int type, int x, int y, int pointerId)
 {
 	if (!m_bSelectState.load(std::memory_order_acquire)) return true;
 
@@ -138,7 +142,7 @@ bool CTextDrawPool::enqueueTouchEvent(int type, int x, int y)
 	if (m_pendingTouches.size() >= 64) {
 		m_pendingTouches.pop_front();
 	}
-	m_pendingTouches.push_back({type, x, y});
+	m_pendingTouches.push_back({type, x, y, pointerId});
 	return false;
 }
 
@@ -151,16 +155,16 @@ void CTextDrawPool::processPendingTouches()
 		queue.swap(m_pendingTouches);
 	}
 	for (const auto& ev : queue) {
-		onTouchEvent(ev.type, ev.x, ev.y);
+		onTouchEvent(ev.type, ev.x, ev.y, ev.pointerId);
 	}
 }
 
-bool CTextDrawPool::onTouchEvent(int type, int x, int y)
+bool CTextDrawPool::onTouchEvent(int type, int x, int y, int pointerId)
 {
 	if (!m_bSelectState.load(std::memory_order_acquire)) return true;
 
 	m_wClickedTextDrawID = 0xFFFF;
-	int topHitId = -1;
+	m_hitScratch.clear();
 
 	for (int i = 0; i < MAX_TEXT_DRAWS; i++) {
 		if (m_bSlotState[i] && m_pTextDraw[i]) {
@@ -169,32 +173,33 @@ bool CTextDrawPool::onTouchEvent(int type, int x, int y)
 			pTextDraw->m_dwHoverColor = 0;
 
 			if (pTextDraw->m_TextDrawData.byteSelectable && pTextDraw->m_TextDrawData.bHasRectArea) {
-				sa::CRect* rect = &pTextDraw->m_rectArea;
-				if (IsPointInRect(x, y, rect)) {
-					topHitId = i;
-				}
+				const sa::CRect& rect = pTextDraw->m_rectArea;
+				m_hitScratch.push_back(textdraw::makeNormalizedHitBox(
+					i, rect.left, rect.bottom, rect.right, rect.top));
 			}
 		}
 	}
 
-	if (topHitId >= 0 && m_pTextDraw[topHitId]) {
-		CTextDraw* pTop = m_pTextDraw[topHitId];
-		switch (type) {
-			case 2:
-			case 3:
-				m_wClickedTextDrawID = 0xFFFF;
-				pTop->m_bHovered = true;
-				pTop->m_dwHoverColor = m_dwHoverColor;
-				break;
-			case 1:
-				m_wClickedTextDrawID = static_cast<uint16_t>(topHitId);
-				pTop->m_bHovered = false;
-				pTop->m_dwHoverColor = 0;
-				break;
-		}
+	const float screenW = sa::RsGlobal ? static_cast<float>(sa::RsGlobal->screenWidth) : 1920.0f;
+	const float screenH = sa::RsGlobal ? static_cast<float>(sa::RsGlobal->screenHeight) : 1080.0f;
+	const textdraw::TouchSelectRadii radii = textdraw::computeTouchSelectRadii(screenW, screenH);
+	const textdraw::TouchEvalResult eval = m_touchTracker.onTouch(
+		type,
+		pointerId,
+		static_cast<float>(x),
+		static_cast<float>(y),
+		m_hitScratch.data(),
+		m_hitScratch.size(),
+		radii);
+
+	if (eval.hoveredId >= 0 && eval.hoveredId < MAX_TEXT_DRAWS && m_pTextDraw[eval.hoveredId]) {
+		CTextDraw* pTop = m_pTextDraw[eval.hoveredId];
+		pTop->m_bHovered = true;
+		pTop->m_dwHoverColor = m_dwHoverColor;
 	}
 
-	if (m_wClickedTextDrawID != 0xFFFF) {
+	if (eval.clickedId >= 0 && eval.clickedId < MAX_TEXT_DRAWS && m_pTextDraw[eval.clickedId]) {
+		m_wClickedTextDrawID = static_cast<uint16_t>(eval.clickedId);
 		SendClick();
 	}
 

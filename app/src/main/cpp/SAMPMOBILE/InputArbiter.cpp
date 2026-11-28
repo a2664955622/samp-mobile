@@ -229,6 +229,7 @@ void onTouchCancel()
 	g_imguiOwnedPointers = 0;
 	g_radarOwnedPointers = 0;
 	g_rpModalOwnedPointers = 0;
+	EditObject::onTouchCancel();
 	TouchHud::handleCancel();
 	if (pUI != nullptr) {
 		pUI->enqueueTouchEvent(ImVec2(0.0f, 0.0f), TouchType::pop, true);
@@ -357,7 +358,7 @@ void routeGtaTouch(int type, int num, int posX, int posY, ForwardGtaTouchFn forw
 
 		// During TextDraw selection, give TextDraws priority everywhere except RP Strip (ESC/TAB)
 		if (tdSelecting) {
-			if (!pNetGame->GetTextDrawPool()->enqueueTouchEvent(type, posX, posY)) {
+			if (!pNetGame->GetTextDrawPool()->enqueueTouchEvent(type, posX, posY, num)) {
 				g_gtaPointers.releasePointer(num, forwardToGta);
 				return;
 			}
@@ -369,7 +370,7 @@ void routeGtaTouch(int type, int num, int posX, int posY, ForwardGtaTouchFn forw
 			g_gtaPointers.releasePointer(num, forwardToGta);
 			return;
 		}
-		if (pNetGame->GetTextDrawPool() && !pNetGame->GetTextDrawPool()->enqueueTouchEvent(type, posX, posY)) {
+		if (pNetGame->GetTextDrawPool() && !pNetGame->GetTextDrawPool()->enqueueTouchEvent(type, posX, posY, num)) {
 			g_gtaPointers.releasePointer(num, forwardToGta);
 			return;
 		}
@@ -379,11 +380,29 @@ void routeGtaTouch(int type, int num, int posX, int posY, ForwardGtaTouchFn forw
 		}
 	}
 
-	// 6. On finger Down, check interactive ImGui widgets (Chat, VoiceButton, Spawn)
+	// 6a. Object Editor Studio Dock panel buttons take priority over background overlays
+	// while keeping Chat & VoiceButton 100% clickable outside the bottom Studio Dock!
+	if (type == 2 && EditObject::isUiPanelHitSnapshot(fx, fy)) {
+		if (EditObject::handleTouch(type, num, fx, fy)) {
+			g_gtaPointers.releasePointer(num, forwardToGta);
+			return;
+		}
+	}
+
+	// 6b. On finger Down, check interactive ImGui widgets (Chat, VoiceButton, Spawn)
 	if (type == 2 && pUI && pUI->isInteractiveOverlayHitSnapshot(ImVec2(fx, fy))) {
 		if (hasBit) g_imguiOwnedPointers |= pBit;
 		sendToImGui(type, num, posX, posY);
 		return;
+	}
+
+	// 6c. Native 3D Object / Attached-Object Editor (Gizmo + Precision Dock + 360-degree Camera Orbit;
+	// when Walk Mode is toggled on, non-bar touches fall through to TouchHud below!)
+	if (EditObject::m_visible.load(std::memory_order_acquire)) {
+		if (EditObject::handleTouch(type, num, fx, fy)) {
+			g_gtaPointers.releasePointer(num, forwardToGta);
+			return;
+		}
 	}
 
 	// 7. On finger Down, check top-left GTA Radar tap-to-open-map region

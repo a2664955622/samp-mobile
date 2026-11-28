@@ -80,6 +80,7 @@ public:
 	sa::CVector GetScale();
 	void SetRotation(sa::CVector* vecRotation);
 	void GetRotation(float* pfX, float* pfY, float* pfZ);
+	const sa::CVector& GetStoredRotation() const { return m_vecRotation; }
 	void UpdateMatrix(RwMatrix matrix) override;
 	void RotateMatrix(sa::CVector vecRot);
 	void ApplyMoveSpeed();
@@ -113,14 +114,25 @@ public:
 	void ChangeToOriginalObjectMaterial();
 
 	static CObject* FindByGtaEntity(sa::CEntity* pEntity);
+	static bool HasAnyCustomMaterialObjects() noexcept;
 	int GetModelIndex() const { return m_iModel; }
 	int GetServerModelIndex() const { return m_iServerModel; }
 	bool IsTimedHidden() const { return m_bTimedHidden; }
+	bool NeedsPerFrameMatrixSync() const noexcept
+	{
+		return (m_byteMoving & 1) != 0
+			|| m_AttachedVehicleID != 0xFFFFu
+			|| m_AttachedObjectID != 0xFFFFu
+			|| m_AttachedPlayerID != 0xFFFFu;
+	}
 	// Recreates the underlying GTA CObject entity with a different GTA model index while
 	// preserving transform, draw distance, camera-col flag, timed visibility, and materials.
 	bool SwapGtaModel(int iNewGtaModel);
 	void RefreshCustomMaterials();
 	void ReleaseCustomMaterialsBeforeUnload();
+
+private:
+	void MarkHasCustomMaterial() noexcept;
 
 public:
 	struct AtomicMaterialBackup {
@@ -132,6 +144,8 @@ public:
 	};
 
 	bool m_bHasCustomObjectMaterial;
+	bool m_bHasPendingMaterialText;
+	bool m_bCountedCustomMaterial;
 	MATERIAL_OBJECT m_Material[MAX_MATERIALS];
 	std::vector<AtomicMaterialBackup> m_originalAtomicMaterials;
 
@@ -179,4 +193,5 @@ private:
 	int m_iPinnedColSlot;
 	uint32_t m_dwLastColRequestTick;
 	bool m_bColDiagLogged;
+	bool m_bOobColSettled;
 };

@@ -62,6 +62,11 @@ std::mutex g_snapMutex;
 touch_hud::ScreenRect g_rpBoundsSnap{};
 bool g_hudVisibleSnap = false;
 
+// External camera look deltas (e.g. Object Editor 360-degree viewport orbit)
+std::mutex g_extLookMutex;
+float g_extLookDX = 0.0f;
+float g_extLookDY = 0.0f;
+
 // GameMain-owned per-frame state
 touch_hud::TouchHudCore::FrameOutput g_frame{};
 float g_frameLookVecX = 0.0f;
@@ -230,7 +235,7 @@ touch_hud::ContextCapabilities computeLiveCapabilities()
 		}
 	}
 
-	if (EditObject::m_visible.load(std::memory_order_acquire)) {
+	if (EditObject::m_visible.load(std::memory_order_acquire) && !EditObject::isWalkMode()) {
 		return caps;
 	}
 
@@ -282,9 +287,9 @@ touch_hud::ContextCapabilities computeLiveCapabilities()
 			return caps;
 		}
 		if (lp->IsSpectating()) {
-			// Spectators keep only the RP Strip (TAB/ESC/F8), no combat buttons cluttering view
-			caps.context = touch_hud::HudContext::OnFoot;
-			caps.rpStripOnly = true;
+			// Spectators get Joystick (WASD flymode/target) + Sprint/Jump/Fire/F + FreeCameraLook + RP Strip;
+			// if a modal overlay (Scoreboard / TextDraw / Menu) is open, rpStripOnly hides gameplay buttons.
+			caps.context = touch_hud::HudContext::Spectating;
 			return caps;
 		}
 		if (!lp->m_bIsActive) {
@@ -472,9 +477,21 @@ bool handleTouch(int type, int pointerId, float x, float y)
 void handleCancel()
 {
 	clearHardwareKeys();
+	{
+		std::lock_guard<std::mutex> lock(g_extLookMutex);
+		g_extLookDX = 0.0f;
+		g_extLookDY = 0.0f;
+	}
 	std::lock_guard<std::mutex> lock(g_coreMutex);
 	if (!g_initialized) return;
 	g_core.onCancelAll(nowSteadyMs());
+}
+
+void injectExternalLookDelta(float dx, float dy)
+{
+	std::lock_guard<std::mutex> lock(g_extLookMutex);
+	g_extLookDX += dx;
+	g_extLookDY += dy;
 }
 
 void clearHardwareKeys()
@@ -771,21 +788,46 @@ void stepGameFrame()
 	if (g_frame.moveUD == 0 && g_hwUD != 0) { g_frame.moveUD = g_hwUD; g_frame.stickTouched = true; }
 	// PC GTA:SA vehicle parity: strictly separate W/S (throttle/brake) from Arrow Up/Down (pitch/lean/udAnalog)!
 	// Never let Arrow Up/Down step on gas/brake, and never let W/S pitch aircraft/bikes.
+	const bool inVehCtx = (caps.context == touch_hud::HudContext::InVehicleDriver
+		|| caps.context == touch_hud::HudContext::InVehiclePassenger
+		|| caps.context == touch_hud::HudContext::Aircraft);
 	const int16_t hwDpadUD = (g_hwDpadUp && !g_hwDpadDown) ? -128 : ((g_hwDpadDown && !g_hwDpadUp) ? 128 : 0);
 	if (g_frame.vehSteerLR == 0 && g_hwLR != 0) g_frame.vehSteerLR = g_hwLR;
 	if (g_frame.vehSteerUD == 0 && hwDpadUD != 0) g_frame.vehSteerUD = hwDpadUD;
-	if (g_hwW && !g_hwS && g_frame.vehAccel == 0) {
+	if (g_frame.syncLR == 0 && g_hwLR != 0) g_frame.syncLR = g_hwLR;
+	if (g_frame.syncUD == 0) {
+		const int16_t hwSyncUD = (caps.context == touch_hud::HudContext::InVehicleDriver
+			|| caps.context == touch_hud::HudContext::Aircraft)
+			? hwDpadUD
+			: g_hwUD;
+		if (hwSyncUD != 0) g_frame.syncUD = hwSyncUD;
+	}
+	if (inVehCtx && g_hwW && !g_hwS && g_frame.vehAccel == 0) {
 		g_frame.vehAccel = 255;
 		g_frame.activeKeyMask |= touch_hud::keyBit(touch_hud::SampKey::Sprint);
 	}
-	if (g_hwS && !g_hwW && g_frame.vehBrake == 0) {
+	if (inVehCtx && g_hwS && !g_hwW && g_frame.vehBrake == 0) {
 		g_frame.vehBrake = 255;
 		g_frame.activeKeyMask |= touch_hud::keyBit(touch_hud::SampKey::Jump);
 	}
 
 	// ---- 1) Camera look deltas & aircraft 360-degree manual orbit ----
-	const float rawLookDX = frame.lookDeltaX;
-	const float rawLookDY = frame.lookDeltaY;
+	float extDX = 0.0f;
+	float extDY = 0.0f;
+	float lookSens = 1.0f;
+	{
+		std::lock_guard<std::mutex> lock(g_extLookMutex);
+		extDX = g_extLookDX;
+		extDY = g_extLookDY;
+		g_extLookDX = 0.0f;
+		g_extLookDY = 0.0f;
+	}
+	{
+		std::lock_guard<std::mutex> lock(g_coreMutex);
+		lookSens = g_core.layout().prefs.lookSensitivity;
+	}
+	const float rawLookDX = frame.lookDeltaX + extDX * lookSens;
+	const float rawLookDY = frame.lookDeltaY + extDY * lookSens;
 
 	sa::CCamera& theCam = sa::getTheCamera();
 	const int activeCamIdx = (theCam.m_nActiveCam < 3) ? static_cast<int>(theCam.m_nActiveCam) : 0;
@@ -979,26 +1021,13 @@ void stepGameFrame()
 			LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = true;
 		}
 
-		// PC SA-MP parity: always sync vehicle lrAnalog / udAnalog (KEY_LEFT/RIGHT/UP/DOWN)
-		// even for 4-wheel cars on the ground (CAutomobile::ProcessControlInputs skips CPad::GetSteeringUpDown).
-		const bool bDriving = (caps.context == touch_hud::HudContext::InVehicleDriver
-			|| caps.context == touch_hud::HudContext::Aircraft);
-		if (bDriving && !IsLocalActivePedMovementLocked()) {
-			LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(g_frame.vehSteerLR);
-			LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(g_frame.vehSteerUD);
-		}
-
-		// Direct axis sync for modes that bypass CPad::GetPedWalk* (dancing, parachuting, class select, spectating)
-		bool bDirectAxisSync = pLocal && (pLocal->IsDancing() || pLocal->IsParachuting());
-		if (!bDirectAxisSync && pNetGame && pNetGame->GetPlayerPool()) {
-			if (CLocalPlayer* lp = pNetGame->GetPlayerPool()->GetLocalPlayer()) {
-				bDirectAxisSync = !lp->m_bIsActive || lp->IsSpectating();
-			}
-		}
-		if (bDirectAxisSync && !IsLocalActivePedMovementLocked()) {
-			LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(g_touchCombat.stickLR);
-			LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(g_touchCombat.stickUD);
-		}
+		// PC SA-MP parity: authoritatively sync discrete directional keys {-128, 0, +128}
+		// (KEY_LEFT / KEY_RIGHT / KEY_UP / KEY_DOWN) across ALL active contexts — including
+		// OnFoot, Swimming, Slow-Walk (ALT), TogglePlayerControllable(0) frozen prompts/menus,
+		// ApplyAnimation (horse-riding / sitting / custom combat stances), Spectating (/flymode),
+		// InVehicleDriver, Aircraft, and InVehiclePassenger!
+		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(g_frame.syncLR);
+		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(g_frame.syncUD);
 	}
 }
 

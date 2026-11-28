@@ -3,6 +3,8 @@
 #include "TxdParser.h"
 
 #include "../Patches.h"
+#include "../ObjectUVAnim.h"
+#include "../Util.h"
 #include "../Engine/Symbols.h"
 
 #include <SA.h>
@@ -423,6 +425,9 @@ void ArtworkStore::destroyLoadedSlot(ArtworkManifest& manifest, LoadedSlot& ls)
 {
 	sa::CBaseModelInfo** modelInfoPtrs = Patches::modelInfoPtrs();
 	if (ls.modelInfo) {
+		if (ls.modelInfo->m_pRwObject) {
+			UnregisterUVAnimRwObject(ls.modelInfo->m_pRwObject);
+		}
 		if (ls.isPed) {
 			eng::fn::CPedModelInfo_DeleteRwObject(ls.modelInfo);
 		} else {
@@ -441,6 +446,12 @@ void ArtworkStore::destroyLoadedSlot(ArtworkManifest& manifest, LoadedSlot& ls)
 		}
 		ls.modelInfo = nullptr;
 	}
+	if (m_totalModelBytes >= ls.estimatedBytes) {
+		m_totalModelBytes -= ls.estimatedBytes;
+	} else {
+		m_totalModelBytes = 0;
+	}
+	ls.estimatedBytes = 0;
 	if (modelInfoPtrs && isInternalCustomSlot(ls.internalSlot)) {
 		modelInfoPtrs[ls.internalSlot] = nullptr;
 	}
@@ -569,18 +580,93 @@ void ArtworkStore::evictIdleToBudget(ArtworkManifest& manifest, size_t targetTot
 	}
 }
 
-void ArtworkStore::evictIdleIfAboveWatermark(ArtworkManifest& manifest)
+void ArtworkStore::evictIdleModelsToCap(ArtworkManifest& manifest, size_t maxIdleSlots, size_t maxIdleBytes,
+	uint32_t nowMs, uint32_t minIdleAgeMs)
 {
-	if (m_totalTxdBytes <= kSoftEvictTxdBytes) {
+	size_t idleSlots = 0;
+	size_t idleBytes = 0;
+	struct Candidate {
+		uint64_t lastUseSeq = 0;
+		int32_t slot = -1;
+	};
+	std::vector<Candidate> candidates;
+
+	for (auto& kv : m_loadedSlots) {
+		LoadedSlot& ls = kv.second;
+		if (ls.modelInfo && ls.modelInfo->m_numRefs == 0) {
+			if (ls.idleSinceMs == 0u) {
+				ls.idleSinceMs = (nowMs != 0u) ? nowMs : 1u;
+			}
+			++idleSlots;
+			idleBytes += ls.estimatedBytes;
+			if (minIdleAgeMs == 0u || (nowMs != 0u && (nowMs - ls.idleSinceMs) >= minIdleAgeMs)) {
+				candidates.push_back(Candidate{ls.lastUseSeq, kv.first});
+			}
+		} else {
+			ls.idleSinceMs = 0u;
+		}
+	}
+
+	if ((idleSlots <= maxIdleSlots && idleBytes <= maxIdleBytes) || candidates.empty()) {
 		return;
 	}
+
+	std::sort(candidates.begin(), candidates.end(),
+		[](const Candidate& a, const Candidate& b) { return a.lastUseSeq < b.lastUseSeq; });
+
+	for (const Candidate& c : candidates) {
+		if (idleSlots <= maxIdleSlots && idleBytes <= maxIdleBytes) {
+			break;
+		}
+		auto it = m_loadedSlots.find(c.slot);
+		if (it == m_loadedSlots.end() || !it->second.modelInfo || it->second.modelInfo->m_numRefs != 0) {
+			continue;
+		}
+		LoadedSlot victim = it->second;
+		if (idleSlots > 0) --idleSlots;
+		idleBytes = (idleBytes >= victim.estimatedBytes) ? (idleBytes - victim.estimatedBytes) : 0u;
+		m_loadedSlots.erase(it);
+		destroyLoadedSlot(manifest, victim);
+	}
+}
+
+void ArtworkStore::evictIdleIfAboveWatermark(ArtworkManifest& manifest)
+{
 	const size_t beforeSlots = m_loadedSlots.size();
-	const size_t beforeBytes = m_totalTxdBytes;
-	evictIdleToBudget(manifest, kSoftEvictTxdBytes);
-	if (m_loadedSlots.size() < beforeSlots || m_totalTxdBytes < beforeBytes) {
-		spdlog::info("ArtworkStore: evicted idle resources ({} -> {} slots, {} -> {} MB TXD)",
+	const size_t beforeModelBytes = m_totalModelBytes;
+	const size_t beforeTxdBytes = m_totalTxdBytes;
+
+	if (m_totalTxdBytes > kSoftEvictTxdBytes) {
+		evictIdleToBudget(manifest, kSoftEvictTxdBytes);
+	}
+	// On VW transition (e.g. login lobby vw=100000 -> world spawn vw=0), immediately trim
+	// unreferenced DFF/VBO/COL slots even when shared TXDs sit below kSoftEvictTxdBytes.
+	evictIdleModelsToCap(manifest, kMaxIdleModelSlots / 2u, kSoftIdleModelBytes / 2u, GetTickCount(), 0u);
+
+	if (m_loadedSlots.size() < beforeSlots || m_totalTxdBytes < beforeTxdBytes) {
+		spdlog::info("ArtworkStore: evicted idle resources ({} -> {} slots, {} -> {} MB DFF/VBO, {} -> {} MB TXD)",
 			beforeSlots, m_loadedSlots.size(),
-			beforeBytes / (1024u * 1024u), m_totalTxdBytes / (1024u * 1024u));
+			beforeModelBytes / (1024u * 1024u), m_totalModelBytes / (1024u * 1024u),
+			beforeTxdBytes / (1024u * 1024u), m_totalTxdBytes / (1024u * 1024u));
+	}
+}
+
+void ArtworkStore::evictIdlePeriodic(ArtworkManifest& manifest, uint32_t nowMs)
+{
+	const size_t beforeSlots = m_loadedSlots.size();
+	const size_t beforeModelBytes = m_totalModelBytes;
+	const size_t beforeTxdBytes = m_totalTxdBytes;
+
+	evictIdleModelsToCap(manifest, kMaxIdleModelSlots, kSoftIdleModelBytes, nowMs, kIdleModelCooldownMs);
+	if (m_totalTxdBytes > kSoftEvictTxdBytes) {
+		evictIdleToBudget(manifest, kSoftEvictTxdBytes);
+	}
+
+	if (m_loadedSlots.size() < beforeSlots || m_totalTxdBytes < beforeTxdBytes) {
+		spdlog::info("ArtworkStore: periodic sweep reclaimed idle models ({} -> {} slots, {} -> {} MB DFF/VBO, {} -> {} MB TXD)",
+			beforeSlots, m_loadedSlots.size(),
+			beforeModelBytes / (1024u * 1024u), m_totalModelBytes / (1024u * 1024u),
+			beforeTxdBytes / (1024u * 1024u), m_totalTxdBytes / (1024u * 1024u));
 	}
 }
 
@@ -600,6 +686,25 @@ RwTexDictionary* ArtworkStore::ensureTxdLoaded(ArtworkManifest& manifest, const 
 	std::string txdPath;
 	if (!cache.resolvePath || !cache.resolvePath(FileType::Txd, txdCrc, txdPath)) {
 		return nullptr;
+	}
+
+	// Fast O(1) budget check BEFORE touching disk if we already measured this TXD's decoded footprint!
+	// Prevents catastrophic multi-megabyte disk-read + full-file validation thrashing on every streamed
+	// object when active world models temporarily hold the session TXD budget near capacity.
+	if (auto projIt = m_projectedTxdBytes.find(txdCrc); projIt != m_projectedTxdBytes.end()) {
+		const size_t cachedNeed = std::min(projIt->second, kMaxDecodedTxdBytes);
+		if (m_totalTxdBytes + cachedNeed > kMaxSessionTxdBytes) {
+			const uint32_t nowMs = GetTickCount();
+			if (m_lastBudgetEvictCheckMs == 0 || (nowMs - m_lastBudgetEvictCheckMs) >= 500u) {
+				m_lastBudgetEvictCheckMs = nowMs ? nowMs : 1u;
+				const size_t target = (kMaxSessionTxdBytes > cachedNeed)
+					? (kMaxSessionTxdBytes - cachedNeed) : 0u;
+				evictIdleToBudget(manifest, target);
+			}
+			if (m_totalTxdBytes + cachedNeed > kMaxSessionTxdBytes) {
+				return nullptr;
+			}
+		}
 	}
 
 	std::vector<uint8_t> bytes;
@@ -631,17 +736,21 @@ RwTexDictionary* ArtworkStore::ensureTxdLoaded(ArtworkManifest& manifest, const 
 		return nullptr;
 	}
 
+	m_projectedTxdBytes[txdCrc] = projectedBytes;
 	const size_t neededBytes = std::min(projectedBytes, kMaxDecodedTxdBytes);
 	if (m_totalTxdBytes + neededBytes > kMaxSessionTxdBytes) {
+		m_lastBudgetEvictCheckMs = GetTickCount() ? GetTickCount() : 1u;
 		const size_t target = (kMaxSessionTxdBytes > neededBytes)
 			? (kMaxSessionTxdBytes - neededBytes) : 0u;
 		evictIdleToBudget(manifest, target);
 	}
 	if (m_totalTxdBytes + neededBytes > kMaxSessionTxdBytes) {
-		spdlog::warn("ArtworkStore: session TXD VRAM budget ({} MiB) full with active models (used={} MiB, need={} KB); refusing TXD {:08X}",
-			kMaxSessionTxdBytes / (1024u * 1024u),
-			m_totalTxdBytes / (1024u * 1024u),
-			neededBytes / 1024u, txdCrc);
+		if (m_budgetWarnedTxds.insert(txdCrc).second) {
+			spdlog::warn("ArtworkStore: session TXD VRAM budget ({} MiB) full with active models (used={} MiB, need={} KB); deferring TXD {:08X}",
+				kMaxSessionTxdBytes / (1024u * 1024u),
+				m_totalTxdBytes / (1024u * 1024u),
+				neededBytes / 1024u, txdCrc);
+		}
 		return nullptr; // do not permanently poison m_failedTxds: may succeed once models become idle
 	}
 
@@ -711,6 +820,7 @@ int32_t ArtworkStore::ensureCustomSkinLoaded(ArtworkManifest& manifest, const Ca
 		auto it = m_loadedSlots.find(existingSlot);
 		if (it != m_loadedSlots.end() && it->second.isPed && it->second.modelInfo && it->second.modelInfo->m_pRwObject) {
 			it->second.lastUseSeq = ++m_useSeq;
+			it->second.idleSinceMs = 0u;
 			return existingSlot;
 		}
 	}
@@ -857,8 +967,11 @@ int32_t ArtworkStore::ensureCustomSkinLoaded(ArtworkManifest& manifest, const Ca
 	ls.isPed = true;
 	ls.modelInfo = model;
 	ls.ownedCol = nullptr;
+	ls.estimatedBytes = dffPayload.size() * 2u;
 	ls.lastUseSeq = ++m_useSeq;
+	ls.idleSinceMs = 0u;
 	m_loadedSlots[slot] = ls;
+	m_totalModelBytes += ls.estimatedBytes;
 
 	spdlog::info("ArtworkStore: loaded custom skin {} -> slot {} (base={}, atomics={}, verts={}, txd={:08X})",
 		serverSkinId, slot, rec->baseId, check.atomicCount, check.totalVerts, rec->txdCrc);
@@ -876,6 +989,7 @@ int32_t ArtworkStore::ensureCustomObjectLoaded(ArtworkManifest& manifest, const 
 		auto it = m_loadedSlots.find(existingSlot);
 		if (it != m_loadedSlots.end() && !it->second.isPed && it->second.modelInfo && it->second.modelInfo->m_pRwObject) {
 			it->second.lastUseSeq = ++m_useSeq;
+			it->second.idleSinceMs = 0u;
 			return existingSlot;
 		}
 	}
@@ -894,21 +1008,21 @@ int32_t ArtworkStore::ensureCustomObjectLoaded(ArtworkManifest& manifest, const 
 		return -1; // still downloading
 	}
 	RwTexDictionary* txd = nullptr;
-	if (rec->txdCrc != 0) {
-		std::string txdPath;
-		if (!cache.resolvePath(FileType::Txd, rec->txdCrc, txdPath)) {
-			return -1; // TXD still downloading
-		}
-		txd = ensureTxdLoaded(manifest, cache, rec->txdCrc);
-		if (!txd) {
-			spdlog::warn("ArtworkStore: custom object {} TXD {:08X} unavailable; falling back to baseId {}",
-				serverModelId, rec->txdCrc, rec->baseId);
-			if (m_failedTxds.count(rec->txdCrc)) {
-				m_failedModels.insert(serverModelId);
+		if (rec->txdCrc != 0) {
+			std::string txdPath;
+			if (!cache.resolvePath(FileType::Txd, rec->txdCrc, txdPath)) {
+				return -1; // TXD still downloading
 			}
-			return -1;
+			txd = ensureTxdLoaded(manifest, cache, rec->txdCrc);
+			if (!txd) {
+				if (m_failedTxds.count(rec->txdCrc)) {
+					spdlog::warn("ArtworkStore: custom object {} TXD {:08X} permanently failed; falling back to baseId {}",
+						serverModelId, rec->txdCrc, rec->baseId);
+					m_failedModels.insert(serverModelId);
+				}
+				return -1;
+			}
 		}
-	}
 
 	sa::CBaseModelInfo** modelInfoPtrs = Patches::modelInfoPtrs();
 	if (!modelInfoPtrs) {
@@ -1040,8 +1154,11 @@ int32_t ArtworkStore::ensureCustomObjectLoaded(ArtworkManifest& manifest, const 
 	ls.isPed = false;
 	ls.modelInfo = model;
 	ls.ownedCol = ownedCol;
+	ls.estimatedBytes = dffPayload.size() * 2u + validated.embeddedCol.size() * 3u;
 	ls.lastUseSeq = ++m_useSeq;
+	ls.idleSinceMs = 0u;
 	m_loadedSlots[slot] = ls;
+	m_totalModelBytes += ls.estimatedBytes;
 
 	spdlog::debug("ArtworkStore: loaded custom object {} -> slot {} (base={}, col={}B, txd={:08X})",
 		serverModelId, slot, rec->baseId, validated.embeddedCol.size(), rec->txdCrc);
@@ -1109,13 +1226,21 @@ void ArtworkStore::unloadAll(ArtworkManifest& manifest)
 		it = m_loadedTxds.erase(it);
 	}
 	m_failedTxds.clear();
+	m_projectedTxdBytes.clear();
+	m_budgetWarnedTxds.clear();
+	m_lastBudgetEvictCheckMs = 0;
 	m_totalTxdBytes = 0;
 	for (const auto& kv : m_loadedTxds) {
 		m_totalTxdBytes += kv.second.decodedBytes;
 	}
+	m_totalModelBytes = 0;
+	for (const auto& kv : m_loadedSlots) {
+		m_totalModelBytes += kv.second.estimatedBytes;
+	}
 	m_useSeq = 0;
 
 	if (m_loadedSlots.empty()) {
+		ClearAllUVAnimGeometries();
 		manifest.releaseAllSlots();
 	}
 }

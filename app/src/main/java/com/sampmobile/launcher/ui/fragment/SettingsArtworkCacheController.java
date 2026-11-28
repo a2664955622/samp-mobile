@@ -21,9 +21,9 @@ import androidx.fragment.app.FragmentActivity;
 import com.sampmobile.launcher.R;
 import com.sampmobile.launcher.utils.ArtworkCacheManager;
 import com.sampmobile.launcher.utils.GameDataVerifier;
-import com.sampmobile.launcher.utils.LauncherThemeManager;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -33,10 +33,17 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 final class SettingsArtworkCacheController {
 
+    private interface ImportTaskRunner {
+        ArtworkCacheManager.ImportResult run(Context appCtx, File cacheRoot,
+                                             ArtworkCacheManager.ProgressListener listener,
+                                             AtomicBoolean cancelled) throws IOException;
+    }
+
     private final SettingsPageFragment host;
     private TextView tvSummary;
     private TextView tvEmpty;
     private TextView btnImport;
+    private TextView btnImportFolder;
     private TextView btnRefresh;
     private TextView btnClearAll;
     private LinearLayout listContainer;
@@ -50,13 +57,16 @@ final class SettingsArtworkCacheController {
         tvSummary = root.findViewById(R.id.tv_dl_cache_summary);
         tvEmpty = root.findViewById(R.id.tv_dl_cache_empty);
         btnImport = root.findViewById(R.id.btn_dl_cache_import);
+        btnImportFolder = root.findViewById(R.id.btn_dl_cache_import_folder);
         btnRefresh = root.findViewById(R.id.btn_dl_cache_refresh);
         btnClearAll = root.findViewById(R.id.btn_dl_cache_clear_all);
         listContainer = root.findViewById(R.id.ll_dl_cache_list);
 
         if (btnImport != null) {
-            btnImport.setOnClickListener(v -> host.artworkCachePicker.launch(
-                    new String[]{"application/zip", "application/octet-stream", "*/*"}));
+            btnImport.setOnClickListener(v -> launchFilePicker());
+        }
+        if (btnImportFolder != null) {
+            btnImportFolder.setOnClickListener(v -> launchFolderPicker());
         }
         if (btnRefresh != null) {
             btnRefresh.setOnClickListener(v -> {
@@ -67,7 +77,35 @@ final class SettingsArtworkCacheController {
         if (btnClearAll != null) {
             btnClearAll.setOnClickListener(v -> onClickClearAll());
         }
-        refresh();
+    }
+
+    private void launchFilePicker() {
+        try {
+            host.artworkCachePicker.launch(new String[]{
+                    "application/zip",
+                    "application/x-7z-compressed",
+                    "application/vnd.rar",
+                    "application/x-rar-compressed",
+                    "application/octet-stream",
+                    "*/*"
+            });
+        } catch (Throwable t) {
+            if (host.isAdded()) {
+                Toast.makeText(host.requireContext(),
+                        I18n.tr("无法打开系统文件选择器: ") + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        }
+    }
+
+    private void launchFolderPicker() {
+        try {
+            host.artworkCacheFolderPicker.launch(null);
+        } catch (Throwable t) {
+            if (host.isAdded()) {
+                Toast.makeText(host.requireContext(),
+                        I18n.tr("无法打开系统文件夹选择器: ") + t.getMessage(), Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     void updateTheme(int accentColor) {
@@ -233,8 +271,20 @@ final class SettingsArtworkCacheController {
     }
 
     void onDocumentsPicked(List<Uri> uris) {
+        if (uris == null || uris.isEmpty()) return;
+        startImportJob((appCtx, cacheRoot, listener, cancelled) ->
+                ArtworkCacheManager.importFromUris(appCtx, uris, cacheRoot, listener, cancelled));
+    }
+
+    void onFolderPicked(Uri treeUri) {
+        if (treeUri == null) return;
+        startImportJob((appCtx, cacheRoot, listener, cancelled) ->
+                ArtworkCacheManager.importFromTreeUri(appCtx, treeUri, cacheRoot, listener, cancelled));
+    }
+
+    private void startImportJob(ImportTaskRunner runner) {
         Activity act = host.getActivity();
-        if (act == null || act.isFinishing() || uris == null || uris.isEmpty()) return;
+        if (act == null || act.isFinishing()) return;
         File cacheRoot = ArtworkCacheManager.getCacheRoot(act);
         if (cacheRoot == null) {
             Toast.makeText(act, I18n.tr("无法访问应用外部存储目录"), Toast.LENGTH_LONG).show();
@@ -281,9 +331,8 @@ final class SettingsArtworkCacheController {
         final Context appCtx = act.getApplicationContext();
         Thread worker = new Thread(() -> {
             try {
-                ArtworkCacheManager.ImportResult res = ArtworkCacheManager.importFromUris(
+                ArtworkCacheManager.ImportResult res = runner.run(
                         appCtx,
-                        uris,
                         cacheRoot,
                         (imported, skipped, relPath) -> act.runOnUiThread(() -> {
                             if (act.isFinishing() || !dialog.isShowing()) return;
@@ -301,15 +350,28 @@ final class SettingsArtworkCacheController {
                     if (res.cancelled) {
                         Toast.makeText(act, String.format(Locale.US,
                                 I18n.tr("已取消导入（已写入 %,d 个文件）"), res.importedFiles), Toast.LENGTH_LONG).show();
+                    } else if (res.importedFiles == 0 && res.passwordRequired) {
+                        new AlertDialog.Builder(act)
+                                .setTitle(I18n.tr("压缩包设有密码保护"))
+                                .setMessage(I18n.tr("检测到该压缩包需要解压密码。请先用手机文件管理器（如 MT管理器 / ZArchiver）输入密码将其解压到任意目录，再点击下方「导入文件夹」一键导入。"))
+                                .setNegativeButton(I18n.tr("知道了"), null)
+                                .setPositiveButton(I18n.tr("导入文件夹"), (d, w) -> launchFolderPicker())
+                                .show();
+                    } else if (res.importedFiles == 0 && res.archiveError != null && !res.archiveError.isEmpty()) {
+                        new AlertDialog.Builder(act)
+                                .setTitle(I18n.tr("导入失败"))
+                                .setMessage(I18n.tr(res.archiveError))
+                                .setPositiveButton(I18n.tr("知道了"), null)
+                                .show();
                     } else if (res.importedFiles == 0) {
                         new AlertDialog.Builder(act)
                                 .setTitle(I18n.tr("未找到有效的 0.3.DL 缓存文件"))
-                                .setMessage(I18n.tr("所选文件/压缩包中未检测到 0x<CRC>.dff 或 0x<CRC>.txd 格式的模型缓存文件。"))
+                                .setMessage(I18n.tr("所选压缩包或文件夹中未检测到 0x<CRC>.dff 或 0x<CRC>.txd 格式的服务器模型缓存文件（普通单机/Modloader 模型请前往「模组」板块导入）。"))
                                 .setPositiveButton(I18n.tr("知道了"), null)
                                 .show();
                     } else {
                         Toast.makeText(act, String.format(Locale.US,
-                                I18n.tr("导入完成：%,d 个文件（%s），跳过 %,d 项"),
+                                I18n.tr("导入完成：%,d 个文件（%s）已归入 local 全服缓存，跳过 %,d 项"),
                                 res.importedFiles,
                                 GameDataVerifier.formatBytes(res.importedBytes),
                                 res.skippedFiles), Toast.LENGTH_LONG).show();

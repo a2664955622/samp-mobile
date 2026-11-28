@@ -158,7 +158,7 @@ DECL_HOOK(void, CFileLoader_LoadObjectInstance, sa::CFileObjectInstance* instanc
 		int* model = &instance->m_nModelId;
 
 		if (RemoveBuilding::needsRemove(*model, *pos)) {
-			spdlog::info("RemoveBuilding hook: model {}", *model);
+			spdlog::debug("RemoveBuilding hook: model {}", *model);
 			*model = 19300;
 		}
 	}

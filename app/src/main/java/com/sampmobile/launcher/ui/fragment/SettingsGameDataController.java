@@ -83,7 +83,6 @@ final class SettingsGameDataController {
             rvFiles.setAdapter(fileAdapter);
         }
         setupControls();
-        refreshVerification();
     }
 
     void setupControls() {

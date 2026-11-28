@@ -55,9 +55,22 @@ third_party/licenses/THIRD_PARTY_NOTICES.md:
   * BLAKE2 reference implementation — CC0-1.0 / Apache-2.0 (Copyright © 2012 Samuel Neves)
   * tiny-AES-c — Unlicense (Public Domain)
   * TweetNaCl — Public Domain
+  * 7-Zip C SDK (Deps/7zip) — Public Domain (Igor Pavlov)
+  * UnRAR decompression library (Deps/Unrar, libSAMPArchive.so) — Copyright ©
+    Alexander L. Roshal (see third_party/licenses/UnRAR-License.txt). UnRAR
+    source code may be used in any software to handle RAR archives without
+    limitations free of charge, but cannot be used to develop RAR (WinRAR)
+    compatible archiver and to re-create RAR compression algorithm, which is
+    proprietary. Distribution of modified UnRAR source code in separate form
+    or as a part of other software is permitted, provided that full text of
+    this paragraph, starting from "UnRAR source code" words, is included in
+    license, or in documentation if license is not available, and in source
+    code comments of resulting package.
   * OpenAL Soft (libOpenAL*.so) — LGPL-2.0+
   * LLVM libc++_shared (libc++_shared.so) — Apache-2.0 WITH LLVM-exception
   * Roboto Fonts — Apache-2.0
+  * IPv4-to-Country dataset (res/raw/ipv4_country.bin, derived from
+    @ip-location-db/geo-whois-asn-country) — CC0-1.0 (Public Domain)
   * BASS audio library (libBASS*.so) — Un4seen Developments
     (free for non-commercial use; commercial use requires a separate license)
   * Java runtime glue classes under com/rockstargames, com/wardrumstudios,

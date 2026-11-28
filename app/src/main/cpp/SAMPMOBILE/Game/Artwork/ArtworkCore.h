@@ -182,11 +182,29 @@ bool isTimedObjectVisible(int hour, uint8_t timeOn, uint8_t timeOff) noexcept;
 uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t len) noexcept;
 uint32_t crc32Bytes(const uint8_t* data, size_t len) noexcept;
 
+struct DiskCacheEntry {
+	uint64_t size = 0;
+	std::string path;
+};
+
+using DiskCacheMap = std::unordered_map<ResourceKey, DiskCacheEntry, ResourceKeyHash>;
+
 // Cache directory & filename helpers (aligned with PC 0.3.DL naming).
 std::string sanitizeHostForCache(const std::string& host);
 std::string formatServerCacheDirName(const std::string& host, uint16_t port);
 std::string formatCacheFileName(uint32_t crc, FileType type);
 bool parseCacheFileHash(const std::string& fileName, uint32_t& outCrc, FileType& outType);
+
+// Recursively indexes 0x<CRC>.dff|txd files across SAMP/cache with deterministic precedence
+// (lowest -> highest, later entries override earlier on identical ResourceKey):
+//   1. Other folders / loose files under cacheBaseDir (e.g. PC domain/IP/nested folders)
+//   2. localCacheDir (SAMP/cache/local)
+//   3. serverCacheDir (SAMP/cache/<current host.port>)
+void buildDiskCacheIndex(
+	const std::string& cacheBaseDir,
+	const std::string& localCacheDir,
+	const std::string& serverCacheDir,
+	DiskCacheMap& outIndex);
 
 // Rewrites http://127.0.0.1:<port>/... or http://0.0.0.0:<port>/... to the connected
 // server IP when the client is connecting over a non-loopback address (common on LAN servers).

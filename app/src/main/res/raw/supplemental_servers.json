@@ -1,0 +1,4 @@
+{
+    "_comment": "Optional supplemental servers not listed on public open.mp / SAMonitor masterlists. Each entry: {\"host\": \"ip-or-domain\", \"port\": \"7777\", \"name\": \"Optional\", \"gamemode\": \"Optional\", \"language\": \"Optional\", \"country\": \"CN\", \"website\": \"\"}.",
+    "servers": []
+}

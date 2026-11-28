@@ -39,6 +39,7 @@ public:
 	CObject* FindObjectFromGtaPtr(sa::CEntity* pGtaObject);
 
 	void ProcessMaterialText();
+	int GetLargestObjectId() const { return m_iLargestObjectId; }
 
 	// 0.3.DL artwork lifecycle: upgrade fallback objects once custom models finish downloading,
 	// and revert live custom objects back to a vanilla model before unloading custom slots.
@@ -57,10 +58,12 @@ public:
 
 public:
 	int m_iObjectCount;
+	int m_iLargestObjectId = -1;
 	bool m_bObjectSlotState[MAX_OBJECTS];
 	CObject* m_pObjects[MAX_OBJECTS];
 
 private:
+	void UpdateLargestObjectId();
 	struct PendingTouch {
 		int type;
 		int x;

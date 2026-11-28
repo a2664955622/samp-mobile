@@ -8,4 +8,6 @@ add_subdirectory(Encoding)
 add_subdirectory(Opus)
 add_subdirectory(Obfuscator)
 add_subdirectory(Bass)
+add_subdirectory(7zip)
+add_subdirectory(Unrar)
 

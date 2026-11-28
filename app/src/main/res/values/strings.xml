@@ -82,12 +82,25 @@
 
     <!-- launcher redesign -->
     <string name="tab_favorites">收藏夹</string>
+    <string name="tab_regional">国服</string>
     <string name="tab_internet">互联网</string>
     <string name="tab_partners">合作方</string>
     <string name="tab_recent">最近加入</string>
+    <string name="filter_all_languages">全部</string>
+    <string name="filter_multi_select">多选</string>
+    <string name="filter_multi_select_count">多选 (%1$d)</string>
+    <string name="filter_country_dialog_title">选择国家/地区（支持多选）</string>
+    <string name="filter_language_dialog_title">按语言筛选服务器（支持多选）</string>
+    <string name="filter_auto_detect">自动识别 (%1$s)</string>
+    <string name="filter_confirm">确定</string>
+    <string name="servers_empty_regional">当前所选国家/地区暂无在线服务器\n可在上方切换其他国家，或点右上角刷新</string>
     <string name="join_server">进入服务器</string>
     <string name="delete_server">删除服务器</string>
     <string name="player_nickname">玩家昵称</string>
+    <string name="nickname_history_btn">历史 ▾</string>
+    <string name="nickname_history_empty">暂无历史昵称记录</string>
+    <string name="password_show">显示</string>
+    <string name="password_hide">隐藏</string>
     <string name="column_name">名称</string>
     <string name="column_ping">延迟</string>
     <string name="column_mode">模式</string>
@@ -163,12 +176,6 @@
     <string name="gamedata_manifest_url" translatable="false"></string>
 
     <!-- Extracted layout strings -->
-    <string name="ui_activity_game_editobject_001">旋转 X</string>
-    <string name="ui_activity_game_editobject_002">旋转 Y</string>
-    <string name="ui_activity_game_editobject_003">旋转 Z</string>
-    <string name="ui_activity_game_editobject_004">缩放</string>
-    <string name="ui_activity_game_editobject_005">选择一个选项</string>
-    <string name="ui_activity_game_editobject_006">保存</string>
     <string name="ui_item_gamedata_file_001">GTA:SA 核心 · 主世界模型档案</string>
     <string name="ui_item_gamedata_file_002">正常</string>
     <string name="ui_item_mod_entry_001">提高优先级</string>
@@ -375,7 +382,7 @@
     <string name="ui_settings_panel_multiplayer_001">角色身份与协议兼容</string>
     <string name="ui_settings_panel_multiplayer_002">配置进入服务器时使用的角色名称、通信协议与文字编码</string>
     <string name="ui_settings_panel_multiplayer_003">默认游戏昵称</string>
-    <string name="ui_settings_panel_multiplayer_004">连接服务器时使用的角色名，支持英文、数字与下划线</string>
+    <string name="ui_settings_panel_multiplayer_004">进入新服务器时的默认角色名（各服务器会自动独立记住上次使用的名字）</string>
     <string name="ui_settings_panel_multiplayer_005">输入游戏昵称</string>
     <string name="ui_settings_panel_multiplayer_006">客户端协议版本</string>
     <string name="ui_settings_panel_multiplayer_007">模拟对应的客户端版本号以适配不同服务器限制</string>
@@ -391,8 +398,8 @@
     <string name="ui_settings_panel_multiplayer_017">跳过启动器原始文件完整性检查，避免手工替换的数据文件被还原</string>
     <string name="ui_settings_panel_multiplayer_018">0.3.DL 自定义模型缓存</string>
     <string name="ui_settings_panel_multiplayer_019">正在统计 SAMP/cache/ 目录…</string>
-    <string name="ui_settings_panel_multiplayer_020">支持导入 PC 端 0.3.DL 缓存 .zip 包或散装 0x*.dff / 0x*.txd（散装文件导入至 local/ 全服通用）</string>
-    <string name="ui_settings_panel_multiplayer_021">导入缓存</string>
+    <string name="ui_settings_panel_multiplayer_020">支持直接导入 PC 端 0.3.DL 缓存 .zip / .7z / .rar 压缩包、已解压文件夹或散装 0x*.dff / 0x*.txd（自动识别多层目录并归入 local/ 全服通用）</string>
+    <string name="ui_settings_panel_multiplayer_021">导入压缩包/文件</string>
     <string name="ui_settings_panel_multiplayer_022">清空全部</string>
     <string name="ui_settings_panel_multiplayer_023">暂无已缓存的服务器自定义模型</string>
     <string name="ui_settings_panel_multiplayer_024">启动器外观与主题</string>
@@ -413,6 +420,7 @@
     <string name="ui_settings_panel_multiplayer_039">启动器背景已更新</string>
     <string name="ui_settings_panel_multiplayer_040">已恢复默认启动器背景</string>
     <string name="ui_settings_panel_multiplayer_041">图片读取失败，请选择有效的 JPG / PNG / WEBP 图片</string>
+    <string name="ui_settings_panel_multiplayer_042">导入文件夹</string>
     <string name="ui_settings_panel_screenshots_001">游戏截图捕捉范围</string>
     <string name="ui_settings_panel_screenshots_002">点击底部 F8 按键或输入 /ss 时默认截取的画面内容</string>
     <string name="ui_settings_panel_screenshots_003">含界面与聊天</string>

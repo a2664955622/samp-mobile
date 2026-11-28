@@ -24,6 +24,8 @@ bool isEditorOpen();
 bool isRpStripHitSnapshot(float x, float y);
 bool handleTouch(int type, int pointerId, float x, float y);
 void handleCancel();
+// Injects camera-orbit pixel deltas from overlays (e.g. Object Editor empty-space drag)
+void injectExternalLookDelta(float dx, float dy);
 
 // Physical Android keyboard / emulator key input (GameMain thread, from Java.cpp)
 void handleHardwareKey(int androidKeyCode, bool isDown);

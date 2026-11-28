@@ -5,6 +5,12 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#if !defined(_WIN32)
+#include <dirent.h>
+#include <sys/stat.h>
+#else
+#include <filesystem>
+#endif
 
 namespace artwork {
 
@@ -99,30 +105,134 @@ std::string formatCacheFileName(uint32_t crc, FileType type)
 	return std::string(buf);
 }
 
+namespace {
+
+std::string stripDuplicateDownloadStem(const std::string& rawStem)
+{
+	size_t end = rawStem.size();
+	while (end > 0 && rawStem[end - 1] == ' ') {
+		--end;
+	}
+	if (end > 5 && rawStem[end - 1] == ')') {
+		const size_t open = rawStem.rfind('(', end - 1);
+		if (open != std::string::npos && open > 2 && open + 1 < end - 1) {
+			bool allDigits = true;
+			for (size_t i = open + 1; i < end - 1; ++i) {
+				if (rawStem[i] < '0' || rawStem[i] > '9') {
+					allDigits = false;
+					break;
+				}
+			}
+			if (allDigits) {
+				size_t trimmed = open;
+				while (trimmed > 0 && rawStem[trimmed - 1] == ' ') {
+					--trimmed;
+				}
+				return rawStem.substr(0, trimmed);
+			}
+		}
+	}
+	return rawStem.substr(0, end);
+}
+
+std::string stripTrailingSlashes(const std::string& dir)
+{
+	size_t end = dir.size();
+	while (end > 1 && (dir[end - 1] == '/' || dir[end - 1] == '\\')) {
+		--end;
+	}
+	return dir.substr(0, end);
+}
+
+#if !defined(_WIN32)
+void indexCacheTreePosix(
+	const std::string& dir,
+	int depthLeft,
+	const std::string& skipDirA,
+	const std::string& skipDirB,
+	DiskCacheMap& outIndex)
+{
+	if (dir.empty()) {
+		return;
+	}
+	DIR* d = opendir(dir.c_str());
+	if (!d) {
+		return;
+	}
+	struct dirent* e = nullptr;
+	while ((e = readdir(d)) != nullptr) {
+		const std::string name = e->d_name;
+		if (name == "." || name == ".." || name == "__MACOSX") {
+			continue;
+		}
+		const std::string full = dir + "/" + name;
+		uint32_t crc = 0;
+		FileType type = FileType::None;
+		if (parseCacheFileHash(name, crc, type) && crc != 0 && type != FileType::None) {
+			struct stat st{};
+			if (stat(full.c_str(), &st) == 0 && S_ISREG(st.st_mode)
+				&& st.st_size > 0 && static_cast<uint64_t>(st.st_size) <= kMaxArtworkFileBytes) {
+				outIndex[ResourceKey{type, crc}] = DiskCacheEntry{
+					static_cast<uint64_t>(st.st_size),
+					full
+				};
+			}
+			continue;
+		}
+		if (depthLeft <= 0) {
+			continue;
+		}
+		bool isSubDir = false;
+		if (e->d_type == DT_DIR) {
+			isSubDir = true;
+		} else if (e->d_type == DT_UNKNOWN) {
+			struct stat st{};
+			if (lstat(full.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+				isSubDir = true;
+			}
+		}
+		if (isSubDir && full != skipDirA && full != skipDirB) {
+			indexCacheTreePosix(full, depthLeft - 1, skipDirA, skipDirB, outIndex);
+		}
+	}
+	closedir(d);
+}
+#endif
+
+} // namespace
+
 bool parseCacheFileHash(const std::string& fileName, uint32_t& outCrc, FileType& outType)
 {
-	if (fileName.size() < 7) {
-		return false;
-	}
-	if (fileName[0] != '0' || (fileName[1] != 'x' && fileName[1] != 'X')) {
+	if (fileName.size() < 7 || fileName.size() > 32) {
 		return false;
 	}
 	const size_t dot = fileName.rfind('.');
-	if (dot == std::string::npos || dot <= 2 || dot - 2 > 8) {
+	if (dot == std::string::npos || dot <= 2 || dot + 1 >= fileName.size()) {
 		return false;
 	}
-	const std::string ext = fileName.substr(dot + 1);
+	std::string ext = fileName.substr(dot + 1);
+	for (char& ch : ext) {
+		ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+	}
 	FileType parsedType = FileType::None;
-	if (ext == "dff" || ext == "DFF") {
+	if (ext == "dff") {
 		parsedType = FileType::Dff;
-	} else if (ext == "txd" || ext == "TXD") {
+	} else if (ext == "txd") {
 		parsedType = FileType::Txd;
 	} else {
 		return false;
 	}
+
+	const std::string stem = stripDuplicateDownloadStem(fileName.substr(0, dot));
+	if (stem.size() < 3 || stem.size() > 10) {
+		return false;
+	}
+	if (stem[0] != '0' || (stem[1] != 'x' && stem[1] != 'X')) {
+		return false;
+	}
 	uint32_t value = 0;
-	for (size_t i = 2; i < dot; ++i) {
-		const char ch = fileName[i];
+	for (size_t i = 2; i < stem.size(); ++i) {
+		const char ch = stem[i];
 		uint32_t digit = 0;
 		if (ch >= '0' && ch <= '9') {
 			digit = static_cast<uint32_t>(ch - '0');
@@ -135,9 +245,67 @@ bool parseCacheFileHash(const std::string& fileName, uint32_t& outCrc, FileType&
 		}
 		value = (value << 4) | digit;
 	}
+	if (value == 0u) {
+		return false;
+	}
 	outCrc = value;
 	outType = parsedType;
 	return true;
+}
+
+void buildDiskCacheIndex(
+	const std::string& cacheBaseDir,
+	const std::string& localCacheDir,
+	const std::string& serverCacheDir,
+	DiskCacheMap& outIndex)
+{
+	outIndex.clear();
+	const std::string base = stripTrailingSlashes(cacheBaseDir);
+	const std::string local = stripTrailingSlashes(localCacheDir);
+	const std::string server = stripTrailingSlashes(serverCacheDir);
+#if !defined(_WIN32)
+	if (!base.empty()) {
+		indexCacheTreePosix(base, 4, local, server, outIndex);
+	}
+	if (!local.empty()) {
+		indexCacheTreePosix(local, 3, "", "", outIndex);
+	}
+	if (!server.empty()) {
+		indexCacheTreePosix(server, 2, "", "", outIndex);
+	}
+#else
+	namespace fs = std::filesystem;
+	auto scanWin = [&](const std::string& rootStr, int maxDepth, const std::string& skipA, const std::string& skipB) {
+		if (rootStr.empty()) return;
+		std::error_code ec;
+		fs::path rootPath(rootStr);
+		if (!fs::is_directory(rootPath, ec)) return;
+		fs::recursive_directory_iterator it(rootPath, fs::directory_options::skip_permission_denied, ec), end;
+		for (; it != end; it.increment(ec)) {
+			if (ec) { ec.clear(); continue; }
+			const std::string curStr = stripTrailingSlashes(it->path().generic_string());
+			if (it->is_directory(ec)) {
+				if (curStr == skipA || curStr == skipB || it.depth() >= maxDepth) {
+					it.disable_recursion_pending();
+				}
+				continue;
+			}
+			if (!it->is_regular_file(ec)) continue;
+			uint32_t crc = 0;
+			FileType type = FileType::None;
+			const std::string fname = it->path().filename().string();
+			if (parseCacheFileHash(fname, crc, type)) {
+				const uintmax_t sz = it->file_size(ec);
+				if (!ec && sz > 0 && sz <= kMaxArtworkFileBytes) {
+					outIndex[ResourceKey{type, crc}] = DiskCacheEntry{static_cast<uint64_t>(sz), curStr};
+				}
+			}
+		}
+	};
+	scanWin(base, 4, local, server);
+	scanWin(local, 3, "", "");
+	scanWin(server, 2, "", "");
+#endif
 }
 
 bool isSafeHttpUrl(const std::string& url)

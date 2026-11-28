@@ -34,6 +34,21 @@ RwTexture* g_blankTexture;
 // O(1) lookup from GTA CEntity* to live CObject* (covers both CObjectPool
 // objects and CPlayerPed attached objects, which do not live in CObjectPool).
 static std::unordered_map<sa::CEntity*, CObject*> s_liveObjectByEntity;
+static uint32_t s_customMaterialObjectCount = 0;
+
+bool CObject::HasAnyCustomMaterialObjects() noexcept
+{
+	return s_customMaterialObjectCount > 0;
+}
+
+void CObject::MarkHasCustomMaterial() noexcept
+{
+	m_bHasCustomObjectMaterial = true;
+	if (!m_bCountedCustomMaterial) {
+		m_bCountedCustomMaterial = true;
+		++s_customMaterialObjectCount;
+	}
+}
 
 CObject* CObject::FindByGtaEntity(sa::CEntity* pEntity)
 {
@@ -151,6 +166,8 @@ CObject::CObject(int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDraw
 	m_originalAtomicMaterials.clear();
 
 	m_bHasCustomObjectMaterial = false;
+	m_bHasPendingMaterialText = false;
+	m_bCountedCustomMaterial = false;
 	m_bObjectMaterialTextureChanged = false;
 	m_bObjectMaterialColorChanged = false;
 	m_pLastObjectMaterialRwObject = nullptr;
@@ -163,9 +180,10 @@ CObject::CObject(int iModel, sa::CVector vecPos, sa::CVector vecRot, float fDraw
 	m_iPinnedColSlot = -1;
 	m_dwLastColRequestTick = 0;
 	m_bColDiagLogged = false;
+	m_bOobColSettled = false;
 
 	if (m_bForceRender && m_entity) {
-		spdlog::info("OOB object: model={} entity={:p} rwObj={:p} moving={:p}", iModel,
+		spdlog::debug("OOB object: model={} entity={:p} rwObj={:p} moving={:p}", iModel,
 				(void*) m_entity, (void*) m_entity->m_pRwObject,
 				(void*) m_entity->m_pMovingList);
 	}
@@ -210,6 +228,13 @@ CObject::~CObject()
 		}
 	}
 
+	if (m_bCountedCustomMaterial) {
+		m_bCountedCustomMaterial = false;
+		if (s_customMaterialObjectCount > 0) {
+			--s_customMaterialObjectCount;
+		}
+	}
+
 	if (m_bHasCustomObjectMaterial) {
 		for (int i = 0; i < MAX_MATERIALS; i++) {
 			if (m_Material[i].pMaterialTexture && m_Material[i].pMaterialTexture != g_blankTexture) {
@@ -221,6 +246,7 @@ CObject::~CObject()
 		}
 		m_originalAtomicMaterials.clear();
 		m_bHasCustomObjectMaterial = false;
+		m_bHasPendingMaterialText = false;
 	}
 }
 
@@ -416,6 +442,21 @@ RpAtomic* DriveUVAnimAtomicCB(RpAtomic* atomic, void* data);
  */
 void CObject::Process(float fElapsedTime)
 {
+	// Fast path for static, settled map objects (matching PC SA-MP object.cpp:440): avoids
+	// per-frame pool-handle lookup, vtable check, and double matrix reads across ~2,000 objects.
+	if (m_entity && m_gtaId
+		&& !m_bTimedModel
+		&& m_byteMoving == 0
+		&& m_AttachedVehicleID == INVALID_VEHICLE_ID
+		&& m_AttachedObjectID == INVALID_OBJECT_ID
+		&& m_AttachedPlayerID == INVALID_PLAYER_ID
+		&& !m_bUVAnimEnabled
+		&& m_entity->m_pRwObject != nullptr
+		&& m_pUVAnimRwObject == m_entity->m_pRwObject
+		&& (!m_bForceRender || m_bOobColSettled)) {
+		return;
+	}
+
 	if (!m_entity || !m_gtaId || GamePool_Object_GetAt(m_gtaId) != reinterpret_cast<sa::CObject*>(m_entity) || IsEntityPlaceable(m_entity)) {
 		return;
 	}
@@ -454,12 +495,16 @@ void CObject::Process(float fElapsedTime)
 	// the boundary by MoveTo neither gained OOB collision nor released its
 	// injected records when it came back in bounds
 	if (m_entity) {
+		const bool prevForceRender = m_bForceRender;
 		const sa::CVector& pos = m_entity->GetPosition();
 		m_bForceRender = pos.x > 3000.0f || pos.x < -3000.0f
 				|| pos.y > 3000.0f || pos.y < -3000.0f;
+		if (m_bForceRender && !prevForceRender) {
+			m_bOobColSettled = false;
+		}
 	}
 
-	if (!m_bTimedHidden && m_bForceRender && m_entity) {
+	if (!m_bTimedHidden && m_bForceRender && !m_bOobColSettled && m_entity) {
 		// Col data is position-streamed: CColStore's quadtree matches
 		// col files to in-bounds positions only, so an OOB object's
 		// shared colModel stays an empty shell — and an empty shell is
@@ -484,6 +529,11 @@ void CObject::Process(float fElapsedTime)
 					m_iModel, m_iPinnedColSlot,
 					(int) pData->m_nNumSpheres, (int) pData->m_nNumBoxes,
 					(int) pData->m_nNumLines, (int) pData->m_nNumTriangles);
+		}
+		if (!pColModel || pColModel->m_bIsSingleColDataAlloc
+				|| pColModel->m_pColData != nullptr
+				|| IsOobColSlotSettled(m_iPinnedColSlot)) {
+			m_bOobColSettled = true;
 		}
 	}
 
@@ -626,9 +676,13 @@ void CObject::Process(float fElapsedTime)
 
 	// Re-sync OOB state after moving/attaching so crossing +-3000 takes effect immediately
 	if (m_entity) {
+		const bool prevForceRender = m_bForceRender;
 		const sa::CVector& pos = m_entity->GetPosition();
 		m_bForceRender = pos.x > 3000.0f || pos.x < -3000.0f
 				|| pos.y > 3000.0f || pos.y < -3000.0f;
+		if (m_bForceRender && !prevForceRender) {
+			m_bOobColSettled = false;
+		}
 	}
 
 }
@@ -690,7 +744,7 @@ void CObject::SetRotation(sa::CVector* vecRotation)
 		if (m_bTimedHidden) {
 			m_entity->Remove();
 			SetCollisionChecking(false);
-		} else if (m_bForceRender) {
+		} else if (m_bForceRender || m_fDrawDistance > 250.0f) {
 			UpdateRwMatrixAndFrame();
 		}
 	}
@@ -700,6 +754,12 @@ void CObject::UpdateMatrix(RwMatrix matrix)
 {
 	if (!m_entity || !m_entity->m_matrix) {
 		return;
+	}
+	const bool prevForceRender = m_bForceRender;
+	m_bForceRender = (matrix.pos.x > 3000.0f || matrix.pos.x < -3000.0f
+		|| matrix.pos.y > 3000.0f || matrix.pos.y < -3000.0f);
+	if (m_bForceRender && !prevForceRender) {
+		m_bOobColSettled = false;
 	}
 	if (m_bTimedHidden) {
 		m_entity->SetMatrix(matrix);
@@ -741,8 +801,12 @@ void CObject::GetRotation(float* pfX, float* pfY, float* pfZ)
  */
 void CObject::TeleportTo(float fX, float fY, float fZ)
 {
+	const bool prevForceRender = m_bForceRender;
 	if (fX > 3000.0f || fX < -3000.0f || fY > 3000.0f || fY < -3000.0f) {
 		m_bForceRender = true;
+		if (!prevForceRender) {
+			m_bOobColSettled = false;
+		}
 	}
 	else {
 		m_bForceRender = false;
@@ -809,6 +873,7 @@ bool CObject::SwapGtaModel(int iNewGtaModel)
 	m_pLastObjectMaterialRwObject = nullptr;
 	m_originalAtomicMaterials.clear();
 	m_bColDiagLogged = false;
+	m_bOobColSettled = false;
 
 	int createdModel = iNewGtaModel;
 	uint32_t dwRetID = 0;
@@ -1160,7 +1225,7 @@ void CObject::SetMaterial(int iModel, uint8_t byteMaterialIndex, char* txdname, 
 	m_Material[byteMaterialIndex].iType = MATERIAL_TYPE_TEXTURE;
 	m_Material[byteMaterialIndex].dwMaterialColor = dwColor;
 	m_Material[byteMaterialIndex].bTextureWasCreated = true;
-	m_bHasCustomObjectMaterial = true;
+	MarkHasCustomMaterial();
 }
 
 void CObject::RefreshCustomMaterials()
@@ -1235,7 +1300,8 @@ void CObject::SetMaterialText(uint8_t byteMaterialIndex, uint8_t byteMaterialSiz
 		m_Material[byteMaterialIndex].bTextureWasCreated = false;
 		m_Material[byteMaterialIndex].bTextGenAttempts = 0;
 
-		if (!m_bHasCustomObjectMaterial) m_bHasCustomObjectMaterial = true;
+		m_bHasPendingMaterialText = true;
+		MarkHasCustomMaterial();
 	}
 }
 
@@ -1255,10 +1321,13 @@ void CObject::GetMaterialTextSize(int iMatSize, int* iSizeX, int* iSizeY)
 
 void CObject::ProcessMaterialText()
 {
-	if (!pMaterialTextGenerator) {
+	// Fast early-out before touching the 34.5 KB m_Material[16] array (eliminates ~68 MB/frame
+	// cold DRAM cache thrashing when 1,000-2,000 static world objects are streamed in).
+	if (!m_bHasCustomObjectMaterial || !m_bHasPendingMaterialText || !pMaterialTextGenerator) {
 		return;
 	}
 
+	bool anyStillPending = false;
 	for (int i = 0; i < MAX_MATERIALS; i++) {
 		if (m_Material[i].bTextureWasCreated || m_Material[i].iType != MATERIAL_TYPE_TEXT) {
 			continue;
@@ -1302,8 +1371,12 @@ void CObject::ProcessMaterialText()
 				spdlog::error("ProcessMaterialText: giving up on slot {} after {} attempts", i, (int) m_Material[i].bTextGenAttempts);
 				m_Material[i].bTextureWasCreated = true;
 			}
+			else {
+				anyStillPending = true;
+			}
 		}
 	}
+	m_bHasPendingMaterialText = anyStillPending;
 }
 
 /**

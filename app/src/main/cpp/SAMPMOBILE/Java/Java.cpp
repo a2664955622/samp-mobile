@@ -113,8 +113,6 @@ Java::Java(JNIEnv* env, jobject sampObj, jobject uiObj)
 	clearJniException(env, "GetMethodID(showDialog)");
 	m_hideDialog = env->GetMethodID(uiClass, "hideDialog", "()V");
 	clearJniException(env, "GetMethodID(hideDialog)");
-	m_showEditObject = env->GetMethodID(uiClass, "showEditObject", "(Z)V");
-	clearJniException(env, "GetMethodID(showEditObject)");
 
 	m_showWantedLevel = env->GetMethodID(uiClass, "showWantedLevel", "(Z)V");
 	clearJniException(env, "GetMethodID(showWantedLevel)");
@@ -269,16 +267,6 @@ void Java::hideDialog()
 	}
 	env->CallVoidMethod(m_uiActivity, m_hideDialog);
 	clearJniException(env, "hideDialog");
-}
-
-void Java::showEditObject(bool show)
-{
-	JNIEnv* env = getEnv();
-	if (!env || !m_uiActivity || !m_showEditObject) {
-		return;
-	}
-	env->CallVoidMethod(m_uiActivity, m_showEditObject, static_cast<jboolean>(show));
-	clearJniException(env, "showEditObject");
 }
 
 void Java::showWantedLevel(bool show)

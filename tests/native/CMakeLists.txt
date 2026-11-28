@@ -33,6 +33,7 @@ endfunction()
 
 # ---- Core pure logic tests (no engine dependency) ----
 add_native_test(input_arbiter      core/test_input_arbiter.cpp)
+add_native_test(object_editor_core core/test_object_editor_core.cpp)
 add_native_test(settings_contract  core/test_settings_contract.cpp)
 add_native_test(textdraw_layout    core/test_textdraw_layout.cpp)
 add_native_test(touch_hud_core     core/test_touch_hud_core.cpp)
@@ -44,6 +45,14 @@ add_library(artwork_core STATIC
         "${CLIENT}/Game/Artwork/Lzma1Decoder.cpp")
 target_include_directories(artwork_core PUBLIC "${CLIENT}")
 add_native_test(artwork_core       core/test_artwork_core.cpp       artwork_core)
+
+add_subdirectory("${CLIENT}/Deps/7zip" "${CMAKE_CURRENT_BINARY_DIR}/deps_7zip")
+add_subdirectory("${CLIENT}/Deps/Unrar" "${CMAKE_CURRENT_BINARY_DIR}/deps_unrar")
+add_library(archive_extractor STATIC
+        "${CLIENT}/Archive/ArchiveExtractor.cpp")
+target_include_directories(archive_extractor PUBLIC "${CLIENT}")
+target_link_libraries(archive_extractor PUBLIC dec7z decunrar)
+add_native_test(archive_extractor  core/test_archive_extractor.cpp  archive_extractor artwork_core)
 
 # ---- Protocol & netcap format tests ----
 add_native_test(bitstream          proto/test_bitstream.cpp         rakbits)

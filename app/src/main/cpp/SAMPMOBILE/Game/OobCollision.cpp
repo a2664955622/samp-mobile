@@ -38,6 +38,7 @@
  */
 static uint32_t s_dwOobColPumpTick = 0;
 static std::unordered_set<int> s_oobColReloaded;
+static std::unordered_set<int> s_oobColSettled;
 
 static bool OobColDefLoaded(int iSlot)
 {
@@ -45,6 +46,14 @@ static bool OobColDefLoaded(int iSlot)
 	uintptr_t uStore = ppStore ? *ppStore : 0;
 	char* pDefs = uStore ? *reinterpret_cast<char**>(uStore) : nullptr;
 	return pDefs && pDefs[iSlot * 44 + 40];
+}
+
+bool IsOobColSlotSettled(int iSlot)
+{
+	if (iSlot <= 0 || iSlot >= 255) {
+		return true;
+	}
+	return s_oobColSettled.count(iSlot) != 0;
 }
 
 bool PinOobColSlot(sa::CColModel* pCM, int& iPinnedSlot)
@@ -67,24 +76,50 @@ bool PinOobColSlot(sa::CColModel* pCM, int& iPinnedSlot)
 void RequestOobColSlot(sa::CColModel* pCM, int iPinnedSlot,
 		uint32_t& dwLastReqTick)
 {
-	if (!pCM || pCM->m_pColData || iPinnedSlot < 0) return;
+	if (!pCM || pCM->m_pColData || iPinnedSlot <= 0 || iPinnedSlot >= 255) return;
+	if (s_oobColSettled.count(iPinnedSlot)) {
+		// This CColStore archive slot has already been force-loaded and bound via LoadCol,
+		// yet pCM->m_pColData remained null (e.g. non-collidable decal/foliage base models
+		// like 16014 / 16403). Never re-request or trigger synchronous LoadAllRequestedModels
+		// stalls for models that genuinely carry no collision geometry in their .col archive.
+		return;
+	}
+
 	uint32_t dwNow = GetTickCount();
 	if (dwNow - dwLastReqTick <= 500) return;
 	dwLastReqTick = dwNow;
-	// a "loaded" col file whose colData never showed up was parsed at a
-	// moment when binding skipped this model — binding only runs inside
-	// LoadCol, so force exactly one reload cycle to re-run it
+
+	if (!eng::fn::CStreaming_IsObjectInCdImage(25000 + iPinnedSlot)) {
+		s_oobColSettled.insert(iPinnedSlot);
+		return;
+	}
+
+	// If the col archive is already marked loaded AND we already ran our one-shot reload,
+	// LoadCol binding has definitely completed for this slot — mark settled and stop polling.
+	if (OobColDefLoaded(iPinnedSlot) && s_oobColReloaded.count(iPinnedSlot)) {
+		s_oobColSettled.insert(iPinnedSlot);
+		return;
+	}
+
+	// A "loaded" col file whose colData never showed up may have been parsed at a moment
+	// when binding skipped this model — binding only runs inside LoadCol, so force at most
+	// one reload cycle per slot.
 	if (OobColDefLoaded(iPinnedSlot)
 			&& s_oobColReloaded.insert(iPinnedSlot).second) {
-		eng::fn::CStreaming_RemoveModel(
-				25000 + iPinnedSlot);
+		eng::fn::CStreaming_RemoveModel(25000 + iPinnedSlot);
 		spdlog::info("OOBCol: force reload slot={}", iPinnedSlot);
 	}
-	eng::fn::CStreaming_RequestModel(
-			25000 + iPinnedSlot, 0x18);
+
+	eng::fn::CStreaming_RequestModel(25000 + iPinnedSlot, 0x18);
 	if (dwNow - s_dwOobColPumpTick > 1000) {
 		s_dwOobColPumpTick = dwNow;
-		eng::fn::CStreaming_LoadAllRequestedModels( true);
+		eng::fn::CStreaming_LoadAllRequestedModels(true);
+		if (OobColDefLoaded(iPinnedSlot)) {
+			// Fresh synchronous LoadCol just ran while pinned; whether pCM gained colData or
+			// genuinely has none in the archive, no further reload is needed.
+			s_oobColReloaded.insert(iPinnedSlot);
+			s_oobColSettled.insert(iPinnedSlot);
+		}
 	}
 }
 
@@ -106,9 +141,16 @@ void LogOobColPin(int iModel, int iSlot)
 		iLoaded = (int) *reinterpret_cast<uint8_t*>(pDef + 40);
 	}
 	bool bInImg = eng::fn::CStreaming_IsObjectInCdImage( 25000 + iSlot);
-	spdlog::info("OOBCol: model={} pin slot={} ref={} loaded={} "
-			"range=[{},{}] inImg={}",
-			iModel, iSlot, iRef, iLoaded, iMin, iMax, (int) bInImg);
+	static std::unordered_set<int> s_loggedPinSlots;
+	if (s_loggedPinSlots.insert(iSlot).second) {
+		spdlog::info("OOBCol: model={} pin slot={} ref={} loaded={} "
+				"range=[{},{}] inImg={}",
+				iModel, iSlot, iRef, iLoaded, iMin, iMax, (int) bInImg);
+	} else {
+		spdlog::debug("OOBCol: model={} pin slot={} ref={} loaded={} "
+				"range=[{},{}] inImg={}",
+				iModel, iSlot, iRef, iLoaded, iMin, iMax, (int) bInImg);
+	}
 }
 
 /**

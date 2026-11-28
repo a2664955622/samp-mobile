@@ -12,6 +12,7 @@
 #include <unordered_set>
 
 static std::unordered_set<RpMaterial*> s_uvAnimUpdatedMaterialsThisFrame;
+static std::unordered_set<const RpGeometry*> s_uvAnimGeometries;
 static float s_fUVAnimFrameDt = 0.016f;
 static uint32_t s_dwUVAnimLastTick = 0;
 
@@ -99,6 +100,7 @@ RpAtomic* EnableUVAnimAtomicCB(RpAtomic* atomic, void* data)
 		if (!bHasUVAnimMaterial) {
 			return atomic;
 		}
+		s_uvAnimGeometries.insert(atomic->geometry);
 
 		if (data) {
 			auto* pObj = reinterpret_cast<CObject*>(data);
@@ -392,15 +394,43 @@ RpAtomic* DriveUVAnimAtomicCB(RpAtomic* atomic, void* data)
 	return atomic;
 }
 
+static RpAtomic* UnregisterUVAnimAtomicCB(RpAtomic* atomic, void*)
+{
+	if (atomic && *(uint8_t*) atomic == 1 /*rpATOMIC*/ && atomic->geometry) {
+		s_uvAnimGeometries.erase(atomic->geometry);
+	}
+	return atomic;
+}
+
+void UnregisterUVAnimRwObject(RwObject* rwObj)
+{
+	if (!rwObj || s_uvAnimGeometries.empty()) {
+		return;
+	}
+	ForEachObjectAtomic(rwObj, UnregisterUVAnimAtomicCB, nullptr);
+}
+
+void ClearAllUVAnimGeometries()
+{
+	s_uvAnimGeometries.clear();
+	s_uvAnimUpdatedMaterialsThisFrame.clear();
+}
+
 RwMatrix* FindAtomicUVAnimMatrix(RpAtomic* atomic, bool* outHasDualUV)
 {
 	if (outHasDualUV) {
 		*outHasDualUV = false;
 	}
+	if (s_uvAnimGeometries.empty()) {
+		return nullptr;
+	}
 	if (!atomic || *(uint8_t*) atomic != 1 /*rpATOMIC*/ || !atomic->geometry) {
 		return nullptr;
 	}
 	RpGeometry* geo = atomic->geometry;
+	if (s_uvAnimGeometries.find(geo) == s_uvAnimGeometries.end()) {
+		return nullptr;
+	}
 	if (!geo->matList.materials || geo->matList.numMaterials <= 0) {
 		return nullptr;
 	}

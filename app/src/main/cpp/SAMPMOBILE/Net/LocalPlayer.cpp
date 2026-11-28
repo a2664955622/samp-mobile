@@ -448,7 +448,11 @@ bool CLocalPlayer::Process()
 				}
 			}
 
-			if (dwThisTick - m_dwLastSendTick > GetOptimumInCarSendRate()) {
+			if (CompareInCarSyncKeys(wKeys, lrAnalog, udAnalog)
+					|| wKeys != m_psSync.wKeys
+					|| lrAnalog != m_psSync.lrAnalog
+					|| udAnalog != m_psSync.udAnalog
+					|| (dwThisTick - m_dwLastSendTick) > static_cast<uint32_t>(GetOptimumInCarSendRate())) {
 				m_dwLastSendTick = GetTickCount();
 				SendPassengerFullSyncData();
 			}
@@ -528,6 +532,9 @@ void CLocalPlayer::ResetAllSyncAttributes()
 	m_bInRCMode = false;
 	m_lastTargetPlayerId = INVALID_PLAYER_ID;
 	m_lastTargetActorId = INVALID_PLAYER_ID;
+	m_lastSpecKeys = 0;
+	m_lastSpecLR = 0;
+	m_lastSpecUD = 0;
 	DisableSurfing();
 
 	memset(&m_ofSync, 0, sizeof(ONFOOT_SYNC_DATA));

@@ -19,6 +19,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.text.CharacterIterator;
 import java.text.StringCharacterIterator;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -36,6 +39,43 @@ public class Utils {
     }
 
     public static GPUType GPU_TYPE = GPUType.NONE;
+    private static final Object FAV_LOCK = new Object();
+    private static Set<String> sFavoritesCache = null;
+
+    private static String normalizeAddr(String address) {
+        return address == null ? "" : address.trim().toLowerCase(Locale.US);
+    }
+
+    private static Set<String> ensureFavoritesCacheLocked(Context ctx) {
+        if (sFavoritesCache != null) {
+            return sFavoritesCache;
+        }
+        Set<String> loaded = new HashSet<>();
+        try {
+            File extDir = ctx != null ? ctx.getExternalFilesDir(null) : null;
+            if (extDir != null) {
+                File serversFile = new File(extDir, "servers.json");
+                if (serversFile.exists() && serversFile.length() > 0) {
+                    JSONObject json = new JSONObject(readJSONFromFile(serversFile));
+                    JSONArray serversArray = json.optJSONArray("servers");
+                    if (serversArray != null) {
+                        for (int i = 0; i < serversArray.length(); i++) {
+                            JSONObject serverJson = serversArray.getJSONObject(i);
+                            String host = serverJson.optString("host", "");
+                            String port = serverJson.optString("port", "7777");
+                            if (!host.isEmpty()) {
+                                loaded.add(normalizeAddr(host + ":" + port));
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        sFavoritesCache = loaded;
+        return sFavoritesCache;
+    }
 
     public static boolean isOnline(Activity activity) {
         System.out.println("isOnline");
@@ -87,6 +127,9 @@ public class Utils {
 
             // update the JSON object and write it back to the file
             writeJSONToFile(serversFile, json);
+            synchronized (FAV_LOCK) {
+                ensureFavoritesCacheLocked(ctx).add(normalizeAddr(address));
+            }
 
             return true;
         } catch (Exception e) {
@@ -96,25 +139,10 @@ public class Utils {
     }
 
     public static boolean isServerInFavorites(Context ctx, String address) {
-        try {
-            if (ctx == null || address == null) return false;
-            File extDir = ctx.getExternalFilesDir(null);
-            if (extDir == null) return false;
-            File serversFile = new File(extDir, "servers.json");
-            if (!serversFile.exists() || serversFile.length() == 0) return false;
-
-            JSONObject json = new JSONObject(readJSONFromFile(serversFile));
-            JSONArray serversArray = json.getJSONArray("servers");
-            for (int i = 0; i < serversArray.length(); i++) {
-                JSONObject serverJson = serversArray.getJSONObject(i);
-                if (address.equals(serverJson.getString("host") + ":" + serverJson.getString("port"))) {
-                    return true;
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (ctx == null || address == null) return false;
+        synchronized (FAV_LOCK) {
+            return ensureFavoritesCacheLocked(ctx).contains(normalizeAddr(address));
         }
-        return false;
     }
 
     public static void deleteServerFromFavorites(Context ctx, String address) throws Exception {
@@ -139,13 +167,16 @@ public class Utils {
             String serverHost = serverJson.getString("host");
             String serverPort = serverJson.getString("port");
 
-            if (!host.equals(serverHost) || !port.equals(serverPort)) {
+            if (!host.equalsIgnoreCase(serverHost) || !port.equals(serverPort)) {
                 newServersArray.put(serverJson);
             }
         }
 
         json.put("servers", newServersArray);
         writeJSONToFile(serversFile, json);
+        synchronized (FAV_LOCK) {
+            ensureFavoritesCacheLocked(ctx).remove(normalizeAddr(address));
+        }
     }
 
     public static void addServerToRecent(Context ctx, String address) {

@@ -7,3 +7,5 @@ void BeginUVAnimFrame();
 void ForEachObjectAtomic(RwObject* rwObj, RpAtomic* (*cb)(RpAtomic*, void*), void* data);
 RpMaterial* DriveUVAnimMaterialCB(RpMaterial* material, void* data);
 RwMatrix* FindAtomicUVAnimMatrix(RpAtomic* atomic, bool* outHasDualUV = nullptr);
+void UnregisterUVAnimRwObject(RwObject* rwObj);
+void ClearAllUVAnimGeometries();

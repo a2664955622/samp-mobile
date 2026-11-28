@@ -24,7 +24,6 @@ public:
 	void showKeyboard(bool show);
 	void showDialog(int dialog_id, int dialog_style, char* title, char* message, char* button1, char* button2);
 	void hideDialog();
-	void showEditObject(bool show);
 
 	void showWantedLevel(bool show);
 	void setWantedLevel(int level);
@@ -51,7 +50,6 @@ private:
 	jmethodID m_showKeyboard = nullptr;
 	jmethodID m_showDialog = nullptr;
 	jmethodID m_hideDialog = nullptr;
-	jmethodID m_showEditObject = nullptr;
 
 	jmethodID m_showWantedLevel = nullptr;
 	jmethodID m_setWantedLevel = nullptr;

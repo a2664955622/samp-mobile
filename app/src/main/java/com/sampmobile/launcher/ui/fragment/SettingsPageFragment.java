@@ -83,6 +83,7 @@ import com.sampmobile.launcher.utils.GameDataVerifier;
 import com.sampmobile.launcher.utils.LauncherBackdropManager;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
 import com.sampmobile.launcher.utils.LocaleManager;
+import com.sampmobile.launcher.utils.ServerJoinProfileStore;
 
 @Obfuscate
 public class SettingsPageFragment extends Fragment implements LauncherThemeManager.ThemeListener {
@@ -157,6 +158,13 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
                 }
             });
 
+    final ActivityResultLauncher<Uri> artworkCacheFolderPicker =
+            registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), treeUri -> {
+                if (treeUri != null && isAdded()) {
+                    artworkCacheController.onFolderPicked(treeUri);
+                }
+            });
+
     final ActivityResultLauncher<String[]> backdropImagePicker =
             registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
                 if (uri != null && isAdded()) {
@@ -218,6 +226,11 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
 
     ClientSettings settings;
     private boolean updatingWidgets = false;
+    private long boundSettingsGen = -1L;
+    private boolean pageEverShown = false;
+    private final boolean[] categoryLoaded = new boolean[PANEL_LAYOUTS.length];
+    private int pendingHue = -1;
+    private boolean hueFrameScheduled = false;
     private RelativeLayout game_version_layout;
 
     private static final int[] PANEL_LAYOUTS = {
@@ -286,26 +299,41 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         setupCategoryNavigation(view);
         setupListeners(view);
         setWidgetsForSettings();
-        populateHelpAndAbout();
+        boundSettingsGen = ClientSettings.currentGeneration();
 
         LauncherThemeManager.addListener(this);
         onThemeColorChanged(LauncherThemeManager.getAccentColor(requireContext()));
 
+        View parent = (View) view.getParent();
+        if (parent != null && parent.getVisibility() == View.VISIBLE) {
+            onPageShown();
+        }
         return view;
     }
 
     public void onPageShown() {
         if (!isAdded() || rootView == null) return;
-        settings = ClientSettings.reloadLauncher(requireContext());
-        setWidgetsForSettings();
-        if (currentCategory == CAT_MULTIPLAYER) {
-            artworkCacheController.refresh();
-        } else if (currentCategory == CAT_GAMEDATA) {
-            gameDataController.refreshVerification();
-        } else if (currentCategory == CAT_SCREENSHOTS) {
-            screenshotController.refresh();
-        } else if (currentCategory == CAT_LOGS) {
-            diagnosticsController.refresh();
+        pageEverShown = true;
+        long curGen = ClientSettings.currentGeneration();
+        if (curGen != boundSettingsGen) {
+            settings = ClientSettings.loadLauncher(requireContext());
+            setWidgetsForSettings();
+            boundSettingsGen = curGen;
+        }
+        ensureCategoryLoaded(currentCategory);
+    }
+
+    /** Called by MainActivity only when actually returning from the :game process. */
+    public void onReturningFromGame() {
+        categoryLoaded[CAT_MULTIPLAYER] = false;
+        categoryLoaded[CAT_SCREENSHOTS] = false;
+        categoryLoaded[CAT_LOGS] = false;
+        boundSettingsGen = -1L;
+        if (isAdded() && rootView != null) {
+            View parent = (View) rootView.getParent();
+            if (parent != null && parent.getVisibility() == View.VISIBLE) {
+                onPageShown();
+            }
         }
     }
 
@@ -546,20 +574,35 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
             View panel = categoryPanels[index];
             panel.animate().cancel();
             panel.setAlpha(0f);
-            panel.setTranslationY(8f * getResources().getDisplayMetrics().density);
-            panel.animate().alpha(1f).translationY(0f).setDuration(180).start();
+            panel.setTranslationY(6f * getResources().getDisplayMetrics().density);
+            panel.animate().alpha(1f).translationY(0f).withLayer().setDuration(120).start();
         });
-        switchCategory(sLastCategory);
+        applyCategoryVisibility(sLastCategory);
+    }
+
+    private void applyCategoryVisibility(int catIdx) {
+        currentCategory = catIdx;
+        sLastCategory = catIdx;
+        for (int i = 0; i < categoryPanels.length; i++) {
+            View p = categoryPanels[i];
+            p.animate().cancel();
+            p.setLayerType(View.LAYER_TYPE_NONE, null);
+            p.setVisibility((i == catIdx) ? View.VISIBLE : View.GONE);
+        }
     }
 
     private void switchCategory(int catIdx) {
-        currentCategory = catIdx;
-        sLastCategory = catIdx;
-
-        for (int i = 0; i < categoryPanels.length; i++) {
-            categoryPanels[i].setVisibility((i == catIdx) ? View.VISIBLE : View.GONE);
+        applyCategoryVisibility(catIdx);
+        if (pageEverShown) {
+            ensureCategoryLoaded(catIdx);
         }
+    }
 
+    private void ensureCategoryLoaded(int catIdx) {
+        if (catIdx < 0 || catIdx >= categoryLoaded.length || categoryLoaded[catIdx]) {
+            return;
+        }
+        categoryLoaded[catIdx] = true;
         if (catIdx == CAT_MULTIPLAYER) {
             artworkCacheController.refresh();
         } else if (catIdx == CAT_GAMEDATA) {
@@ -574,7 +617,8 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
     }
 
     private void setupListeners(View view) {
-        et_settings_nickname.setText(settings.getString("nick_name"));
+        et_settings_nickname.setText(ServerJoinProfileStore.get(requireContext())
+                .getDefaultNickname(settings.getString("nick_name")));
         et_settings_nickname.addTextChangedListener(new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -587,9 +631,27 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
                 if (updatingWidgets) return;
                 String nick = s.toString().trim();
                 if (!nick.isEmpty()) {
+                    ServerJoinProfileStore.updateDefaultNickname(requireContext(), nick, false);
                     savePreference("nick_name", nick);
                 }
             }
+        });
+        et_settings_nickname.setOnFocusChangeListener((v, hasFocus) -> {
+            if (!hasFocus && isAdded() && !updatingWidgets) {
+                String nick = et_settings_nickname.getText().toString().trim();
+                if (!nick.isEmpty()) {
+                    ServerJoinProfileStore.updateDefaultNickname(requireContext(), nick, true);
+                }
+            }
+        });
+        et_settings_nickname.setOnEditorActionListener((tv, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_DONE && isAdded()) {
+                String nick = tv.getText().toString().trim();
+                if (!nick.isEmpty()) {
+                    ServerJoinProfileStore.updateDefaultNickname(requireContext(), nick, true);
+                }
+            }
+            return false;
         });
 
         // 启动器自定义背景壁纸与压暗遮罩
@@ -657,7 +719,16 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
                 int hue = Math.round(value);
                 if (tv_theme_hue_val != null) tv_theme_hue_val.setText(hue + "°");
                 if (fromUser) {
-                    LauncherThemeManager.setHue(requireContext(), hue);
+                    pendingHue = hue;
+                    if (!hueFrameScheduled && rootView != null) {
+                        hueFrameScheduled = true;
+                        rootView.postOnAnimation(() -> {
+                            hueFrameScheduled = false;
+                            if (isAdded() && pendingHue >= 0) {
+                                LauncherThemeManager.setHue(requireContext(), pendingHue);
+                            }
+                        });
+                    }
                 }
             });
         }
@@ -1101,7 +1172,8 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
     private void setWidgetsForSettings() {
         updatingWidgets = true;
         try {
-            et_settings_nickname.setText(settings.getString("nick_name"));
+            et_settings_nickname.setText(ServerJoinProfileStore.get(requireContext())
+                    .getDefaultNickname(settings.getString("nick_name")));
 
             for (Map.Entry<CompoundButton, String> entry : buildSwitchMap().entrySet()) {
                 if (entry.getKey() != null) {
@@ -1287,6 +1359,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
     private void savePreference(String key, Object value) {
         settings.put(key, value);
         ClientSettings.setAsync(requireContext(), key, value);
+        boundSettingsGen = ClientSettings.currentGeneration();
     }
 
     void showAlertDialog(String message, DialogInterface.OnClickListener positiveListener, DialogInterface.OnClickListener negativeListener) {

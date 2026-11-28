@@ -194,21 +194,23 @@ DECL_HOOK(int16_t, CPad_GetPedWalkLeftRight, uintptr_t _this)
 	else {
 		g_lastLocalPadPtr = _this;
 		if (IsPadMovementDisabled(_this)) {
-			LocalPlayerKeys.wKeyLR = 0;
+			// Freeze local GTA ped movement ONLY; never zero LocalPlayerKeys.wKeyLR, because
+			// SA-MP / open.mp servers still read GetPlayerKeys(leftright) while controllable=0!
 			return 0;
 		}
 		int16_t lr = g_touchCombat.onFootStickSampled ? g_touchCombat.stickLR : 0;
-		if (!g_touchCombat.stickTouched) {
+		if (!g_touchCombat.stickTouched && TouchHud::currentFrame().syncLR == 0) {
 			const int16_t padLR = CPad_GetPedWalkLeftRight(_this);
 			if (padLR != 0) {
 				lr = padLR;
+				LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(padLR < -32 ? -128 : (padLR > 32 ? 128 : 0));
 			}
 		}
 		if (lr != 0 && TouchHud::currentFrame().slowWalkHeld && !g_touchCombat.aimLatch) {
+			const int16_t origSign = (lr < 0) ? -20 : 20;
 			lr = static_cast<int16_t>(std::lround(static_cast<float>(lr) * 0.48f));
-			if (lr > -20 && lr < 20) lr = (g_touchCombat.stickLR < 0) ? -20 : 20;
+			if (lr > -20 && lr < 20) lr = origSign;
 		}
-		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
 		return lr;
 	}
 }
@@ -221,21 +223,22 @@ DECL_HOOK(int16_t, CPad_GetPedWalkUpDown, uintptr_t _this)
 	else {
 		g_lastLocalPadPtr = _this;
 		if (IsPadMovementDisabled(_this)) {
-			LocalPlayerKeys.wKeyUD = 0;
+			// Freeze local GTA ped movement ONLY; never zero LocalPlayerKeys.wKeyUD.
 			return 0;
 		}
 		int16_t ud = g_touchCombat.onFootStickSampled ? g_touchCombat.stickUD : 0;
-		if (!g_touchCombat.stickTouched) {
+		if (!g_touchCombat.stickTouched && TouchHud::currentFrame().syncUD == 0) {
 			const int16_t padUD = CPad_GetPedWalkUpDown(_this);
 			if (padUD != 0) {
 				ud = padUD;
+				LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(padUD < -32 ? -128 : (padUD > 32 ? 128 : 0));
 			}
 		}
 		if (ud != 0 && TouchHud::currentFrame().slowWalkHeld && !g_touchCombat.aimLatch) {
+			const int16_t origSign = (ud < 0) ? -20 : 20;
 			ud = static_cast<int16_t>(std::lround(static_cast<float>(ud) * 0.48f));
-			if (ud > -20 && ud < 20) ud = (g_touchCombat.stickUD < 0) ? -20 : 20;
+			if (ud > -20 && ud < 20) ud = origSign;
 		}
-		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
 		return ud;
 	}
 }
@@ -360,8 +363,6 @@ DECL_HOOK(void, CTaskSimplePlayerOnFoot_PlayerControlZeldaWeapon, void* _this, s
 	else if (!IsLocalActivePedMovementLocked()) {
 		lr = g_touchCombat.onFootStickSampled ? g_touchCombat.stickLR : 0;
 		ud = g_touchCombat.onFootStickSampled ? g_touchCombat.stickUD : 0;
-		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
-		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
 	}
 
 	sa::CVector2D move{static_cast<float>(lr) * (1.0f / 128.0f), static_cast<float>(ud) * (1.0f / 128.0f)};
@@ -709,13 +710,11 @@ DECL_HOOK(int16_t, CPad_GetSteeringLeftRight, uintptr_t _this)
 	else {
 		g_lastLocalPadPtr = _this;
 		if (IsPadMovementDisabled(_this)) {
-			LocalPlayerKeys.wKeyLR = 0;
 			return 0;
 		}
-		// Authoritative TouchHud/hardware steering axis (never fall through to stock mobile widgets).
-		const int16_t lr = TouchHud::currentFrame().vehSteerLR;
-		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
-		return lr;
+		// Authoritative TouchHud/hardware steering axis for local vehicle physics;
+		// LocalPlayerKeys.wKeyLR is synced discretely (-128/0/+128) in TouchHud::stepGameFrame().
+		return TouchHud::currentFrame().vehSteerLR;
 	}
 }
 
@@ -727,13 +726,11 @@ DECL_HOOK(int16_t, CPad_GetSteeringUpDown, uintptr_t _this)
 	else {
 		g_lastLocalPadPtr = _this;
 		if (IsPadMovementDisabled(_this)) {
-			LocalPlayerKeys.wKeyUD = 0;
 			return 0;
 		}
-		// Authoritative pitch/lean/wheelie axis (strictly decoupled from gas/brake & stock double-tap wheelie).
-		const int16_t ud = TouchHud::currentFrame().vehSteerUD;
-		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
-		return ud;
+		// Authoritative pitch/lean/wheelie axis for local vehicle physics;
+		// LocalPlayerKeys.wKeyUD is synced discretely (-128/0/+128) in TouchHud::stepGameFrame().
+		return TouchHud::currentFrame().vehSteerUD;
 	}
 }
 

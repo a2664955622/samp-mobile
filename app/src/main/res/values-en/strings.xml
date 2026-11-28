@@ -80,12 +80,25 @@
     <string name="none">None</string>
     <string name="_0_mb_0_mb">0 MB / 0 MB</string>
     <string name="tab_favorites">Favorites</string>
+    <string name="tab_regional">Regional</string>
     <string name="tab_internet">Internet</string>
     <string name="tab_partners">Partners</string>
     <string name="tab_recent">Recent</string>
+    <string name="filter_all_languages">All</string>
+    <string name="filter_multi_select">Filter</string>
+    <string name="filter_multi_select_count">Filter (%1$d)</string>
+    <string name="filter_country_dialog_title">Select Country / Region</string>
+    <string name="filter_language_dialog_title">Filter by Language</string>
+    <string name="filter_auto_detect">Auto (%1$s)</string>
+    <string name="filter_confirm">Apply</string>
+    <string name="servers_empty_regional">No online servers found for this country/region\nSwitch countries above or tap refresh</string>
     <string name="join_server">Join Server</string>
     <string name="delete_server">Delete server</string>
     <string name="player_nickname">Player nickname</string>
+    <string name="nickname_history_btn">History ▾</string>
+    <string name="nickname_history_empty">No nickname history yet</string>
+    <string name="password_show">Show</string>
+    <string name="password_hide">Hide</string>
     <string name="column_name">Name</string>
     <string name="column_ping">Ping</string>
     <string name="column_mode">Mode</string>
@@ -156,12 +169,6 @@
     <string name="settings_language_option_desc">The language name is always displayed in its own text, making it easy to switch at any time</string>
     <string name="settings_language_restart_hint">The interface will be refreshed immediately after switching; servers, game data, and other settings will not be affected.</string>
     <string name="gamedata_manifest_url" translatable="false"></string>
-    <string name="ui_activity_game_editobject_001">Rotate X</string>
-    <string name="ui_activity_game_editobject_002">Rotate Y</string>
-    <string name="ui_activity_game_editobject_003">Rotate Z</string>
-    <string name="ui_activity_game_editobject_004">Zoom</string>
-    <string name="ui_activity_game_editobject_005">Select an option</string>
-    <string name="ui_activity_game_editobject_006">Save</string>
     <string name="ui_item_gamedata_file_001">GTA:SA Core · Main World Model Archives</string>
     <string name="ui_item_gamedata_file_002">normal</string>
     <string name="ui_item_mod_entry_001">Increase priority</string>
@@ -368,7 +375,7 @@
     <string name="ui_settings_panel_multiplayer_001">Role identities are compatible with protocols</string>
     <string name="ui_settings_panel_multiplayer_002">Configure the role name, communication protocol and text encoding used when entering the server</string>
     <string name="ui_settings_panel_multiplayer_003">Default game nickname</string>
-    <string name="ui_settings_panel_multiplayer_004">The role name used when connecting to the server, supports English, numbers and underscores</string>
+    <string name="ui_settings_panel_multiplayer_004">Default name for new servers (each server remembers its own last-used name)</string>
     <string name="ui_settings_panel_multiplayer_005">Enter game nickname</string>
     <string name="ui_settings_panel_multiplayer_006">Client protocol version</string>
     <string name="ui_settings_panel_multiplayer_007">Simulate the corresponding client version number to adapt to different server restrictions</string>
@@ -384,8 +391,8 @@
     <string name="ui_settings_panel_multiplayer_017">Skip launcher original file integrity check to avoid manually replaced data files from being restored</string>
     <string name="ui_settings_panel_multiplayer_018">0.3.DL custom model cache</string>
     <string name="ui_settings_panel_multiplayer_019">Counting SAMP/cache/ directory...</string>
-    <string name="ui_settings_panel_multiplayer_020">Supports importing PC-side 0.3.DL cache .zip package or bulk 0x*.dff / 0x*.txd (bulk files are imported to local/ and are common to all servers)</string>
-    <string name="ui_settings_panel_multiplayer_021">Import cache</string>
+    <string name="ui_settings_panel_multiplayer_020">Directly import PC 0.3.DL cache .zip / .7z / .rar archives, extracted folders, or 0x*.dff / 0x*.txd files (nested folders auto-normalize into shared local/ cache)</string>
+    <string name="ui_settings_panel_multiplayer_021">Import Archive/File</string>
     <string name="ui_settings_panel_multiplayer_022">Clear all</string>
     <string name="ui_settings_panel_multiplayer_023">There are no cached server custom models yet</string>
     <string name="ui_settings_panel_multiplayer_024">Launcher appearance &amp; theme</string>
@@ -406,6 +413,7 @@
     <string name="ui_settings_panel_multiplayer_039">Launcher background updated</string>
     <string name="ui_settings_panel_multiplayer_040">Default launcher background restored</string>
     <string name="ui_settings_panel_multiplayer_041">Failed to load image. Please select a valid JPG / PNG / WEBP file.</string>
+    <string name="ui_settings_panel_multiplayer_042">Import Folder</string>
     <string name="ui_settings_panel_screenshots_001">Game screenshot capture range</string>
     <string name="ui_settings_panel_screenshots_002">The screen content captured by default when clicking the F8 button at the bottom or entering /ss</string>
     <string name="ui_settings_panel_screenshots_003">Includes interface and chat</string>

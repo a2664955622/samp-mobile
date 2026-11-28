@@ -3,9 +3,11 @@
 #include <atomic>
 #include <deque>
 #include <mutex>
+#include <vector>
 
 #include "NetTypes.h"
 #include "../Game/TextDraw.h"
+#include "../Game/TextDrawHitCore.h"
 
 #define MAX_TEXT_DRAW_LINE 800
 
@@ -32,10 +34,10 @@ public:
 	}
 
 	void SetSelectState(bool bState, uint32_t dwColor = 0, bool bSendCancel = true);
-	bool onTouchEvent(int type, int x, int y);
+	bool onTouchEvent(int type, int x, int y, int pointerId = 0);
 	// Thread-safe touch entry point called from NVEvent thread; queues events
 	// for GameMain processing instead of mutating pool / sending RPC cross-thread.
-	bool enqueueTouchEvent(int type, int x, int y);
+	bool enqueueTouchEvent(int type, int x, int y, int pointerId = 0);
 	void processPendingTouches();
 
 	void SnapshotProcess();
@@ -50,6 +52,7 @@ private:
 		int type;
 		int x;
 		int y;
+		int pointerId;
 	};
 
 	uint8_t m_bSlotState[MAX_TEXT_DRAWS];
@@ -58,6 +61,8 @@ private:
 	std::atomic<bool> m_bSelectState{false};
 	uint32_t m_dwHoverColor;
 	uint16_t m_wClickedTextDrawID;
+	textdraw::TouchSelectTracker m_touchTracker;
+	std::vector<textdraw::HitBox> m_hitScratch;
 
 	std::mutex m_touchMutex;
 	std::deque<PendingTouch> m_pendingTouches;

@@ -21,6 +21,7 @@ enum class HudContext : uint8_t {
 	Hidden = 0,
 	OnFoot,
 	Swimming,
+	Spectating,
 	InVehicleDriver,
 	InVehiclePassenger,
 	Aircraft,
@@ -109,6 +110,28 @@ inline float wrapAngleRad(float rad)
 	return rad;
 }
 
+// Maps continuous analog stick coordinates [-128 .. +128] to PC SA-MP discrete
+// directional values {-128, 0, +128} (KEY_LEFT/KEY_RIGHT and KEY_UP/KEY_DOWN).
+// Uses 8-way 45-degree directional sectors (sin(22.5 deg) = 0.38268343f) once radial
+// magnitude reaches >= 32 (~25% deflection), so cardinal pushes never leak cross-axis
+// noise and 45-degree diagonal pushes emit (-128/+128, -128/+128) just like PC WASD.
+inline void quantizeJoystickToPcSamp(int16_t rawLR, int16_t rawUD, int16_t& outSyncLR, int16_t& outSyncUD)
+{
+	const float fx = static_cast<float>(rawLR);
+	const float fy = static_cast<float>(rawUD);
+	const float mag = std::hypot(fx, fy);
+	if (mag < 32.0f) {
+		outSyncLR = 0;
+		outSyncUD = 0;
+		return;
+	}
+	constexpr float kSectorSin = 0.38268343f; // sin(22.5 deg)
+	const float ux = fx / mag;
+	const float uy = fy / mag;
+	outSyncLR = (ux <= -kSectorSin) ? -128 : ((ux >= kSectorSin) ? 128 : 0);
+	outSyncUD = (uy <= -kSectorSin) ? -128 : ((uy >= kSectorSin) ? 128 : 0);
+}
+
 // Pure C++ multi-touch input engine for SAMP-Mobile Full Custom Touch HUD.
 // Thread safety: caller synchronizes onTouch() (NVEvent thread) and stepFrame() (GameMain thread).
 class TouchHudCore {
@@ -133,11 +156,14 @@ public:
 	};
 
 	struct FrameOutput {
-		// Analog axes in GTA CPad scale [-128 .. +128]
+		// Analog axes in GTA CPad scale [-128 .. +128] (smooth local movement/steering)
 		int16_t moveLR = 0;
 		int16_t moveUD = 0;
 		int16_t vehSteerLR = 0;
 		int16_t vehSteerUD = 0;
+		// Discrete PC SA-MP sync axes {-128, 0, +128} (KEY_LEFT/RIGHT, KEY_UP/DOWN)
+		int16_t syncLR = 0;
+		int16_t syncUD = 0;
 		uint8_t vehAccel = 0; // 0..255
 		uint8_t vehBrake = 0; // 0..255
 		bool stickTouched = false;
@@ -223,6 +249,10 @@ public:
 			if (caps.context == HudContext::Hidden) {
 				m_sprintLocked = false;
 				m_altLatched = false;
+				m_syncPulseLR = 0;
+				m_syncPulseUD = 0;
+				m_syncPulseUntilMsLR = 0;
+				m_syncPulseUntilMsUD = 0;
 			}
 		}
 		if (caps.rpStripOnly && !m_caps.rpStripOnly) {
@@ -234,6 +264,10 @@ public:
 				}
 			}
 			m_sprintLocked = false;
+			m_syncPulseLR = 0;
+			m_syncPulseUD = 0;
+			m_syncPulseUntilMsLR = 0;
+			m_syncPulseUntilMsUD = 0;
 		}
 		m_caps = caps;
 	}
@@ -288,6 +322,20 @@ public:
 			return false; // Keep screen unobstructed while Scoreboard/TextDraw/Menu is open
 		}
 
+		if (m_caps.context == HudContext::Spectating) {
+			if (isVehicleControl(id)) return false;
+			switch (id) {
+				case ControlId::Joystick:
+				case ControlId::FireRight:
+				case ControlId::Sprint:
+				case ControlId::Jump:
+				case ControlId::InteractF:
+					return true;
+				default:
+					return false;
+			}
+		}
+
 		const bool inVeh = (m_caps.context == HudContext::InVehicleDriver
 			|| m_caps.context == HudContext::InVehiclePassenger
 			|| m_caps.context == HudContext::Aircraft);
@@ -318,7 +366,7 @@ public:
 				case ControlId::VehSteerRight:
 					return !isPassenger && !useJoy;
 				case ControlId::VehJoystick:
-					return !isPassenger && useJoy;
+					return isPassenger || useJoy;
 				case ControlId::VehAccel:
 				case ControlId::VehBrake:
 					return !isPassenger;
@@ -516,7 +564,7 @@ public:
 					m_joyKnobX = x;
 					m_joyKnobY = y;
 					m_joyActive = true;
-					updateJoystickVector(joyId, x, y);
+					updateJoystickVector(joyId, x, y, nowMs);
 					return true;
 				}
 			}
@@ -550,7 +598,7 @@ public:
 			}
 			else if (slot->kind == BindKind::Control) {
 				if (slot->controlId == ControlId::Joystick || slot->controlId == ControlId::VehJoystick) {
-					updateJoystickVector(slot->controlId, x, y);
+					updateJoystickVector(slot->controlId, x, y, nowMs);
 				}
 				else if (slot->controlId == ControlId::FireRight && m_layout.prefs.fireRightDragAim) {
 					// PUBG drag-to-aim while holding right fire button!
@@ -586,6 +634,10 @@ public:
 		m_joyLR = 0;
 		m_joyUD = 0;
 		m_sprintLocked = false;
+		m_syncPulseLR = 0;
+		m_syncPulseUD = 0;
+		m_syncPulseUntilMsLR = 0;
+		m_syncPulseUntilMsUD = 0;
 		m_accumLookDX = 0.0f;
 		m_accumLookDY = 0.0f;
 		m_lookActive = false;
@@ -741,7 +793,7 @@ public:
 		}
 
 		// PUBG auto-sprint lock keeps forward movement + KEY_SPRINT active on foot
-		if (!inVeh && m_sprintLocked) {
+		if (!inVeh && m_caps.context != HudContext::Spectating && m_sprintLocked) {
 			heldMask |= keyBit(SampKey::Sprint);
 			out.sprintHeld = true;
 		}
@@ -762,17 +814,28 @@ public:
 			out.lookBehindHeld = true;
 		}
 
-		// Joystick analog output
+		// Joystick analog output (smooth local physics) + raw vector for PC discrete sync
+		int16_t rawSyncLR = 0;
+		int16_t rawSyncUD = 0;
 		if (!inVeh) {
 			if (m_joyActive) {
 				out.stickTouched = true;
 				out.moveLR = m_joyLR;
 				out.moveUD = m_joyUD;
 			}
-			else if (m_sprintLocked) {
+			else if (m_sprintLocked && m_caps.context != HudContext::Spectating) {
 				out.stickTouched = true;
 				out.moveLR = 0;
 				out.moveUD = -128; // Auto-run forward!
+			}
+			rawSyncLR = out.moveLR;
+			rawSyncUD = out.moveUD;
+		}
+		else if (m_caps.context == HudContext::InVehiclePassenger) {
+			if (m_joyActive) {
+				out.stickTouched = true;
+				rawSyncLR = m_joyLR;
+				rawSyncUD = m_joyUD;
 			}
 		}
 		else {
@@ -781,6 +844,39 @@ public:
 				out.vehSteerLR = m_joyLR;
 				out.vehSteerUD = m_joyUD;
 			}
+			rawSyncLR = out.vehSteerLR;
+			rawSyncUD = out.vehSteerUD;
+		}
+
+		// Quantize directional intent to PC SA-MP {-128, 0, +128} with 110ms flick-pulse protection
+		int16_t qLR = 0;
+		int16_t qUD = 0;
+		quantizeJoystickToPcSamp(rawSyncLR, rawSyncUD, qLR, qUD);
+
+		if (qLR != 0) {
+			m_syncPulseLR = qLR;
+			m_syncPulseUntilMsLR = std::max(m_syncPulseUntilMsLR, nowMs + kMinKeyPulseMs);
+			out.syncLR = qLR;
+		}
+		else if (nowMs < m_syncPulseUntilMsLR) {
+			out.syncLR = m_syncPulseLR;
+		}
+		else {
+			m_syncPulseLR = 0;
+			out.syncLR = 0;
+		}
+
+		if (qUD != 0) {
+			m_syncPulseUD = qUD;
+			m_syncPulseUntilMsUD = std::max(m_syncPulseUntilMsUD, nowMs + kMinKeyPulseMs);
+			out.syncUD = qUD;
+		}
+		else if (nowMs < m_syncPulseUntilMsUD) {
+			out.syncUD = m_syncPulseUD;
+		}
+		else {
+			m_syncPulseUD = 0;
+			out.syncUD = 0;
 		}
 
 		// Drain edge events
@@ -1182,7 +1278,7 @@ private:
 		}
 	}
 
-	void updateJoystickVector(ControlId joyId, float x, float y)
+	void updateJoystickVector(ControlId joyId, float x, float y, uint64_t nowMs)
 	{
 		const float radius = std::max(24.0f, controlCircle(joyId).r);
 		const float dx = x - m_joyAnchorX;
@@ -1217,8 +1313,22 @@ private:
 		m_joyLR = static_cast<int16_t>(std::clamp(static_cast<int>(std::lround(ux * normMag * 128.0f)), -128, 128));
 		m_joyUD = static_cast<int16_t>(std::clamp(static_cast<int>(std::lround(uy * normMag * 128.0f)), -128, 128));
 
+		// Latch discrete PC directional pulse immediately on touch move so even sub-frame
+		// Down -> Move -> Up flicks on NVEvent are guaranteed to reach >= 1 SA-MP sync packet!
+		int16_t qLR = 0;
+		int16_t qUD = 0;
+		quantizeJoystickToPcSamp(m_joyLR, m_joyUD, qLR, qUD);
+		if (qLR != 0) {
+			m_syncPulseLR = qLR;
+			m_syncPulseUntilMsLR = std::max(m_syncPulseUntilMsLR, nowMs + kMinKeyPulseMs);
+		}
+		if (qUD != 0) {
+			m_syncPulseUD = qUD;
+			m_syncPulseUntilMsUD = std::max(m_syncPulseUntilMsUD, nowMs + kMinKeyPulseMs);
+		}
+
 		// PUBG auto-sprint lock: push straight up beyond 1.25x joystick radius
-		if (joyId == ControlId::Joystick && m_layout.prefs.autoSprintLock) {
+		if (joyId == ControlId::Joystick && m_caps.context != HudContext::Spectating && m_layout.prefs.autoSprintLock) {
 			if (dy < -radius * 1.25f && std::fabs(dx) < radius * 0.55f) {
 				m_sprintLocked = true;
 			}
@@ -1300,6 +1410,10 @@ private:
 	int16_t m_joyLR = 0;
 	int16_t m_joyUD = 0;
 	bool m_sprintLocked = false;
+	int16_t m_syncPulseLR = 0;
+	int16_t m_syncPulseUD = 0;
+	uint64_t m_syncPulseUntilMsLR = 0;
+	uint64_t m_syncPulseUntilMsUD = 0;
 
 	// Camera look state
 	float m_accumLookDX = 0.0f;
