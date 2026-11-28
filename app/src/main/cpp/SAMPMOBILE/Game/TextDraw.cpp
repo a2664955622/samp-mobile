@@ -1,4 +1,5 @@
 #include "TextDraw.h"
+#include "TextDrawLayout.h"
 #include "Font.h"
 #include "Game.h"
 #include "RGBA.h"
@@ -11,9 +12,12 @@
 #include "../UI/UI.h"
 #include "../UI/UISettings.h"
 #include <encoding.h>
+#include <RenderWare/rw.h>
 #include <SA.h>
 #include <spdlog/spdlog.h>
-#include <sstream>
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 
 extern RwTexture* TextDrawTexture[];
@@ -194,17 +198,15 @@ void CTextDraw::Draw()
 	if (m_TextDrawData.iTextureSlot != -1 || m_TextDrawData.dwStyle == 4) {
 		DrawTextured();
 	}
-	else if (NeedsImGuiRender()) {
-		// The engine bitmap font cannot render this text; it is drawn later
-		// by DrawImGui() during the UI pass. Keep the click area up to date.
-		ComputeRectArea();
+	else if (NeedsUnicodeRender()) {
+		DrawUnicode();
 	}
 	else {
 		DrawDefault();
 	}
 }
 
-bool CTextDraw::NeedsImGuiRender()
+bool CTextDraw::NeedsUnicodeRender()
 {
 	if (m_TextDrawData.dwStyle == 4 || m_TextDrawData.dwStyle == 5) return false;
 	return StringHasNonAscii(m_szText);
@@ -245,22 +247,169 @@ void CTextDraw::ComputeRectArea()
 	m_TextDrawData.bHasRectArea = true;
 }
 
-void CTextDraw::DrawImGui(ImGuiRenderer* renderer)
+static textdraw::FontReferenceMetrics ProbeFontReferenceMetrics(const ImFont* font)
 {
-	if (!NeedsImGuiRender()) return;
-	if (!strlen(m_szText)) return;
+	textdraw::FontReferenceMetrics ref{};
+	if (!font) {
+		return ref;
+	}
+	ref.fontSize = font->FontSize > 0.0f ? font->FontSize : 18.0f;
+	ref.bakedExtraSpacingX = (font->ConfigData != nullptr) ? font->ConfigData->GlyphExtraSpacing.x : 0.0f;
+	ref.cjkAdvancePx = ref.fontSize * 0.76f;
+	ref.cjkInkHeightPx = ref.fontSize * 0.72f;
+	ref.cjkInkTopPx = ref.fontSize * 0.14f;
 
-	int iScreenWidth = sa::RsGlobal->screenWidth;
-	int iScreenHeight = sa::RsGlobal->screenHeight;
-	float fHorizHudScale = 1.0f / 640.0f;
-	float fVertHudScale = 1.0f / 448.0f;
+	// Probe a full-box CJK glyph (fallback to 'M') to measure the loaded font's true
+	// advance and ink box independent of its ascender/descender ratio (e.g. Microsoft YaHei
+	// 1.32x vs Noto Sans SC 1.17x vs SimHei 1.00x).
+	static constexpr ImWchar kProbeChars[] = {0x56FD, 0x4E2D, 0x4E00, 'M'};
+	for (ImWchar ch : kProbeChars) {
+		const ImFontGlyph* g = font->FindGlyphNoFallback(ch);
+		if (!g) continue;
+		const float natAdv = g->AdvanceX - ref.bakedExtraSpacingX;
+		const float inkH = g->Y1 - g->Y0;
+		if (natAdv > 1.0f && inkH > 1.0f) {
+			ref.cjkAdvancePx = natAdv;
+			ref.cjkInkHeightPx = inkH;
+			ref.cjkInkTopPx = g->Y0;
+			break;
+		}
+	}
+	return ref;
+}
 
-	float fUseY = iScreenHeight - ((448.0 - m_TextDrawData.fY) * (iScreenHeight * fVertHudScale));
-	float fUseX = iScreenWidth - ((640.0 - m_TextDrawData.fX) * (iScreenWidth * fHorizHudScale));
+namespace {
+
+struct RwTextDrawBatch {
+	std::vector<RwIm2DVertex> verts;
+	std::vector<RwImVertexIndex> indices;
+	RwReal nearZ = 0.0f;
+	RwReal recipZ = 1.0f;
+
+	void flush(RwRaster* raster)
+	{
+		if (indices.empty()) {
+			return;
+		}
+		RwRenderStateSet(rwRENDERSTATETEXTURERASTER, reinterpret_cast<void*>(raster));
+		RwIm2DRenderIndexedPrimitive(
+				rwPRIMTYPETRILIST,
+				verts.data(),
+				static_cast<RwInt32>(verts.size()),
+				indices.data(),
+				static_cast<RwInt32>(indices.size()));
+		verts.clear();
+		indices.clear();
+	}
+
+	void pushQuad(
+			RwRaster* raster,
+			float x0, float y0, float x1, float y1,
+			float u0, float v0, float u1, float v1,
+			uint32_t abgrColor)
+	{
+		if (verts.size() + 4 > 65532) {
+			flush(raster);
+		}
+		const RwImVertexIndex base = static_cast<RwImVertexIndex>(verts.size());
+		const size_t idx = verts.size();
+		verts.resize(idx + 4);
+
+		auto setVert = [&](RwIm2DVertex& vtx, float x, float y, float u, float v) {
+			RwIm2DVertexSetScreenX(&vtx, x);
+			RwIm2DVertexSetScreenY(&vtx, y);
+			RwIm2DVertexSetScreenZ(&vtx, nearZ);
+			RwIm2DVertexSetRecipCameraZ(&vtx, recipZ);
+			vtx.emissiveColor = abgrColor;
+			RwIm2DVertexSetU(&vtx, u, recipZ);
+			RwIm2DVertexSetV(&vtx, v, recipZ);
+		};
+
+		setVert(verts[idx + 0], x0, y0, u0, v0);
+		setVert(verts[idx + 1], x1, y0, u1, v0);
+		setVert(verts[idx + 2], x1, y1, u1, v1);
+		setVert(verts[idx + 3], x0, y1, u0, v1);
+
+		indices.push_back(base + 0);
+		indices.push_back(base + 1);
+		indices.push_back(base + 2);
+		indices.push_back(base + 0);
+		indices.push_back(base + 2);
+		indices.push_back(base + 3);
+	}
+};
+
+void AppendScaledLinePass(
+		RwTextDrawBatch& batch,
+		RwRaster* fontRaster,
+		const ImFont* font,
+		const textdraw::WrappedLine& line,
+		const textdraw::LayoutInput& input,
+		const textdraw::LayoutMetrics& metrics,
+		float originX,
+		float originY,
+		uint8_t defaultAlpha,
+		bool forceColor,
+		uint32_t forcedColorAbgr)
+{
+	if (!font || line.glyphs.empty()) {
+		return;
+	}
+	if (forceColor && ((forcedColorAbgr & 0xFF000000u) == 0u)) {
+		return;
+	}
+	if (!forceColor && defaultAlpha == 0u) {
+		return;
+	}
+
+	const float baseY = originY + metrics.glyphBaselineOffsetY;
+	float curX = originX;
+	for (const auto& span : line.glyphs) {
+		const uint32_t cp = span.codepoint;
+		if (cp != ' ' && cp != '\t' && cp != '\n' && cp != '\r') {
+			const ImWchar wcharCode = (cp <= 0xFFFFu) ? static_cast<ImWchar>(cp) : font->FallbackChar;
+			if (const ImFontGlyph* g = font->FindGlyph(wcharCode)) {
+				float xOff = 0.0f;
+				if (cp < 0x80 && !input.proportional) {
+					xOff = (metrics.unpropAsciiAdvanceX - span.naturalWidthX) * 0.5f;
+				}
+				const float gx = curX + xOff;
+				const uint32_t col = forceColor
+						? forcedColorAbgr
+						: IM_COL32(
+								(span.colorRgb >> 16) & 0xFFu,
+								(span.colorRgb >> 8) & 0xFFu,
+								span.colorRgb & 0xFFu,
+								defaultAlpha);
+				batch.pushQuad(
+						fontRaster,
+						gx + g->X0 * metrics.glyphScaleX,
+						baseY + g->Y0 * metrics.glyphScaleY,
+						gx + g->X1 * metrics.glyphScaleX,
+						baseY + g->Y1 * metrics.glyphScaleY,
+						g->U0, g->V0, g->U1, g->V1,
+						col);
+			}
+		}
+		curX += span.advanceX;
+	}
+}
+
+} // namespace
+
+void CTextDraw::DrawUnicode()
+{
+	// Keep selectable hit area up to date even on early return (matches DrawDefault).
+	ComputeRectArea();
+
+	if (m_szText[0] == '\0' || !pUI) return;
+
+	ImFont* pFont = pUI->font();
+	RwRaster* fontRaster = pUI->fontRaster();
+	if (!pFont || !fontRaster) return;
 
 	uint32_t dwLetterColor = m_bHovered ? m_dwHoverColor : m_TextDrawData.dwLetterColor;
 	RGBA letterColor = DWORD2RGBA(dwLetterColor);
-	ImColor colLetter(letterColor.R, letterColor.G, letterColor.B, letterColor.A);
 
 	char resetHex[9];
 	snprintf(resetHex, sizeof(resetHex), "{%02X%02X%02X}", letterColor.R, letterColor.G, letterColor.B);
@@ -269,81 +418,126 @@ void CTextDraw::DrawImGui(ImGuiRenderer* renderer)
 	text = GxtToImGuiColors(text, resetHex);
 	if (text.empty()) return;
 
-	// The engine font sprite is roughly 30px tall at scale 1.0
-	float fScaleY = (float) iScreenHeight * fVertHudScale * m_TextDrawData.fLetterHeight * 0.5f;
-	float fontSize = fScaleY * 30.0f;
+	textdraw::LayoutInput input{};
+	input.screenWidth = static_cast<float>(sa::RsGlobal->screenWidth);
+	input.screenHeight = static_cast<float>(sa::RsGlobal->screenHeight);
+	input.x = m_TextDrawData.fX;
+	input.y = m_TextDrawData.fY;
+	input.letterWidth = m_TextDrawData.fLetterWidth;
+	input.letterHeight = m_TextDrawData.fLetterHeight;
+	input.lineWidth = m_TextDrawData.fLineWidth;
+	input.lineHeight = m_TextDrawData.fLineHeight;
+	input.style = m_TextDrawData.dwStyle;
+	input.proportional = (m_TextDrawData.byteProportional != 0);
+	input.box = (m_TextDrawData.byteBox != 0);
+	input.centered = (m_TextDrawData.byteCentered != 0);
+	input.alignRight = (m_TextDrawData.byteAlignRight != 0);
+	input.outline = m_TextDrawData.byteOutline;
+	input.shadow = m_TextDrawData.byteShadow;
 
-	ImVec2 textSize = renderer->calculateTextSize(text, fontSize);
-
-	if (m_TextDrawData.byteBox) {
-		RGBA boxColor = DWORD2RGBA(m_TextDrawData.dwBoxColor);
-		float fLineWidth = iScreenWidth * m_TextDrawData.fLineWidth * fHorizHudScale;
-		float fLineHeight = iScreenWidth * m_TextDrawData.fLineHeight * fHorizHudScale;
-		float boxH = fLineHeight > 0.0f ? fLineHeight : textSize.y;
-		if (textSize.y > boxH) boxH = textSize.y;
-
-		float boxLeft = fUseX;
-		float boxRight = fLineWidth > fUseX ? fLineWidth : (fUseX + textSize.x);
-		if (m_TextDrawData.byteAlignRight) {
-			boxLeft = fUseX - (fLineWidth - fUseX);
-			boxRight = fUseX;
-		}
-		else if (m_TextDrawData.byteCentered) {
-			float halfW = fLineHeight > 0.0f ? fLineHeight * 0.5f : textSize.x * 0.5f;
-			boxLeft = fUseX - halfW;
-			boxRight = fUseX + halfW;
-		}
-
-		renderer->drawRect(ImVec2(boxLeft, fUseY), ImVec2(boxRight, fUseY + boxH),
-				ImColor(boxColor.R, boxColor.G, boxColor.B, boxColor.A), true);
+	static const ImFont* s_cachedFont = nullptr;
+	static RwRaster* s_cachedRaster = nullptr;
+	static textdraw::FontReferenceMetrics s_cachedRef{};
+	if (s_cachedFont != pFont || s_cachedRaster != fontRaster) {
+		s_cachedRef = ProbeFontReferenceMetrics(pFont);
+		s_cachedFont = pFont;
+		s_cachedRaster = fontRaster;
 	}
 
-	// Render line-by-line so centered/right-aligned multi-line (~n~) Chinese
-	// TextDraws align each line properly instead of left-aligning inside the block,
-	// while carrying active {RRGGBB} color codes across newlines.
-	std::stringstream ss(text);
-	std::string line;
-	float curY = fUseY;
-	ImColor curColor = colLetter;
-	while (std::getline(ss, line, '\n')) {
-		if (!line.empty()) {
-			ImVec2 lineSize = renderer->calculateTextSize(line, fontSize);
-			float lineX = fUseX;
-			if (m_TextDrawData.byteAlignRight) {
-				lineX -= lineSize.x;
-			}
-			else if (m_TextDrawData.byteCentered) {
-				lineX -= lineSize.x * 0.5f;
-			}
+	const uint32_t defaultRgb =
+			(static_cast<uint32_t>(letterColor.R) << 16) |
+			(static_cast<uint32_t>(letterColor.G) << 8) |
+			static_cast<uint32_t>(letterColor.B);
 
-			if (m_TextDrawData.byteShadow) {
-				float off = (float) m_TextDrawData.byteShadow;
-				renderer->drawText(ImVec2(lineX + off, curY + off),
-						ImColor(0, 0, 0, letterColor.A), line, false, fontSize);
-			}
+	const float bakedExtraX = s_cachedRef.bakedExtraSpacingX;
+	auto measureNaturalAdvance = [pFont, bakedExtraX](uint32_t cp) -> float {
+		const ImWchar wcharCode = (cp <= 0xFFFFu) ? static_cast<ImWchar>(cp) : pFont->FallbackChar;
+		const ImFontGlyph* g = pFont->FindGlyph(wcharCode);
+		if (!g) {
+			return std::max(1.0f, pFont->FallbackAdvanceX - bakedExtraX);
+		}
+		return std::max(1.0f, g->AdvanceX - bakedExtraX);
+	};
 
-			renderer->drawText(ImVec2(lineX, curY), curColor, line, m_TextDrawData.byteOutline != 0, fontSize);
+	textdraw::LayoutResult layout = textdraw::layoutText(text, defaultRgb, input, s_cachedRef, measureNaturalAdvance);
+	if (!layout.metrics.valid || layout.lines.empty()) {
+		return;
+	}
 
-			// Carry last inline {RRGGBB} color to the next line.
-			for (size_t i = 0; i + 7 < line.size(); ++i) {
-				if (line[i] == '{' && line[i + 7] == '}') {
-					unsigned int hex = 0;
-					char buf[7];
-					memcpy(buf, &line[i + 1], 6);
-					buf[6] = '\0';
-					if (sscanf(buf, "%x", &hex) == 1) {
-						curColor = ImColor(
-								(int) ((hex >> 16) & 0xFF),
-								(int) ((hex >> 8) & 0xFF),
-								(int) (hex & 0xFF),
-								(int) letterColor.A);
-						i += 7;
-					}
+	// Draw directly through RenderWare 2D inside CTextDrawPool::Draw() so Unicode/Chinese
+	// TextDraws obey strict 0..MAX_TEXT_DRAWS-1 Z-order alongside ASCII, Sprite, and
+	// 3D ModelPreview TextDraws (eliminating layering & click-occlusion mismatches).
+	RwRenderStateSet(rwRENDERSTATEZTESTENABLE, (void*) 0);
+	RwRenderStateSet(rwRENDERSTATEZWRITEENABLE, (void*) 0);
+	RwRenderStateSet(rwRENDERSTATEVERTEXALPHAENABLE, (void*) 1);
+	RwRenderStateSet(rwRENDERSTATESRCBLEND, (void*) rwBLENDSRCALPHA);
+	RwRenderStateSet(rwRENDERSTATEDESTBLEND, (void*) rwBLENDINVSRCALPHA);
+	RwRenderStateSet(rwRENDERSTATEFOGENABLE, (void*) 0);
+	RwRenderStateSet(rwRENDERSTATECULLMODE, (void*) rwCULLMODECULLNONE);
+	RwRenderStateSet(rwRENDERSTATEBORDERCOLOR, (void*) 0);
+	RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTION, (void*) rwALPHATESTFUNCTIONGREATER);
+	RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTIONREF, (void*) 0);
+	RwRenderStateSet(rwRENDERSTATETEXTUREFILTER, (void*) rwFILTERLINEAR);
+	RwRenderStateSet(rwRENDERSTATETEXTUREADDRESS, (void*) rwTEXTUREADDRESSCLAMP);
+
+	// Reused single-threaded batch storage (GameMain only) to avoid per-frame allocations.
+	static RwTextDrawBatch s_batch;
+	s_batch.verts.clear();
+	s_batch.indices.clear();
+	s_batch.nearZ = getNearScreenZ();
+	s_batch.recipZ = getRecipNearClip();
+
+	if (layout.hasBox) {
+		RGBA boxColor = DWORD2RGBA(m_TextDrawData.dwBoxColor);
+		if (boxColor.A > 0) {
+			s_batch.pushQuad(
+					nullptr,
+					layout.boxRect.left, layout.boxRect.top,
+					layout.boxRect.right, layout.boxRect.bottom,
+					0.0f, 0.0f, 0.0f, 0.0f,
+					m_TextDrawData.dwBoxColor);
+			s_batch.flush(nullptr);
+		}
+	}
+
+	RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTIONREF, (void*) 2);
+
+	RGBA dropColor = DWORD2RGBA(m_TextDrawData.dwBackgroundColor);
+	const uint32_t dropColorAbgr = m_TextDrawData.dwBackgroundColor;
+
+	float curY = layout.metrics.posY;
+	for (const auto& line : layout.lines) {
+		if (!line.glyphs.empty()) {
+			const float lineX = textdraw::computeLineOriginX(input, layout.metrics, line.width);
+
+			// Match GTA:SA CFont::SetEdge / SetDropShadowPosition: outline takes precedence
+			// over shadow, uses dwBackgroundColor, and ignores inline color tags.
+			if (input.outline > 0 && dropColor.A > 0) {
+				const float ox = layout.metrics.dropOffsetX;
+				const float oy = layout.metrics.dropOffsetY;
+				static constexpr float kDirs[8][2] = {
+						{-1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, -1.0f}, {0.0f, 1.0f},
+						{-1.0f, -1.0f}, {1.0f, -1.0f}, {-1.0f, 1.0f}, {1.0f, 1.0f}};
+				for (const auto& d : kDirs) {
+					AppendScaledLinePass(s_batch, fontRaster, pFont, line, input, layout.metrics,
+							lineX + d[0] * ox, curY + d[1] * oy, letterColor.A, true, dropColorAbgr);
 				}
 			}
+			else if (input.shadow > 0 && dropColor.A > 0) {
+				AppendScaledLinePass(s_batch, fontRaster, pFont, line, input, layout.metrics,
+						lineX + layout.metrics.dropOffsetX, curY + layout.metrics.dropOffsetY,
+						letterColor.A, true, dropColorAbgr);
+			}
+
+			AppendScaledLinePass(s_batch, fontRaster, pFont, line, input, layout.metrics,
+					lineX, curY, letterColor.A, false, 0u);
 		}
-		curY += fontSize;
+		curY += layout.metrics.lineHeight;
 	}
+
+	s_batch.flush(fontRaster);
+	RwRenderStateSet(rwRENDERSTATETEXTURERASTER, (void*) 0);
+	RwRenderStateSet(rwRENDERSTATEALPHATESTFUNCTIONREF, (void*) 0);
 }
 
 void CTextDraw::DrawDefault()

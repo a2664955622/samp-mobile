@@ -5,7 +5,7 @@
 #include "../Client.h"
 #include "../InputArbiter.h"
 #include "../UI/UI.h"
-#include "../UI/SAMPWidgets/ButtonPanel.h"
+#include "../UI/TouchHud/TouchHud.h"
 #include "../UI/SAMPWidgets/Chat.h"
 #include "../Net/NetGame.h"
 #include "../Game/Artwork/ArtworkManager.h"
@@ -70,10 +70,8 @@ void Java::processPendingInputs()
 		}
 	}
 
-	if (pUI && pUI->buttonpanel()) {
-		for (const auto& k : keyQueue) {
-			pUI->buttonpanel()->handleHardwareKey(k.keyCode, k.isDown);
-		}
+	for (const auto& k : keyQueue) {
+		TouchHud::handleHardwareKey(k.keyCode, k.isDown);
 	}
 }
 

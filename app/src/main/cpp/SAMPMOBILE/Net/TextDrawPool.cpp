@@ -81,21 +81,12 @@ void CTextDrawPool::Draw()
 	}
 }
 
-void CTextDrawPool::DrawImGui(ImGuiRenderer* renderer)
-{
-	for (int i = 0; i < MAX_TEXT_DRAWS; i++) {
-		if (m_bSlotState[i]) {
-			m_pTextDraw[i]->DrawImGui(renderer);
-		}
-	}
-}
-
 void CTextDrawPool::SetSelectState(bool bState, uint32_t dwColor, bool bSendCancel)
 {
 	if (bState) {
 		const bool alreadySelecting = m_bSelectState.exchange(true, std::memory_order_acq_rel);
 		// SelectTextDraw RPC transmits hover color in RGBA (0xRRGGBBAA), while
-		// CTextDraw::Draw / DrawImGui / DrawTextureUV consume ABGR (0xAABBGGRR).
+		// CTextDraw::Draw / DrawUnicode / DrawTextureUV consume ABGR (0xAABBGGRR).
 		m_dwHoverColor = __builtin_bswap32(dwColor);
 		m_wClickedTextDrawID = 0xFFFF;
 		if (!alreadySelecting && pGame) {

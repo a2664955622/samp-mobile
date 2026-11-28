@@ -2,9 +2,9 @@
 
 #include <cstdint>
 
-void UpdateTouchCombatVisuals();
-void RunWithUnscaledJoystickSx(uintptr_t widget, void (*fn)(uintptr_t));
-void ApplyLocalCombatSyncKeys(uint16_t& wKeys, uint16_t& lrAnalog, uint16_t& udAnalog);
+void RequestStuffUse();
 bool ConsumeStuffUseRequest();
+void RequestPassengerDriveByToggle();
 bool ConsumePassengerDriveByToggle();
+void ApplyLocalCombatSyncKeys(uint16_t& wKeys, uint16_t& lrAnalog, uint16_t& udAnalog);
 void InstallTouchCombatHooks();

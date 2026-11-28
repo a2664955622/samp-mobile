@@ -217,6 +217,25 @@ void Patches::apply()
 	patches::registerNop("StartGameScreen.SkipMenuSwitchOff", "NOP Menu_SwitchOffToGame in OnNewGameCheck",
 		patches::Scope::Boot, addr::Menu_SwitchOffToGame_StartGameScreen_OnNewGameCheck, 2, false);
 
+#if !VER_x32
+	// Fix RenderWare 3.7 64-bit bug in ReallocAndFixupSuperBlock (_ZL25ReallocAndFixupSuperBlockP10RxPipelinej @ 0x278DF8):
+	// `sub x9, x0, x21` computes the full 64-bit `newSuperBlock - oldSuperBlock` delta, but C `RwInt32 offset`
+	// truncates `x9` via `sxtw` (`w9`). On Android 16 Scudo, shrinking superBlock (0x3800 -> ~0x1500) crosses
+	// size-class regions >= 4GB apart, corrupting `node->privateData` by ±4GB (SEGV_ACCERR @ +0x2cb808 or
+	// wild jump @ +0x2cd460). Preserve full 64-bit `x9` across all pointer fixups (`0x8b090108` = `add x8, x8, x9`).
+	patches::registerBytes("RxPipeline.SuperBlockFixup.embeddedPacket",
+		"Preserve 64-bit superBlock realloc delta for embeddedPacket",
+		patches::Scope::Boot, g_saSym->Abs<uintptr_t>(addr::ReallocAndFixupSuperBlock_pktAdd_arm64),
+		"\x08\x01\x09\x8B", 4, false);
+	patches::registerBytes("RxPipeline.SuperBlockFixup.inputRequirements",
+		"Preserve 64-bit superBlock realloc delta for inputRequirements",
+		patches::Scope::Boot, g_saSym->Abs<uintptr_t>(addr::ReallocAndFixupSuperBlock_reqAdd_arm64),
+		"\x08\x01\x09\x8B", 4, false);
+	patches::registerNop("RxPipeline.SuperBlockFixup.nodes",
+		"Remove 32-bit sxtw truncation on superBlock realloc delta for nodes[]",
+		patches::Scope::Boot, addr::ReallocAndFixupSuperBlock_nodeSxtw_arm64, 2, false);
+#endif
+
 	// Reveal all zones
 	if (uintptr_t zonesVisited = eng::addr(eng::Sym::CTheZones_ZonesVisited)) {
 		uint8_t visitedBuf[100];

@@ -7,8 +7,6 @@
 #include "NetTypes.h"
 #include "../Game/TextDraw.h"
 
-class ImGuiRenderer;
-
 #define MAX_TEXT_DRAW_LINE 800
 
 class CTextDrawPool {
@@ -20,7 +18,6 @@ public:
 	void Delete(uint16_t wTextDrawID);
 	void Reset();
 	void Draw();
-	void DrawImGui(ImGuiRenderer* renderer);
 
 	CTextDraw* GetAt(uint16_t wTextDrawID)
 	{

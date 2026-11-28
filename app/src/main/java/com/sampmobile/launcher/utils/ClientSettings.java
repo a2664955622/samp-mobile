@@ -285,6 +285,7 @@ public final class ClientSettings {
         d.put("gta_subtitles", true);
         d.put("chat_shadow", true);
         d.put("screenshot_mode", SCREENSHOT_MODE_HUD);
+        d.put("launcher_theme_hue", LauncherThemeManager.DEFAULT_HUE);
         DEFAULTS = Collections.unmodifiableMap(d);
 
         Map<String, StringOption[]> enums = new LinkedHashMap<>();
@@ -705,6 +706,7 @@ public final class ClientSettings {
         synchronized (LOCK) {
             loadLauncher(appCtx);
             sLauncherCache.put("offline_mode", false);
+            sLauncherCache.put("launcher_theme_hue", LauncherThemeManager.getHue(appCtx));
             if (nick != null && !nick.isEmpty()) {
                 sLauncherCache.put("nick_name", nick);
             }
@@ -721,7 +723,11 @@ public final class ClientSettings {
 
     /** Persists offline flag synchronously before launching {@code :game}. */
     public static void prepareOfflineLaunch(Context ctx) {
-        setSync(ctx, "offline_mode", true);
+        if (ctx == null) return;
+        Map<String, Object> updates = new LinkedHashMap<>();
+        updates.put("offline_mode", true);
+        updates.put("launcher_theme_hue", LauncherThemeManager.getHue(ctx));
+        updateBatchSync(ctx, updates);
     }
 
     /** Resets all client settings to defaults while preserving the last server target. */

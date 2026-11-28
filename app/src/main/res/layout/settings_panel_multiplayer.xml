@@ -188,6 +188,284 @@
             </RelativeLayout>
         </LinearLayout>
 
+        <!-- 卡片：启动器外观与主题（自定义背景 + 主题配色） -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/_10sdp"
+            android:background="@drawable/launcher_card"
+            android:orientation="vertical"
+            android:padding="@dimen/_12sdp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:tag="theme_accent_text"
+                android:text="@string/ui_settings_panel_multiplayer_024"
+                android:textColor="@color/launcher_accent"
+                android:textSize="@dimen/_9ssp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_2sdp"
+                android:layout_marginBottom="@dimen/_8sdp"
+                android:text="@string/ui_settings_panel_multiplayer_025"
+                android:textColor="@color/launcher_text_dim"
+                android:textSize="@dimen/_7ssp" />
+
+            <!-- 启动器自定义背景壁纸 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingVertical="@dimen/_4sdp">
+
+                <FrameLayout
+                    android:id="@+id/fl_backdrop_preview"
+                    android:layout_width="@dimen/_74sdp"
+                    android:layout_height="@dimen/_42sdp"
+                    android:layout_marginEnd="@dimen/_10sdp"
+                    android:background="@drawable/launcher_img_clip"
+                    android:clipToOutline="true">
+
+                    <ImageView
+                        android:id="@+id/iv_backdrop_preview"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:importantForAccessibility="no"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/launcher_backdrop" />
+
+                    <View
+                        android:id="@+id/v_backdrop_preview_scrim"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="@color/ui_backdrop_scrim" />
+                </FrameLayout>
+
+                <LinearLayout
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:paddingEnd="@dimen/_8sdp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/ui_settings_panel_multiplayer_033"
+                        android:textColor="@color/launcher_text"
+                        android:textSize="@dimen/_9ssp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tv_backdrop_status"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/_1sdp"
+                        android:text="@string/ui_settings_panel_multiplayer_034"
+                        android:textColor="@color/launcher_text_dim"
+                        android:textSize="@dimen/_7ssp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/btn_backdrop_pick"
+                    android:tag="theme_accent_bg"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/_24sdp"
+                    android:background="@drawable/launcher_btn_primary"
+                    android:gravity="center"
+                    android:paddingHorizontal="@dimen/_9sdp"
+                    android:text="@string/ui_settings_panel_multiplayer_035"
+                    android:textColor="@color/launcher_on_accent"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_backdrop_reset"
+                    android:layout_width="wrap_content"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginStart="@dimen/_5sdp"
+                    android:background="@drawable/launcher_btn_danger"
+                    android:gravity="center"
+                    android:paddingHorizontal="@dimen/_8sdp"
+                    android:text="@string/ui_settings_panel_multiplayer_036"
+                    android:textColor="@color/launcher_danger"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
+            </LinearLayout>
+
+            <!-- 背景压暗遮罩滑条 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_6sdp"
+                android:layout_marginBottom="@dimen/_8sdp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/ui_settings_panel_multiplayer_037"
+                    android:textColor="@color/launcher_text"
+                    android:textSize="@dimen/_8ssp"
+                    android:textStyle="bold" />
+
+                <com.sampmobile.launcher.ui.widget.GtaSaSliderView
+                    android:id="@+id/slider_backdrop_dim"
+                    android:layout_width="@dimen/_140sdp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:stepSize="1"
+                    android:value="35"
+                    android:valueFrom="0"
+                    android:valueTo="85" />
+
+                <TextView
+                    android:id="@+id/tv_backdrop_dim_val"
+                    android:layout_width="@dimen/_34sdp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:tag="theme_accent_text"
+                    android:text="35%"
+                    android:textColor="@color/launcher_accent"
+                    android:textSize="@dimen/_8ssp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="@color/launcher_stroke" />
+
+            <!-- 启动器主题配色 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_9sdp"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/btn_theme_gold"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginEnd="@dimen/_4sdp"
+                    android:layout_weight="1"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:text="@string/ui_settings_panel_multiplayer_026"
+                    android:textColor="#FFAE1A"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_theme_cyan"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginEnd="@dimen/_4sdp"
+                    android:layout_weight="1"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:text="@string/ui_settings_panel_multiplayer_027"
+                    android:textColor="#18DCFF"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_theme_green"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginEnd="@dimen/_4sdp"
+                    android:layout_weight="1"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:text="@string/ui_settings_panel_multiplayer_028"
+                    android:textColor="#2ECC71"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_theme_red"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginEnd="@dimen/_4sdp"
+                    android:layout_weight="1"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:text="@string/ui_settings_panel_multiplayer_029"
+                    android:textColor="#FF4757"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_theme_purple"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_marginEnd="@dimen/_4sdp"
+                    android:layout_weight="1"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:text="@string/ui_settings_panel_multiplayer_030"
+                    android:textColor="#A55EEA"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/btn_theme_blue"
+                    android:layout_width="0dp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:layout_weight="1"
+                    android:background="@drawable/launcher_btn_outline"
+                    android:gravity="center"
+                    android:text="@string/ui_settings_panel_multiplayer_031"
+                    android:textColor="#3788FF"
+                    android:textSize="@dimen/_7ssp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/_8sdp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/ui_settings_panel_multiplayer_032"
+                    android:textColor="@color/launcher_text"
+                    android:textSize="@dimen/_8ssp"
+                    android:textStyle="bold" />
+
+                <com.sampmobile.launcher.ui.widget.GtaSaSliderView
+                    android:id="@+id/slider_theme_hue"
+                    android:layout_width="@dimen/_140sdp"
+                    android:layout_height="@dimen/_24sdp"
+                    android:stepSize="1"
+                    android:value="38"
+                    android:valueFrom="0"
+                    android:valueTo="360" />
+
+                <TextView
+                    android:id="@+id/tv_theme_hue_val"
+                    android:layout_width="@dimen/_34sdp"
+                    android:layout_height="wrap_content"
+                    android:gravity="end"
+                    android:tag="theme_accent_text"
+                    android:text="38°"
+                    android:textColor="@color/launcher_accent"
+                    android:textSize="@dimen/_8ssp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+        </LinearLayout>
+
         <!-- 卡片：连接与数据同步 -->
         <LinearLayout
             android:layout_width="match_parent"
@@ -453,154 +731,6 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/_8sdp"
                 android:orientation="vertical" />
-        </LinearLayout>
-
-        <!-- 卡片：启动器主题配色 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/_10sdp"
-            android:background="@drawable/launcher_card"
-            android:orientation="vertical"
-            android:padding="@dimen/_12sdp">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:tag="theme_accent_text"
-                android:text="@string/ui_settings_panel_multiplayer_024"
-                android:textColor="@color/launcher_accent"
-                android:textSize="@dimen/_9ssp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/_2sdp"
-                android:text="@string/ui_settings_panel_multiplayer_025"
-                android:textColor="@color/launcher_text_dim"
-                android:textSize="@dimen/_7ssp" />
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/_8sdp"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:id="@+id/btn_theme_gold"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/_24sdp"
-                    android:layout_marginEnd="@dimen/_4sdp"
-                    android:layout_weight="1"
-                    android:background="@drawable/launcher_btn_outline"
-                    android:gravity="center"
-                    android:text="@string/ui_settings_panel_multiplayer_026"
-                    android:textColor="#FFAE1A"
-                    android:textSize="@dimen/_7ssp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/btn_theme_cyan"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/_24sdp"
-                    android:layout_marginEnd="@dimen/_4sdp"
-                    android:layout_weight="1"
-                    android:background="@drawable/launcher_btn_outline"
-                    android:gravity="center"
-                    android:text="@string/ui_settings_panel_multiplayer_027"
-                    android:textColor="#18DCFF"
-                    android:textSize="@dimen/_7ssp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/btn_theme_green"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/_24sdp"
-                    android:layout_marginEnd="@dimen/_4sdp"
-                    android:layout_weight="1"
-                    android:background="@drawable/launcher_btn_outline"
-                    android:gravity="center"
-                    android:text="@string/ui_settings_panel_multiplayer_028"
-                    android:textColor="#2ECC71"
-                    android:textSize="@dimen/_7ssp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/btn_theme_red"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/_24sdp"
-                    android:layout_marginEnd="@dimen/_4sdp"
-                    android:layout_weight="1"
-                    android:background="@drawable/launcher_btn_outline"
-                    android:gravity="center"
-                    android:text="@string/ui_settings_panel_multiplayer_029"
-                    android:textColor="#FF4757"
-                    android:textSize="@dimen/_7ssp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/btn_theme_purple"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/_24sdp"
-                    android:layout_marginEnd="@dimen/_4sdp"
-                    android:layout_weight="1"
-                    android:background="@drawable/launcher_btn_outline"
-                    android:gravity="center"
-                    android:text="@string/ui_settings_panel_multiplayer_030"
-                    android:textColor="#A55EEA"
-                    android:textSize="@dimen/_7ssp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/btn_theme_blue"
-                    android:layout_width="0dp"
-                    android:layout_height="@dimen/_24sdp"
-                    android:layout_weight="1"
-                    android:background="@drawable/launcher_btn_outline"
-                    android:gravity="center"
-                    android:text="@string/ui_settings_panel_multiplayer_031"
-                    android:textColor="#3788FF"
-                    android:textSize="@dimen/_7ssp"
-                    android:textStyle="bold" />
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="@dimen/_8sdp"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <TextView
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:text="@string/ui_settings_panel_multiplayer_032"
-                    android:textColor="@color/launcher_text"
-                    android:textSize="@dimen/_8ssp"
-                    android:textStyle="bold" />
-
-                <com.sampmobile.launcher.ui.widget.GtaSaSliderView
-                    android:id="@+id/slider_theme_hue"
-                    android:layout_width="@dimen/_140sdp"
-                    android:layout_height="@dimen/_24sdp"
-                    android:stepSize="1"
-                    android:value="38"
-                    android:valueFrom="0"
-                    android:valueTo="360" />
-
-                <TextView
-                    android:id="@+id/tv_theme_hue_val"
-                    android:layout_width="@dimen/_34sdp"
-                    android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:tag="theme_accent_text"
-                    android:text="38°"
-                    android:textColor="@color/launcher_accent"
-                    android:textSize="@dimen/_8ssp"
-                    android:textStyle="bold" />
-            </LinearLayout>
         </LinearLayout>
 
     </LinearLayout>

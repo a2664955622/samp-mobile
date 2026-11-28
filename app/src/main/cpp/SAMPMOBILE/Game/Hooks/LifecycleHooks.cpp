@@ -14,7 +14,7 @@
 #include "../Engine/Symbols.h"
 #include "../../Addr.h"
 #include "../../UI/UI.h"
-#include "../../UI/SAMPWidgets/ButtonPanel.h"
+#include "../../UI/TouchHud/TouchHud.h"
 #include "../../UI/SAMPWidgets/Chat.h"
 #include "../../UI/SAMPWidgets/Keyboard.h"
 #include "../../Net/NetGame.h"
@@ -207,7 +207,7 @@ DECL_HOOK(void, FrontendIdle)
 		if (pAdjInst && *pAdjInst == 0) {
 			s_bWatchingAdjustableHudExit = false;
 			eng::fn::Menu_SwitchOffToGame();
-			EnsureTouchWidgetsCreated();
+			DisableAllStockTouchControls();
 		}
 	}
 
@@ -233,38 +233,15 @@ DECL_HOOK(void, Render2dStuff)
 	s_clientProcessedThisFrame = true;
 	Client::process(true);
 
-	// touch-widget watchdog: DeleteAll (CGame::Shutdown / gamemode restart /
-	// death) or AML plugins like libSAUtils64.so redirecting m_pWidgets can
-	// leave stock or custom combat widgets missing — recreate whenever needed.
+	// Periodic sweep: ensure stock GTA touch controls remain disabled after gamemode restarts / AML hooks
 	{
 		static int wdFrames = 0;
 		if (++wdFrames >= 60) {
 			wdFrames = 0;
-			uintptr_t* widgets = GetTouchWidgets();
-			if ((pNetGame || Client::offlineMode()) && pGame && GamePool_FindPlayerPed() && pGame->FindPlayerPed() && widgets) {
-				// engine rewrites targeting widgets back onto the attack slot
-				// on every RepositionAdjustableWidgets — keep our layout fix
-				FixTouchWidgetLayout();
-				if (!widgets[sa::WidgetIDs::WIDGET_ATTACK]) {
-					spdlog::info("touch widgets wiped, re-creating");
-					eng::fn::Menu_SwitchOffToGame();
-					EnsureTouchWidgetsCreated();
-				}
-				else if (!widgets[sa::WidgetIDs::WIDGET_BUTTON_CROUCH]
-					|| !widgets[sa::WidgetIDs::WIDGET_CAR_CHEATS]
-					|| !widgets[sa::WidgetIDs::WIDGET_MISSION_SKIP]) {
-					spdlog::info("custom touch widgets missing in live m_pWidgets, re-creating");
-					EnsureTouchWidgetsCreated();
-				}
+			if ((pNetGame || Client::offlineMode()) && pGame && GamePool_FindPlayerPed() && !Game::IsGamePaused()) {
+				DisableAllStockTouchControls();
 			}
 		}
-	}
-
-	// aim-button latch + block button + on-foot camera toggle: driven every
-	// frame in UpdateTouchCombatVisuals() (render visibility) and
-	// TickTouchCombatInput() (logic-frame tap/hold sampling).
-	if ((pNetGame || Client::offlineMode()) && pGame && GamePool_FindPlayerPed() && pGame->FindPlayerPed()) {
-		UpdateTouchCombatVisuals();
 	}
 
 	if (Settings::displayfps() && msCollected)
@@ -363,19 +340,15 @@ static RwCamera* Idle_RwCameraEndUpdate_hook(RwCamera* camera)
 	if (pUI)
 	{
 		bool bCaptureWithHud = ConsumePendingScreenshot(0);
-		bool prevBtnPanel = false;
-		if (bCaptureWithHud && pUI->buttonpanel()) {
-			prevBtnPanel = pUI->buttonpanel()->visible();
-			pUI->buttonpanel()->setVisible(false);
+		if (bCaptureWithHud) {
+			TouchHud::setScreenshotHidden(true);
 		}
 
 		pUI->render();
 
 		if (bCaptureWithHud) {
 			CaptureCurrentFramebufferToPng(0);
-			if (pUI->buttonpanel()) {
-				pUI->buttonpanel()->setVisible(prevBtnPanel);
-			}
+			TouchHud::setScreenshotHidden(false);
 		}
 	}
 
@@ -444,13 +417,7 @@ DECL_HOOK(void, CGame_Process)
 			}
 		}
 		if (s_bPendingAdjustableHud.exchange(false)) {
-			uintptr_t pMobileMenu = eng::addr(eng::Sym::gMobileMenu);
-			if (pMobileMenu) {
-				eng::fn::MobileMenu_InitForPause( pMobileMenu);
-				eng::fn::MobileMenu_ProcessPending( pMobileMenu);
-				eng::fn::CAdjustableHUD_Toggle();
-				s_bWatchingAdjustableHudExit = true;
-			}
+			TouchHud::openEditor();
 		}
 	}
 

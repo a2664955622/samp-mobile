@@ -395,8 +395,8 @@
     <string name="ui_settings_panel_multiplayer_021">导入缓存</string>
     <string name="ui_settings_panel_multiplayer_022">清空全部</string>
     <string name="ui_settings_panel_multiplayer_023">暂无已缓存的服务器自定义模型</string>
-    <string name="ui_settings_panel_multiplayer_024">启动器主题配色</string>
-    <string name="ui_settings_panel_multiplayer_025">选择预设主题色或拖动下方色相条自由定制你喜欢的启动器与进度条颜色</string>
+    <string name="ui_settings_panel_multiplayer_024">启动器外观与主题</string>
+    <string name="ui_settings_panel_multiplayer_025">自定义启动器背景壁纸、背景压暗浓度与主题配色，打造专属个性界面</string>
     <string name="ui_settings_panel_multiplayer_026">经典金</string>
     <string name="ui_settings_panel_multiplayer_027">霓虹青</string>
     <string name="ui_settings_panel_multiplayer_028">翡翠绿</string>
@@ -404,6 +404,15 @@
     <string name="ui_settings_panel_multiplayer_030">电光紫</string>
     <string name="ui_settings_panel_multiplayer_031">极客蓝</string>
     <string name="ui_settings_panel_multiplayer_032">自定义色相滑条</string>
+    <string name="ui_settings_panel_multiplayer_033">自定义背景壁纸</string>
+    <string name="ui_settings_panel_multiplayer_034">当前使用默认深空渐变背景</string>
+    <string name="ui_settings_panel_multiplayer_035">选择图片</string>
+    <string name="ui_settings_panel_multiplayer_036">恢复默认</string>
+    <string name="ui_settings_panel_multiplayer_037">背景压暗遮罩</string>
+    <string name="ui_settings_panel_multiplayer_038">当前已启用自定义背景壁纸（点击缩略图可更换）</string>
+    <string name="ui_settings_panel_multiplayer_039">启动器背景已更新</string>
+    <string name="ui_settings_panel_multiplayer_040">已恢复默认启动器背景</string>
+    <string name="ui_settings_panel_multiplayer_041">图片读取失败，请选择有效的 JPG / PNG / WEBP 图片</string>
     <string name="ui_settings_panel_screenshots_001">游戏截图捕捉范围</string>
     <string name="ui_settings_panel_screenshots_002">点击底部 F8 按键或输入 /ss 时默认截取的画面内容</string>
     <string name="ui_settings_panel_screenshots_003">含界面与聊天</string>

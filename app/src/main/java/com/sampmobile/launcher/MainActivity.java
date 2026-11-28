@@ -60,6 +60,7 @@ import com.sampmobile.launcher.ui.widget.GtaTabStrip;
 import com.sampmobile.launcher.utils.BundledGamedata;
 import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.GameDataImporter;
+import com.sampmobile.launcher.utils.LauncherBackdropManager;
 import com.sampmobile.launcher.utils.LauncherFonts;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
 import com.sampmobile.launcher.utils.LocaleManager;
@@ -68,7 +69,8 @@ import com.sampmobile.launcher.utils.ServerModel;
 import com.sampmobile.launcher.utils.Utils;
 
 @Obfuscate
-public class MainActivity extends AppCompatActivity implements LauncherThemeManager.ThemeListener {
+public class MainActivity extends AppCompatActivity
+        implements LauncherThemeManager.ThemeListener, LauncherBackdropManager.BackdropListener {
 
     private static final int PAGE_SERVERS = 0;
     private static final int PAGE_MODS = 1;
@@ -100,6 +102,8 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
     private View[] pageViews;
     private ViewGroup[] navItems;
     private View navIndicator;
+    private ImageView backdropView;
+    private View backdropScrim;
 
     private View infoEmpty;
     private View infoBody;
@@ -275,7 +279,9 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
             }
         }
         LauncherThemeManager.addListener(this);
+        LauncherBackdropManager.addListener(this);
         onThemeColorChanged(LauncherThemeManager.getAccentColor(this));
+        onBackdropChanged();
 
         scheduleSettingsPrewarm();
 
@@ -307,6 +313,9 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
     }
 
     private void initViews() {
+        backdropView = findViewById(R.id.backdrop);
+        backdropScrim = findViewById(R.id.backdrop_scrim);
+
         swipeRefreshLayout = findViewById(R.id.refresh);
         swipeRefreshLayout.setColorSchemeColors(getColor(R.color.launcher_accent));
         swipeRefreshLayout.setProgressBackgroundColorSchemeColor(getColor(R.color.launcher_surface_2));
@@ -567,6 +576,12 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
                 updateFavoriteButton(serverAdapter.getSelected());
             }
         }
+    }
+
+    @Override
+    public void onBackdropChanged() {
+        if (isFinishing() || isDestroyed()) return;
+        LauncherBackdropManager.applyToViews(this, backdropView, backdropScrim);
     }
 
     private void initButtons() {
@@ -903,6 +918,7 @@ public class MainActivity extends AppCompatActivity implements LauncherThemeMana
     @Override
     protected void onDestroy() {
         LauncherThemeManager.removeListener(this);
+        LauncherBackdropManager.removeListener(this);
         detailExecutor.shutdownNow();
         if (serverAdapter != null) serverAdapter.shutdown();
         super.onDestroy();

@@ -27,7 +27,6 @@
 #include "../Game/Scripting.h"
 #include "../Game/Util.h"
 #include "../UI/UI.h"
-#include "../UI/SAMPWidgets/ButtonPanel.h"
 #include "../UI/SAMPWidgets/Chat.h"
 #include "../UI/SAMPWidgets/Keyboard.h"
 #include "../UI/SAMPWidgets/NetStats.h"

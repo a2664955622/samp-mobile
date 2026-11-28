@@ -36,6 +36,7 @@ OWN_LIBS = ("libSAMPMOBILE.so", "libSCAnd.so")
 # monetloader) are player-optional and load only when the corresponding toggle is
 # on, so they are reported informationally instead of failing the gate.
 ARM64_16K_REQUIRED = {
+    "libAML.so",
     "libBASS.so",
     "libbass_ssl.so",
     "libc++_shared.so",
@@ -439,6 +440,138 @@ def _check_compiled_binaries_and_jni(
                 r.ok(f"Compiled JNI exports [{abi}]", f"{len(methods)} Java native methods matched real ELF exports")
             else:
                 r.fail(f"Compiled JNI exports [{abi}]", "; ".join(missing_jni))
+
+        # 3) Android 16+ (SDK >= 36) GlossHook LinkerInit neutralization guard:
+        # libGlossHook.a's LinkerInit() (_Z10LinkerInitv) hardcodes api <= 35 and hooks
+        # Bionic's do_dlopen, causing an instant SIGSEGV on Android 16+. Verify on both
+        # ABIs that libSAMPMOBILE.so wraps _Z10LinkerInitv so zero dynamic relocations or
+        # GlossInit instructions target the unwrapped LinkerInit().
+        objdump_bin = find_ndk_tool("llvm-objdump")
+        linker_wrap_errors: List[str] = []
+        linker_wrap_checked = 0
+        for abi in ("arm64-v8a", "armeabi-v7a"):
+            samp_so = compiled[abi].get("libSAMPMOBILE.so")
+            if not samp_so:
+                continue
+            linker_wrap_checked += 1
+            rel_out = subprocess.check_output(
+                [str(readelf_bin), "-rW", str(samp_so)],
+                text=True,
+                errors="ignore",
+            )
+            if "_Z10LinkerInitv" in rel_out:
+                linker_wrap_errors.append(f"{abi}: _Z10LinkerInitv still present in dynamic relocations")
+                continue
+
+            if objdump_bin:
+                dynsym_out = subprocess.check_output(
+                    [str(readelf_bin), "--dyn-syms", "-W", str(samp_so)],
+                    text=True,
+                    errors="ignore",
+                )
+                gloss_init_range: Optional[Tuple[int, int]] = None
+                linker_init_addr: Optional[int] = None
+                for ln in dynsym_out.splitlines():
+                    parts = ln.split()
+                    if len(parts) < 8:
+                        continue
+                    sym_name = parts[7].split("@", 1)[0]
+                    if sym_name not in ("GlossInit", "_Z10LinkerInitv"):
+                        continue
+                    try:
+                        val = int(parts[1], 16) & ~1
+                        sz = int(parts[2], 16) if parts[2].startswith("0x") else int(parts[2])
+                    except ValueError:
+                        continue
+                    if sym_name == "GlossInit" and sz > 0:
+                        gloss_init_range = (val, val + sz)
+                    elif sym_name == "_Z10LinkerInitv" and val > 0:
+                        linker_init_addr = val
+
+                if not gloss_init_range:
+                    linker_wrap_errors.append(f"{abi}: GlossInit missing from .dynsym")
+                else:
+                    dis_out = subprocess.check_output(
+                        [
+                            str(objdump_bin),
+                            "-d",
+                            f"--start-address=0x{gloss_init_range[0]:x}",
+                            f"--stop-address=0x{gloss_init_range[1]:x}",
+                            str(samp_so),
+                        ],
+                        text=True,
+                        errors="ignore",
+                    )
+                    if "_Z10LinkerInitv" in dis_out and "__wrap__Z10LinkerInitv" not in dis_out:
+                        linker_wrap_errors.append(f"{abi}: GlossInit still branches to _Z10LinkerInitv")
+                    elif linker_init_addr and f"0x{linker_init_addr:x}" in dis_out:
+                        linker_wrap_errors.append(f"{abi}: GlossInit directly calls 0x{linker_init_addr:x} (_Z10LinkerInitv)")
+
+        if linker_wrap_errors:
+            r.fail("Android 16+ GlossHook LinkerInit wrap guard", "; ".join(linker_wrap_errors))
+        elif linker_wrap_checked:
+            # Also verify dual-ABI prebuilt libAML.so never exposes unwrapped GlossHook
+            # Bionic linker hooks (LinkerInit / linker_hook / SoinfoFromHandle / GlossHookLinkerFunction).
+            aml_forbidden_syms = {
+                "_Z10LinkerInitv",
+                "_Z16SoinfoFromHandlePv",
+                "_Z11linker_hookv",
+                "_Z23GlossHookLinkerFunctionPKc20GlossLinkerFuncProxy",
+                "_Z23GlossHookLinkerFunctionPKc20GlossLinkerFuncProxyPPvS3_",
+            }
+            aml_checked = 0
+            for abi in ("arm64-v8a", "armeabi-v7a"):
+                aml_so = REPO_ROOT / "app/src/main/jniLibs" / abi / "libAML.so"
+                if not aml_so.is_file():
+                    continue
+                aml_checked += 1
+                aml_exports = set(_load_dynamic_exports(nm_bin, aml_so).keys())
+                leaked = sorted(aml_forbidden_syms & aml_exports)
+                if leaked:
+                    linker_wrap_errors.append(f"libAML.so [{abi}] still exports Bionic linker hooks: {', '.join(leaked)}")
+                aml_rel = subprocess.check_output(
+                    [str(readelf_bin), "-rW", str(aml_so)],
+                    text=True,
+                    errors="ignore",
+                )
+                for bad_sym in aml_forbidden_syms:
+                    if bad_sym in aml_rel:
+                        linker_wrap_errors.append(f"libAML.so [{abi}] still relocates {bad_sym}")
+
+            if linker_wrap_errors:
+                r.fail("Android 16+ GlossHook LinkerInit wrap guard", "; ".join(linker_wrap_errors))
+            else:
+                r.ok(
+                    "Android 16+ GlossHook LinkerInit wrap guard",
+                    f"libSAMPMOBILE.so ({linker_wrap_checked} ABIs) + libAML.so ({aml_checked} ABIs) verified free of Bionic linker hooks",
+                )
+
+        # Verify arm64 libGTASA.so ReallocAndFixupSuperBlock patch targets match exact original instructions
+        gtasa_arm64 = REPO_ROOT / "app/src/main/jniLibs/arm64-v8a/libGTASA.so"
+        if gtasa_arm64.is_file():
+            import struct
+
+            gtasa_bytes = gtasa_arm64.read_bytes()
+            expected_insns = (
+                (0x278E50, 0x8B29C108, "add x8, x8, w9, sxtw (embeddedPacket)"),
+                (0x278E60, 0x8B29C108, "add x8, x8, w9, sxtw (inputRequirements)"),
+                (0x278E70, 0x93407D29, "sxtw x9, w9 (nodes[] loop delta)"),
+            )
+            insn_errors: List[str] = []
+            for off, exp, desc in expected_insns:
+                if off + 4 > len(gtasa_bytes):
+                    insn_errors.append(f"0x{off:X} out of bounds")
+                    continue
+                actual = struct.unpack_from("<I", gtasa_bytes, off)[0]
+                if actual != exp:
+                    insn_errors.append(f"0x{off:X} ({desc}): got 0x{actual:08X}, expected 0x{exp:08X}")
+            if insn_errors:
+                r.fail("arm64 RxPipeline SuperBlock 64-bit fixup targets", "; ".join(insn_errors))
+            else:
+                r.ok(
+                    "arm64 RxPipeline SuperBlock 64-bit fixup targets",
+                    "3 ReallocAndFixupSuperBlock instruction offsets verified in libGTASA.so",
+                )
 
 
 def _check_got_relocations(r: Runner, readelf_bin: Optional[Path], require_gtasa: bool) -> None:

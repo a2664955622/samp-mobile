@@ -128,6 +128,7 @@ public:
 	static void setLogUrls(bool v) { m_logurls = v; }
 	static bool showNameTagStatus() { return m_shownametagstatus; }
 	static void setShowNameTagStatus(bool v) { m_shownametagstatus = v; }
+	static int themeHue() { return m_themehue; }
 
 private:
 	static bool m_initialized;
@@ -232,4 +233,5 @@ private:
 	static bool m_audiomsg;
 	static bool m_logurls;
 	static bool m_shownametagstatus;
+	static int m_themehue;
 };

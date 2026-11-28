@@ -56,6 +56,10 @@ public:
 	static constexpr uintptr_t ToggleCJWalk = !VER_x32 ? 0x5C3970 : 0x4C5F6A;
 	static constexpr uintptr_t Menu_SwitchOffToGame_StartGameScreen_OnNewGameCheck = !VER_x32 ? 0x365F10 : 0x2A72C8;
 	static constexpr uintptr_t _rwOpenGLRasterCreate_patch = !VER_x32 ? 0x23FDE0 : 0x1AE8DE;
+	// RenderWare RxPipeline ReallocAndFixupSuperBlock 64-bit pointer-delta truncation fixes (arm64 only)
+	static constexpr uintptr_t ReallocAndFixupSuperBlock_pktAdd_arm64   = 0x278E50; // add x8, x8, w9, sxtw -> add x8, x8, x9
+	static constexpr uintptr_t ReallocAndFixupSuperBlock_reqAdd_arm64   = 0x278E60; // add x8, x8, w9, sxtw -> add x8, x8, x9
+	static constexpr uintptr_t ReallocAndFixupSuperBlock_nodeSxtw_arm64 = 0x278E70; // sxtw x9, w9 -> nop
 	static constexpr uintptr_t CRealTimeShadowManager_ReturnRealTimeShadow_patch1 = !VER_x32 ? 0x4E054C : 0x3FCD84;
 	static constexpr uintptr_t CRealTimeShadowManager_ReturnRealTimeShadow_patch2 = !VER_x32 ? 0x4E0598 : 0x3FCDC4;
 	static constexpr uintptr_t CPlayerPed_CPlayerPed_patch = !VER_x32 ? 0x5C0BC4 : 0x4C36E2;

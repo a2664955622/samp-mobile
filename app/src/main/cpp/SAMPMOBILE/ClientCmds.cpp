@@ -4,6 +4,7 @@
 #include "L10n.h"
 #include "UI/UI.h"
 #include "UI/UISettings.h"
+#include "UI/TouchHud/TouchHud.h"
 #include "UI/SAMPWidgets/Chat.h"
 #include "UI/SAMPWidgets/DeathWindow.h"
 #include "UI/SAMPWidgets/DebugLabels.h"
@@ -364,7 +365,8 @@ void cmdFreeCam(const std::string& params)
 
 void cmdHudEdit(const std::string& params)
 {
-	Hooks::openAdjustableHud();
+	(void)params;
+	TouchHud::openEditor();
 }
 
 void cmdPageSize(const std::string& params)

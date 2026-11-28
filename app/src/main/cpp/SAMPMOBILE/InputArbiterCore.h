@@ -21,6 +21,7 @@ enum OverlayFlags : uint32_t {
 	kOverlayEditObject     = 1u << 6,
 	kOverlayObjectSelect   = 1u << 7,
 	kOverlayTextDrawSelect = 1u << 8,
+	kOverlayHudEditor      = 1u << 9,
 };
 
 inline constexpr uint32_t kJavaOverlayMask =
@@ -33,7 +34,8 @@ inline constexpr uint32_t kGameMainOverlayMask =
 		| kOverlayServerMenu
 		| kOverlayEditObject
 		| kOverlayObjectSelect
-		| kOverlayTextDrawSelect;
+		| kOverlayTextDrawSelect
+		| kOverlayHudEditor;
 
 // Layers that own full-screen modal touch focus and must block third-party AML overlays
 // as well as GTA camera/touch input (releasing all held GTA pointer slots).
@@ -41,11 +43,13 @@ inline constexpr uint32_t kModalTouchBlockMask =
 		kOverlayJavaDialog
 		| kOverlayJavaKeyboard
 		| kOverlayImGuiKeyboard
-		| kOverlayScoreboard;
+		| kOverlayScoreboard
+		| kOverlayHudEditor;
 
 // Native layers that can be dismissed by Android Back / ESC key.
 inline constexpr uint32_t kNativeBackTargetMask =
 		kOverlayImGuiKeyboard
+		| kOverlayHudEditor
 		| kOverlayScoreboard
 		| kOverlayCleoMenu
 		| kOverlayServerMenu
@@ -58,6 +62,7 @@ inline constexpr int64_t kKeyboardRadarGraceMs = 250;
 enum class NativeBackTarget : uint8_t {
 	None = 0,
 	ImGuiKeyboard,
+	HudEditor,
 	Scoreboard,
 	CleoMenu,
 	ServerMenu,
@@ -99,6 +104,7 @@ constexpr bool isRadarSuppressed(uint32_t flags, int64_t nowMs, int64_t javaKeyb
 constexpr NativeBackTarget resolveTopBackTarget(uint32_t flags)
 {
 	if ((flags & kOverlayImGuiKeyboard) != 0u) return NativeBackTarget::ImGuiKeyboard;
+	if ((flags & kOverlayHudEditor) != 0u)     return NativeBackTarget::HudEditor;
 	if ((flags & kOverlayScoreboard) != 0u)    return NativeBackTarget::Scoreboard;
 	if ((flags & kOverlayCleoMenu) != 0u)      return NativeBackTarget::CleoMenu;
 	if ((flags & kOverlayServerMenu) != 0u)    return NativeBackTarget::ServerMenu;

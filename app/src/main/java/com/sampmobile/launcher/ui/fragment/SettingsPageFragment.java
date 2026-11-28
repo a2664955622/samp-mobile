@@ -80,6 +80,7 @@ import com.sampmobile.launcher.ui.widget.GtaTabStrip;
 import com.sampmobile.launcher.utils.ClientSettings;
 import com.sampmobile.launcher.utils.GameDataImporter;
 import com.sampmobile.launcher.utils.GameDataVerifier;
+import com.sampmobile.launcher.utils.LauncherBackdropManager;
 import com.sampmobile.launcher.utils.LauncherThemeManager;
 import com.sampmobile.launcher.utils.LocaleManager;
 
@@ -156,6 +157,13 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
                 }
             });
 
+    final ActivityResultLauncher<String[]> backdropImagePicker =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri != null && isAdded()) {
+                    importCustomBackdrop(uri);
+                }
+            });
+
     private Switch voice, timestamp, fullscreen, displayfps, systemkeyboard;
     private Switch modify_files, fastconnect;
     private Switch headmove_switch, dlmodels_switch, switch_invert_look, switch_auto_climb;
@@ -173,6 +181,15 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
 
     private GtaSaSliderView slider_theme_hue;
     private TextView tv_theme_hue_val;
+
+    private View fl_backdrop_preview;
+    private ImageView iv_backdrop_preview;
+    private View v_backdrop_preview_scrim;
+    private TextView tv_backdrop_status;
+    private TextView btn_backdrop_pick;
+    private TextView btn_backdrop_reset;
+    private GtaSaSliderView slider_backdrop_dim;
+    private TextView tv_backdrop_dim_val;
 
     private GtaSaSliderView font_size_slider, chatposx_slider, chatposy_slider, chatsizex_slider, chatsizey_slider;
     private TextView font_size_value, chatposx_value, chatposy_value, chatsizex_value, chatsizey_value;
@@ -341,6 +358,15 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         if (slider_theme_hue != null) {
             slider_theme_hue.setRainbowMode(true);
         }
+
+        fl_backdrop_preview = view.findViewById(R.id.fl_backdrop_preview);
+        iv_backdrop_preview = view.findViewById(R.id.iv_backdrop_preview);
+        v_backdrop_preview_scrim = view.findViewById(R.id.v_backdrop_preview_scrim);
+        tv_backdrop_status = view.findViewById(R.id.tv_backdrop_status);
+        btn_backdrop_pick = view.findViewById(R.id.btn_backdrop_pick);
+        btn_backdrop_reset = view.findViewById(R.id.btn_backdrop_reset);
+        slider_backdrop_dim = view.findViewById(R.id.slider_backdrop_dim);
+        tv_backdrop_dim_val = view.findViewById(R.id.tv_backdrop_dim_val);
 
         btn_gfx_preset_low = view.findViewById(R.id.btn_gfx_preset_low);
         btn_gfx_preset_med = view.findViewById(R.id.btn_gfx_preset_med);
@@ -565,6 +591,43 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
                 }
             }
         });
+
+        // 启动器自定义背景壁纸与压暗遮罩
+        View.OnClickListener openBackdropPicker = v ->
+                backdropImagePicker.launch(new String[]{"image/*"});
+        if (btn_backdrop_pick != null) {
+            btn_backdrop_pick.setOnClickListener(openBackdropPicker);
+        }
+        if (fl_backdrop_preview != null) {
+            fl_backdrop_preview.setOnClickListener(openBackdropPicker);
+        }
+        if (btn_backdrop_reset != null) {
+            btn_backdrop_reset.setOnClickListener(v -> {
+                LauncherBackdropManager.clearBackdrop(requireContext());
+                updateBackdropPreviewUI();
+                Toast.makeText(requireContext(), R.string.ui_settings_panel_multiplayer_040, Toast.LENGTH_SHORT).show();
+            });
+        }
+        if (slider_backdrop_dim != null) {
+            int savedDim = LauncherBackdropManager.getDimPercent(requireContext());
+            slider_backdrop_dim.setValue(savedDim);
+            if (tv_backdrop_dim_val != null) {
+                tv_backdrop_dim_val.setText(savedDim + "%");
+            }
+            slider_backdrop_dim.addOnChangeListener((s, value, fromUser) -> {
+                int dim = Math.round(value);
+                if (tv_backdrop_dim_val != null) {
+                    tv_backdrop_dim_val.setText(dim + "%");
+                }
+                if (fromUser && !updatingWidgets) {
+                    LauncherBackdropManager.setDimPercent(requireContext(), dim);
+                    if (v_backdrop_preview_scrim != null) {
+                        v_backdrop_preview_scrim.setBackgroundColor(
+                                LauncherBackdropManager.scrimColorForDimPercent(dim));
+                    }
+                }
+            });
+        }
 
         // 启动器主题配色预设与自定义滑条
         int[][] themePresets = {
@@ -969,10 +1032,56 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
         restore_button.setOnClickListener(v -> showAlertDialog(I18n.tr("确定要将所有联机、画面、镜头、操作、音频与界面设置恢复为默认值吗？"), (dialog, which) -> {
             settings = ClientSettings.resetDefaults(requireContext());
             LauncherThemeManager.setHue(requireContext(), LauncherThemeManager.DEFAULT_HUE);
+            LauncherBackdropManager.resetDefaults(requireContext());
             setWidgetsForSettings();
             Toast.makeText(requireContext(), I18n.tr("已恢复全部默认设置"), Toast.LENGTH_SHORT).show();
             dialog.dismiss();
         }, (dialog, which) -> dialog.dismiss()));
+    }
+
+    private void importCustomBackdrop(Uri uri) {
+        Context appCtx = requireContext().getApplicationContext();
+        ioExecutor.execute(() -> {
+            try {
+                LauncherBackdropManager.importFromUri(appCtx, uri);
+                if (getActivity() != null && isAdded()) {
+                    requireActivity().runOnUiThread(() -> {
+                        if (!isAdded()) return;
+                        updateBackdropPreviewUI();
+                        Toast.makeText(requireContext(), R.string.ui_settings_panel_multiplayer_039, Toast.LENGTH_SHORT).show();
+                    });
+                }
+            } catch (Throwable e) {
+                if (getActivity() != null && isAdded()) {
+                    requireActivity().runOnUiThread(() -> {
+                        if (!isAdded()) return;
+                        Toast.makeText(requireContext(), R.string.ui_settings_panel_multiplayer_041, Toast.LENGTH_LONG).show();
+                    });
+                }
+            }
+        });
+    }
+
+    private void updateBackdropPreviewUI() {
+        if (!isAdded() || rootView == null) return;
+        Context ctx = requireContext();
+        boolean hasCustom = LauncherBackdropManager.hasCustomBackdrop(ctx);
+        int dim = LauncherBackdropManager.getDimPercent(ctx);
+        LauncherBackdropManager.applyToViews(ctx, iv_backdrop_preview, v_backdrop_preview_scrim);
+        if (tv_backdrop_status != null) {
+            tv_backdrop_status.setText(hasCustom
+                    ? R.string.ui_settings_panel_multiplayer_038
+                    : R.string.ui_settings_panel_multiplayer_034);
+        }
+        if (btn_backdrop_reset != null) {
+            btn_backdrop_reset.setVisibility(hasCustom ? View.VISIBLE : View.GONE);
+        }
+        if (slider_backdrop_dim != null) {
+            slider_backdrop_dim.setValue(dim);
+        }
+        if (tv_backdrop_dim_val != null) {
+            tv_backdrop_dim_val.setText(dim + "%");
+        }
     }
 
     private void setupChatButtons() {
@@ -1005,6 +1114,7 @@ public class SettingsPageFragment extends Fragment implements LauncherThemeManag
             int hue = LauncherThemeManager.getHue(requireContext());
             if (slider_theme_hue != null) slider_theme_hue.setValue(hue);
             if (tv_theme_hue_val != null) tv_theme_hue_val.setText(hue + "°");
+            updateBackdropPreviewUI();
 
             samp_version.setText(ClientSettings.labelForStringOption(ClientSettings.SAMP_VERSIONS, settings.getString("samp_version")), false);
             charset.setText(ClientSettings.labelForStringOption(ClientSettings.CHARSETS, settings.getString("charset")), false);

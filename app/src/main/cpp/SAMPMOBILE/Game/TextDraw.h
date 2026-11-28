@@ -5,8 +5,6 @@
 #include <Core/Vector.h>
 #include <Core/Rect.h>
 
-class ImGuiRenderer;
-
 #pragma pack(push, 1)
 typedef struct _TEXT_DRAW_DATA {
 	float fLetterWidth;
@@ -82,8 +80,8 @@ public:
 	void Draw();
 	void DrawDefault();
 	void DrawTextured();
-	void DrawImGui(ImGuiRenderer* renderer);
-	bool NeedsImGuiRender();
+	void DrawUnicode();
+	bool NeedsUnicodeRender();
 	void ComputeRectArea();
 
 	void SetText(const char* szText);

@@ -41,7 +41,6 @@
 #include "UI/SAMPWidgets/SplashScreen.h"
 #include "UI/SAMPWidgets/Chat.h"
 #include "UI/SAMPWidgets/DeathWindow.h"
-#include "UI/SAMPWidgets/ButtonPanel.h"
 #include "UI/SAMPWidgets/Scoreboard.h"
 #include "UI/SAMPWidgets/VoiceButton.h"
 #include "Game/Game.h"
@@ -515,7 +514,6 @@ void Client::process(bool canRender2d)
 			pUI->splashscreen()->setVisible(false);
 			pUI->chat()->setVisible(true);
 			pUI->deathwindow()->setVisible(Settings::showDeathWindow());
-			pUI->buttonpanel()->setVisible(!offline_mode && Settings::showButtonPanel());
 		}
 		else {
 			spdlog::error("gameInited: pUI is null");
@@ -532,7 +530,6 @@ void Client::process(bool canRender2d)
 
 		if (offline_mode) {
 			if (pUI) {
-				if (pUI->buttonpanel()) pUI->buttonpanel()->setVisible(false);
 				if (pUI->chat()) {
 					pUI->chat()->addInfoMessage(L10N("-> GTA: SA %s started", "-> GTA: SA %s 已启动"), VER_x32 ? "v2.10 (armeabi-v7a)" : "v2.10 (arm64-v8a)");
 					pUI->chat()->addInfoMessage(L10N("-> Type /j to start jetpack", "-> 输入 /j 开启喷气背包"));
@@ -561,11 +558,11 @@ void Client::process(bool canRender2d)
 			}
 
 			uintptr_t* widgets = GetTouchWidgets();
-			if (!widgets || !widgets[sa::WidgetIDs::WIDGET_PED_MOVE] || !widgets[sa::WidgetIDs::WIDGET_ATTACK]) {
+			if (!widgets || !widgets[sa::WidgetIDs::WIDGET_PLAYER_INFO]) {
 				spdlog::info("Widgets not inited, calling Menu_SwitchOffToGame");
 				eng::fn::Menu_SwitchOffToGame();
 			}
-			EnsureTouchWidgetsCreated();
+			DisableAllStockTouchControls();
 		}
 
 		gameInited = true;

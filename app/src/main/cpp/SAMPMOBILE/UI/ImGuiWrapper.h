@@ -13,6 +13,7 @@ public:
 
 	ImFont* font() const { return m_font; }
 	ImFont* weapFont() const { return m_weapFont; }
+	RwRaster* fontRaster() const { return m_fontRaster; }
 
 	ImGuiRenderer* renderer() const { return m_renderer; }
 

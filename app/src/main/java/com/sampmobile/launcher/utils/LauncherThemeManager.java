@@ -70,6 +70,7 @@ public class LauncherThemeManager {
                 .edit()
                 .putInt(PREF_HUE, clamped)
                 .apply();
+        ClientSettings.setAsync(context, PREF_HUE, clamped);
         int accent = getAccentColor(context);
         for (ThemeListener l : new ArrayList<>(sListeners)) {
             l.onThemeColorChanged(accent);

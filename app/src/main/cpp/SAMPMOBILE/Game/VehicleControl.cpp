@@ -15,11 +15,14 @@
 #include "../Net/LocalPlayer.h"
 #include "../Net/RemotePlayer.h"
 #include "../Net/VehiclePool.h"
+#include "../UI/TouchHud/TouchHud.h"
 #include "../Client.h"
 #include <Memory.h>
 #include <SA.h>
 #include <spdlog/spdlog.h>
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 
 static inline void ApplyVehicleTyreBurstFix(sa::CVehicle* pVehicle)
 {
@@ -196,9 +199,61 @@ DECL_HOOK(void, CBike_ProcessControl, sa::CVehicle* _this)
 }
 DECL_HOOK(void, CHeli_ProcessControl, sa::CVehicle* _this)         { ProcessRemoteVehicleControl<false>(CHeli_ProcessControl, _this); }
 static std::atomic<bool> g_bPlaneGearToggleRequested{false};
+static std::atomic<bool> g_bHydraThrusterToggleRequested{false};
+static std::atomic<bool> g_bHydraJetForwardSnap{false};
+
+// Disassembly-verified CPlane::m_nHarrierNozzlePos offsets (0 = horizontal jet forward, 5000 = vertical hover):
+//   arm64: CPlane::ProcessControlInputs @ 0x699bc8 (+0xA88 cur, +0xA8A prev)
+//   arm32: CPlane::ProcessControlInputs @ 0x5764da (+0x880 cur, +0x882 prev)
+static constexpr uintptr_t kPlaneHarrierNozzleOff     = VER_x32 ? 0x880 : 0xA88;
+static constexpr uintptr_t kPlanePrevHarrierNozzleOff = VER_x32 ? 0x882 : 0xA8A;
+static constexpr int kHarrierNozzleMax = 5000;
+
 void RequestLocalPlaneGearToggle()
 {
 	g_bPlaneGearToggleRequested.store(true, std::memory_order_release);
+}
+
+void RequestLocalHydraThrusterToggle()
+{
+	g_bHydraThrusterToggleRequested.store(true, std::memory_order_release);
+}
+
+bool IsLocalHydraJetForward()
+{
+	return g_bHydraJetForwardSnap.load(std::memory_order_acquire);
+}
+
+// Disassembly-verified CPlane::ProcessControlInputs (0x69981c..0x6998cc arm64):
+// War Drum Mobile copies GetSteeringLeftRight() (A/D roll) into m_fYawControl and completely
+// ignores Q/E rudder keys. Restore PC GTA:SA parity for local player planes:
+//   - Q (lookLeftHeld)  -> m_fYawControl = -1.0f (rotate horizontally left / CCW)
+//   - E (lookRightHeld) -> m_fYawControl = +1.0f (rotate horizontally right / CW)
+//   - A/D stay on roll (m_fRollControl) & ground nose-wheel taxi steer (m_fSteerAngle).
+DECL_HOOK(void, CPlane_ProcessControlInputs, sa::CPlane* _this, uint8_t playerId)
+{
+	const float prevYaw = _this ? _this->m_fYawControl : 0.0f;
+	CPlane_ProcessControlInputs(_this, playerId);
+
+	if (!_this || CurrentPlayerSlot() != 0) {
+		return;
+	}
+	sa::CPed* localPed = GamePool_FindPlayerPed();
+	if (!localPed || _this->pDriver != localPed) {
+		return;
+	}
+
+	const auto& frame = TouchHud::currentFrame();
+	const bool qHeld = frame.lookLeftHeld;
+	const bool eHeld = frame.lookRightHeld;
+	const float targetYaw = (qHeld && !eHeld) ? -1.0f : ((eHeld && !qHeld) ? 1.0f : 0.0f);
+
+	const float* pTimeStep = eng::data::CTimer_ms_fTimeStep<float>();
+	const float dt = pTimeStep ? std::clamp(*pTimeStep, 0.25f, 3.0f) : 1.0f;
+	const float rate = (targetYaw != 0.0f) ? 0.11f : 0.09f;
+	const float alpha = std::clamp(dt * rate, 0.0f, 1.0f);
+	const float nextYaw = std::clamp(prevYaw + (targetYaw - prevYaw) * alpha, -1.0f, 1.0f);
+	_this->m_fYawControl = (std::fabs(nextYaw) < 0.005f && targetYaw == 0.0f) ? 0.0f : nextYaw;
 }
 
 DECL_HOOK(void, CPlane_ProcessControl, sa::CVehicle* _this)
@@ -211,9 +266,16 @@ DECL_HOOK(void, CPlane_ProcessControl, sa::CVehicle* _this)
 		}
 	}
 
-	// Sample logical gear state BEFORE CPlane::ProcessControlInputs runs, because
-	// GTA Mobile's 30m auto-gear mutates m_fLGearAngle mid-frame (e.g. 0.0 -> 0.02).
+	// Sample logical gear & Hydra nozzle state BEFORE CPlane::ProcessControlInputs runs,
+	// because GTA Mobile mutates m_fLGearAngle (30m auto-gear) and m_nHarrierNozzlePos
+	// (Accelerate/Brake touch auto-nozzle hack) mid-frame.
 	uint8_t prevLocalGear = 0;
+	const bool isLocalHydra = _this && (_this->m_nModelIndex == 520)
+		&& _this->pDriver && (_this->pDriver == GamePool_FindPlayerPed());
+	uint16_t preNozzle = 0;
+	if (isLocalHydra) {
+		preNozzle = *reinterpret_cast<const uint16_t*>(reinterpret_cast<uintptr_t>(_this) + kPlaneHarrierNozzleOff);
+	}
 	if (pSampVeh && pSampVeh->VerifyInstance() && pSampVeh->IsDriverLocalPlayer()) {
 		prevLocalGear = (pSampVeh->m_iLocalLandingGear >= 0)
 				? static_cast<uint8_t>(pSampVeh->m_iLocalLandingGear)
@@ -221,6 +283,62 @@ DECL_HOOK(void, CPlane_ProcessControl, sa::CVehicle* _this)
 	}
 
 	ProcessRemoteVehicleControl<false>(CPlane_ProcessControl, _this);
+
+	// Explicit PC-style Hydra (520) thrust-vectoring control:
+	// - One-tap JET/HOVER button smoothly toggles between 0 (Forward Jet) and 5000 (VTOL Hover).
+	// - Holding Num8 (KEY_ANALOG_UP) tilts nozzles backward -> 0 (Forward Jet);
+	//   holding Num2 (KEY_ANALOG_DOWN) tilts nozzles downward -> 5000 (VTOL Hover).
+	// - Overrides War Drum Mobile's Accelerate/Brake auto-nozzle drift so Gas/Brake never fights the pilot.
+	if (isLocalHydra) {
+		static uintptr_t s_lastHydraPtr = 0;
+		static float s_hydraTargetNozzle = 5000.0f;
+		static float s_hydraCurNozzle = 5000.0f;
+
+		const uintptr_t planeAddr = reinterpret_cast<uintptr_t>(_this);
+		if (s_lastHydraPtr != planeAddr) {
+			s_lastHydraPtr = planeAddr;
+			s_hydraCurNozzle = static_cast<float>(std::min<int>(preNozzle, kHarrierNozzleMax));
+			s_hydraTargetNozzle = (preNozzle < 2500) ? 0.0f : static_cast<float>(kHarrierNozzleMax);
+		}
+
+		const auto& frame = TouchHud::currentFrame();
+		const bool num8 = frame.isKeyActive(touch_hud::SampKey::AnalogUp);
+		const bool num2 = frame.isKeyActive(touch_hud::SampKey::AnalogDown);
+		const float* pTimeStep = eng::data::CTimer_ms_fTimeStep<float>();
+		const float timeStep = pTimeStep ? *pTimeStep : 1.0f;
+		const float step = std::max(1.0f, 95.0f * std::clamp(timeStep, 0.25f, 3.0f));
+
+		if (g_bHydraThrusterToggleRequested.exchange(false, std::memory_order_acq_rel)) {
+			s_hydraTargetNozzle = (s_hydraTargetNozzle >= 2500.0f) ? 0.0f : static_cast<float>(kHarrierNozzleMax);
+		}
+
+		if (num8 && !num2) {
+			s_hydraCurNozzle = std::max(0.0f, s_hydraCurNozzle - step);
+			s_hydraTargetNozzle = s_hydraCurNozzle;
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_UP] = true;
+		}
+		else if (num2 && !num8) {
+			s_hydraCurNozzle = std::min(static_cast<float>(kHarrierNozzleMax), s_hydraCurNozzle + step);
+			s_hydraTargetNozzle = s_hydraCurNozzle;
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_DOWN] = true;
+		}
+		else if (std::fabs(s_hydraTargetNozzle - s_hydraCurNozzle) > 1.0f) {
+			if (s_hydraTargetNozzle < s_hydraCurNozzle) {
+				s_hydraCurNozzle = std::max(s_hydraTargetNozzle, s_hydraCurNozzle - step);
+				LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_UP] = true;
+			}
+			else {
+				s_hydraCurNozzle = std::min(s_hydraTargetNozzle, s_hydraCurNozzle + step);
+				LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_DOWN] = true;
+			}
+		}
+
+		const uint16_t nextNozzle = static_cast<uint16_t>(std::clamp(
+			static_cast<int>(std::lround(s_hydraCurNozzle)), 0, kHarrierNozzleMax));
+		*reinterpret_cast<uint16_t*>(planeAddr + kPlanePrevHarrierNozzleOff) = preNozzle;
+		*reinterpret_cast<uint16_t*>(planeAddr + kPlaneHarrierNozzleOff) = nextNozzle;
+		g_bHydraJetForwardSnap.store(s_hydraTargetNozzle < 2500.0f, std::memory_order_release);
+	}
 
 	if (pSampVeh && pSampVeh->VerifyInstance()) {
 		auto* pPlane = reinterpret_cast<sa::CPlane*>(_this);
@@ -372,6 +490,7 @@ void InstallVehicleControlHooks()
 	REG_HOOK(Boot, CBoat_ProcessControl, CBoat_ProcessControl, "Remote boat control context switch");
 	REG_HOOK(Boot, CBike_ProcessControl, CBike_ProcessControl, "Remote bike control context switch");
 	REG_HOOK(Boot, CPlane_ProcessControl, CPlane_ProcessControl, "Remote plane control context switch");
+	REG_HOOK(Boot, CPlane_ProcessControlInputs, CPlane_ProcessControlInputs, "PC-parity Q/E rudder yaw control for planes");
 	REG_HOOK(Boot, CHeli_ProcessControl, CHeli_ProcessControl, "Remote heli control context switch");
 	REG_HOOK(Boot, CBmx_ProcessControl, CBmx_ProcessControl, "Remote bmx control context switch");
 	REG_HOOK(Boot, CMonsterTruck_ProcessControl, CMonsterTruck_ProcessControl, "Remote monster truck control context switch");

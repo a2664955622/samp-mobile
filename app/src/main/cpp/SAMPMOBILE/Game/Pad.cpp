@@ -18,7 +18,7 @@
 #include "Engine/Symbols.h"
 #include "../Addr.h"
 #include "../UI/UI.h"
-#include "../UI/SAMPWidgets/ButtonPanel.h"
+#include "../UI/TouchHud/TouchHud.h"
 #include "../Net/NetGame.h"
 #include "../Net/LocalPlayer.h"
 #include "../Net/RemotePlayer.h"
@@ -204,8 +204,9 @@ DECL_HOOK(int16_t, CPad_GetPedWalkLeftRight, uintptr_t _this)
 				lr = padLR;
 			}
 		}
-		if (lr == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldLR() != 0) {
-			lr = static_cast<int16_t>(pUI->buttonpanel()->heldLR());
+		if (lr != 0 && TouchHud::currentFrame().slowWalkHeld && !g_touchCombat.aimLatch) {
+			lr = static_cast<int16_t>(std::lround(static_cast<float>(lr) * 0.48f));
+			if (lr > -20 && lr < 20) lr = (g_touchCombat.stickLR < 0) ? -20 : 20;
 		}
 		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
 		return lr;
@@ -230,8 +231,9 @@ DECL_HOOK(int16_t, CPad_GetPedWalkUpDown, uintptr_t _this)
 				ud = padUD;
 			}
 		}
-		if (ud == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldUD() != 0) {
-			ud = static_cast<int16_t>(pUI->buttonpanel()->heldUD());
+		if (ud != 0 && TouchHud::currentFrame().slowWalkHeld && !g_touchCombat.aimLatch) {
+			ud = static_cast<int16_t>(std::lround(static_cast<float>(ud) * 0.48f));
+			if (ud > -20 && ud < 20) ud = (g_touchCombat.stickUD < 0) ? -20 : 20;
 		}
 		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
 		return ud;
@@ -448,8 +450,11 @@ DECL_HOOK(uint16_t, CPad_JumpJustDown, uintptr_t _this)
 				return 0;
 			}
 		}
-		const uint16_t jumpDown = CPad_JumpJustDown(_this);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (jumpDown != 0);
+		const bool touchJump = TouchHud::isJumpJustPressed();
+		const uint16_t jumpDown = (touchJump || CPad_JumpJustDown(_this) != 0) ? 1u : 0u;
+		if (jumpDown != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = true;
+		}
 		return jumpDown;
 	}
 }
@@ -468,8 +473,10 @@ DECL_HOOK(uint16_t, CPad_GetJump, uintptr_t _this)
 				return 0;
 			}
 		}
-		const uint16_t jumpHeld = CPad_GetJump(_this);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (jumpHeld != 0);
+		const uint16_t jumpHeld = (TouchHud::currentFrame().jumpHeld || CPad_GetJump(_this) != 0) ? 1u : 0u;
+		if (jumpHeld != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = true;
+		}
 		return jumpHeld;
 	}
 }
@@ -489,8 +496,12 @@ DECL_HOOK(uint16_t, CPad_GetDuck, uintptr_t _this)
 				return 0;
 			}
 		}
-		const uint16_t duckHeld = (CPad_GetDuck(_this) != 0 || g_bHardwareCrouchHeld.load(std::memory_order_acquire)) ? 1u : 0u;
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = (duckHeld != 0);
+		const uint16_t duckHeld = (TouchHud::currentFrame().crouchHeld
+			|| CPad_GetDuck(_this) != 0
+			|| g_bHardwareCrouchHeld.load(std::memory_order_acquire)) ? 1u : 0u;
+		if (duckHeld != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = true;
+		}
 		return duckHeld;
 	}
 }
@@ -511,8 +522,7 @@ DECL_HOOK(uint16_t, CPad_MeleeAttackJustDown, uintptr_t _this)
 		// which previously caused an infinite self-retriggering punch loop.
 		if (dwResult == 0 && GetBlockableLocalPed() != nullptr
 				&& g_touchCombat.blockDown
-				&& LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK]) {
-			LocalPlayerKeys.bKeys[ePadKeys::KEY_SECONDARY_ATTACK] = false;
+				&& TouchHud::isInteractFJustPressed()) {
 			dwResult = 2;
 		}
 		if (dwResult == 2) {
@@ -550,8 +560,11 @@ DECL_HOOK(uint16_t, CPad_DuckJustDown, uintptr_t _this, sa::CPed* pPed)
 			}
 		}
 		const bool hwEdge = g_bHardwareCrouchEdge.exchange(false, std::memory_order_acq_rel);
-		const uint16_t duckEdge = (CPad_DuckJustDown(_this, pPed) != 0 || hwEdge) ? 1u : 0u;
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = (duckEdge != 0);
+		const bool touchEdge = TouchHud::consumeCrouchEdge();
+		const uint16_t duckEdge = (touchEdge || CPad_DuckJustDown(_this, pPed) != 0 || hwEdge) ? 1u : 0u;
+		if (duckEdge != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = true;
+		}
 		return duckEdge;
 	}
 }
@@ -563,6 +576,16 @@ DECL_HOOK(bool, CPad_GetTarget, uintptr_t _this, bool bCheckVehicle)
 	}
 	if (IsLocalMeleeComboActive()) {
 		return true;
+	}
+	// PC parity: Hydra (520) heat-seeking missile lock-on is manual via VehHandbrake (Space/LOCK).
+	// Disassembly-verified CPad::GetTarget(true) @ 0x4de804 forces return true every frame for
+	// PLANE subtype on Android Mobile (mobile auto-lock) — never fall through to it for Hydra!
+	if (bCheckVehicle) {
+		sa::CPed* localPed = GamePool_FindPlayerPed();
+		if (localPed && localPed->pVehicle && localPed->pVehicle->pDriver == localPed
+				&& localPed->pVehicle->m_nModelIndex == 520) {
+			return TouchHud::currentFrame().handbrakeHeld;
+		}
 	}
 	return CPad_GetTarget(_this, bCheckVehicle);
 }
@@ -579,8 +602,11 @@ DECL_HOOK(uint32_t, CPad_GetSprint, uintptr_t _this, uint32_t unk)
 				return 0;
 			}
 		}
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = CPad_GetSprint(_this, unk);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT];
+		const uint32_t sprint = (TouchHud::currentFrame().sprintHeld || CPad_GetSprint(_this, unk) != 0) ? 1u : 0u;
+		if (sprint != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = true;
+		}
+		return sprint;
 	}
 }
 
@@ -593,8 +619,10 @@ DECL_HOOK(uint32_t, CPad_GetAutoClimb, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_JUMP];
 	}
 	else {
-		const uint32_t climb = CPad_GetAutoClimb(_this);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = (climb != 0);
+		const uint32_t climb = (TouchHud::currentFrame().jumpHeld || CPad_GetAutoClimb(_this) != 0) ? 1u : 0u;
+		if (climb != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = true;
+		}
 		return climb;
 	}
 }
@@ -684,10 +712,8 @@ DECL_HOOK(int16_t, CPad_GetSteeringLeftRight, uintptr_t _this)
 			LocalPlayerKeys.wKeyLR = 0;
 			return 0;
 		}
-		int16_t lr = CPad_GetSteeringLeftRight(_this);
-		if (lr == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldLR() != 0) {
-			lr = static_cast<int16_t>(pUI->buttonpanel()->heldLR());
-		}
+		// Authoritative TouchHud/hardware steering axis (never fall through to stock mobile widgets).
+		const int16_t lr = TouchHud::currentFrame().vehSteerLR;
 		LocalPlayerKeys.wKeyLR = static_cast<uint16_t>(lr);
 		return lr;
 	}
@@ -704,10 +730,8 @@ DECL_HOOK(int16_t, CPad_GetSteeringUpDown, uintptr_t _this)
 			LocalPlayerKeys.wKeyUD = 0;
 			return 0;
 		}
-		int16_t ud = CPad_GetSteeringUpDown(_this);
-		if (ud == 0 && pUI && pUI->buttonpanel() && pUI->buttonpanel()->heldUD() != 0) {
-			ud = static_cast<int16_t>(pUI->buttonpanel()->heldUD());
-		}
+		// Authoritative pitch/lean/wheelie axis (strictly decoupled from gas/brake & stock double-tap wheelie).
+		const int16_t ud = TouchHud::currentFrame().vehSteerUD;
 		LocalPlayerKeys.wKeyUD = static_cast<uint16_t>(ud);
 		return ud;
 	}
@@ -719,8 +743,14 @@ DECL_HOOK(uint16_t, CPad_GetAccelerate, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_SPRINT] ? 0xFF : 0x00;
 	}
 	else {
-		uint16_t wResult = CPad_GetAccelerate(_this);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = wResult;
+		if (IsPadMovementDisabled(_this)) {
+			return 0;
+		}
+		// Authoritative gas/throttle pedal (W / VehAccel ONLY — never fall through to stock mobile hybrid auto-gas).
+		const uint16_t wResult = TouchHud::currentFrame().vehAccel;
+		if (wResult != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_SPRINT] = true;
+		}
 		sa::CPed* local = GamePool_FindPlayerPed();
 		sa::CVehicle* pVehicle = local ? local->pVehicle : nullptr;
 		if (pVehicle && pVehicle->pDriver == local && !pVehicle->m_nVehicleFlags.bEngineOn) {
@@ -736,8 +766,14 @@ DECL_HOOK(uint16_t, CPad_GetBrake, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_JUMP] ? 0xFF : 0x00;
 	}
 	else {
-		uint16_t wResult = CPad_GetBrake(_this);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = wResult;
+		if (IsPadMovementDisabled(_this)) {
+			return 0;
+		}
+		// Authoritative brake/reverse pedal (S / VehBrake ONLY — never fall through to stock mobile hybrid brake).
+		const uint16_t wResult = TouchHud::currentFrame().vehBrake;
+		if (wResult != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_JUMP] = true;
+		}
 		sa::CPed* local = GamePool_FindPlayerPed();
 		sa::CVehicle* pVehicle = local ? local->pVehicle : nullptr;
 		if (pVehicle && pVehicle->pDriver == local && !pVehicle->m_nVehicleFlags.bEngineOn) {
@@ -753,8 +789,10 @@ DECL_HOOK(uint32_t, CPad_GetHandBrake, uintptr_t _this)
 		return RemotePlayerKeys[slot].bKeys[ePadKeys::KEY_HANDBRAKE] ? 0xFF : 0x00;
 	}
 	else {
-		uint32_t dwResult = CPad_GetHandBrake(_this);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = dwResult;
+		uint32_t dwResult = TouchHud::currentFrame().handbrakeHeld ? 0xFFu : CPad_GetHandBrake(_this);
+		if (dwResult != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
+		}
 		return dwResult;
 	}
 }
@@ -765,8 +803,10 @@ DECL_HOOK(uint32_t, CPad_GetHorn, uintptr_t _this, bool bCheckVehicle)
 		return RemotePlayerKeys[slot].bKeys[ePadKeys::KEY_CROUCH];
 	}
 	else {
-		uint32_t dwResult = CPad_GetHorn(_this, bCheckVehicle);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = dwResult;
+		uint32_t dwResult = TouchHud::currentFrame().hornHeld ? 1u : CPad_GetHorn(_this, bCheckVehicle);
+		if (dwResult != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = true;
+		}
 		return dwResult;
 	}
 }
@@ -802,6 +842,9 @@ DECL_HOOK(uint32_t, CPad_ExitVehicleJustDown, uintptr_t _this, int a2, uintptr_t
 		}
 	}
 
+	if (TouchHud::isInteractFJustPressed()) {
+		return 1;
+	}
 	return CPad_ExitVehicleJustDown(_this, a2, vehicle, a4, vec);
 }
 
@@ -811,8 +854,9 @@ DECL_HOOK(int, CPad_GetTurretLeft, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_LOOK_LEFT];
 	}
 	else {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_LEFT] = CPad_GetTurretLeft(_this);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_LEFT];
+		const int v = (TouchHud::currentFrame().lookLeftHeld || CPad_GetTurretLeft(_this) != 0) ? 1 : 0;
+		if (v != 0) LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_LEFT] = true;
+		return v;
 	}
 }
 
@@ -822,9 +866,164 @@ DECL_HOOK(int, CPad_GetTurretRight, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_LOOK_RIGHT];
 	}
 	else {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_RIGHT] = CPad_GetTurretRight(_this);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_RIGHT];
+		const int v = (TouchHud::currentFrame().lookRightHeld || CPad_GetTurretRight(_this) != 0) ? 1 : 0;
+		if (v != 0) LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_RIGHT] = true;
+		return v;
 	}
+}
+
+static bool IsLocalDrivingAircraft()
+{
+	sa::CPed* localPed = GamePool_FindPlayerPed();
+	if (!localPed || !localPed->pVehicle || localPed->pVehicle->pDriver != localPed) {
+		return false;
+	}
+	const uint8_t sub = GetVehicleSubtype(localPed->pVehicle);
+	return sub == VEHICLE_SUBTYPE_PLANE || sub == VEHICLE_SUBTYPE_HELI;
+}
+
+DECL_HOOK(uint32_t, CPad_GetLookLeft, uintptr_t _this, bool bCheckVehicle)
+{
+	if (CurrentPlayerSlot()) {
+		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_LOOK_LEFT] ? 1u : 0u;
+	}
+	// PC parity: in planes & helicopters Q/E control horizontal rudder yaw, never side camera snap!
+	if (IsLocalDrivingAircraft()) {
+		if (TouchHud::currentFrame().lookLeftHeld) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_LEFT] = true;
+		}
+		return 0u;
+	}
+	const uint32_t v = (TouchHud::currentFrame().lookLeftHeld || CPad_GetLookLeft(_this, bCheckVehicle) != 0) ? 1u : 0u;
+	if (v != 0) LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_LEFT] = true;
+	return v;
+}
+
+DECL_HOOK(uint32_t, CPad_GetLookRight, uintptr_t _this, bool bCheckVehicle)
+{
+	if (CurrentPlayerSlot()) {
+		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_LOOK_RIGHT] ? 1u : 0u;
+	}
+	// PC parity: in planes & helicopters Q/E control horizontal rudder yaw, never side camera snap!
+	if (IsLocalDrivingAircraft()) {
+		if (TouchHud::currentFrame().lookRightHeld) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_RIGHT] = true;
+		}
+		return 0u;
+	}
+	const uint32_t v = (TouchHud::currentFrame().lookRightHeld || CPad_GetLookRight(_this, bCheckVehicle) != 0) ? 1u : 0u;
+	if (v != 0) LocalPlayerKeys.bKeys[ePadKeys::KEY_LOOK_RIGHT] = true;
+	return v;
+}
+
+DECL_HOOK(uint32_t, CPad_GetLookBehindForCar, uintptr_t _this)
+{
+	if (CurrentPlayerSlot()) {
+		const auto& rk = RemotePlayerKeys[byteCurPlayer];
+		return (rk.bKeys[ePadKeys::KEY_LOOK_LEFT] && rk.bKeys[ePadKeys::KEY_LOOK_RIGHT]) ? 1u : 0u;
+	}
+	return (TouchHud::currentFrame().lookBehindHeld || CPad_GetLookBehindForCar(_this) != 0) ? 1u : 0u;
+}
+
+DECL_HOOK(uint32_t, CPad_GetLookBehindForPed, uintptr_t _this)
+{
+	if (CurrentPlayerSlot()) {
+		return 0;
+	}
+	return (TouchHud::currentFrame().lookBehindHeld || CPad_GetLookBehindForPed(_this) != 0) ? 1u : 0u;
+}
+
+DECL_HOOK(uint32_t, CPad_GetCarGunFired, uintptr_t _this, bool bCheck1, bool bCheck2)
+{
+	if (CurrentPlayerSlot()) {
+		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_FIRE] ? (bCheck2 ? 2u : 1u) : 0u;
+	}
+	const auto& frame = TouchHud::currentFrame();
+	// Disassembly-verified CVehicle::GetPlaneWeaponFiringStatus (0x6b21a8/0x6b2234/0x6b2260):
+	// Rustler (476), Seasparrow (447), Hunter (425) minigun, and RC Baron (464) pass bCheck2=true
+	// and explicitly check return value == 2!
+	if (bCheck2) {
+		sa::CPed* localPed = GamePool_FindPlayerPed();
+		const bool isHunter = localPed && localPed->pVehicle && localPed->pVehicle->m_nModelIndex == 425;
+		const bool fireAirGun = isHunter ? frame.handbrakeHeld : frame.fireHeld;
+		if (fireAirGun) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = true;
+			return 2u;
+		}
+		return CPad_GetCarGunFired(_this, bCheck1, bCheck2);
+	}
+	const uint32_t v = (frame.fireHeld || CPad_GetCarGunFired(_this, bCheck1, bCheck2) != 0) ? 1u : 0u;
+	if (v != 0) LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = true;
+	return v;
+}
+
+DECL_HOOK(uint32_t, CPad_UseRocket, uintptr_t _this)
+{
+	if (CurrentPlayerSlot()) {
+		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_FIRE] ? 1u : 0u;
+	}
+	const auto& frame = TouchHud::currentFrame();
+	if (frame.fireHeld || frame.fireJustPressed) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = true;
+		return 1u;
+	}
+	return CPad_UseRocket(_this);
+}
+
+DECL_HOOK(uint32_t, CPad_FlareJustDown, uintptr_t _this)
+{
+	if (CurrentPlayerSlot()) {
+		return 0u;
+	}
+	const auto& frame = TouchHud::currentFrame();
+	if (frame.hydraFlareJustPressed || frame.hydraFlareHeld) {
+		return 1u;
+	}
+	return CPad_FlareJustDown(_this);
+}
+
+DECL_HOOK(int16_t, CPad_GetCarGunUpDown, uintptr_t _this, bool bCheckVehicle, void* pAuto, float fSpeed, bool bCheckInput)
+{
+	if (const uint8_t slot = CurrentPlayerSlot(); slot > 0 && slot < PLAYER_PED_SLOTS) {
+		const auto& rk = RemotePlayerKeys[slot];
+		if (rk.bKeys[ePadKeys::KEY_ANALOG_UP] && !rk.bKeys[ePadKeys::KEY_ANALOG_DOWN]) return 128;
+		if (rk.bKeys[ePadKeys::KEY_ANALOG_DOWN] && !rk.bKeys[ePadKeys::KEY_ANALOG_UP]) return -128;
+		return 0;
+	}
+	const auto& frame = TouchHud::currentFrame();
+	const bool up = frame.isKeyActive(touch_hud::SampKey::AnalogUp);
+	const bool dn = frame.isKeyActive(touch_hud::SampKey::AnalogDown);
+	if (up && !dn) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_UP] = true;
+		return 128;
+	}
+	if (dn && !up) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_DOWN] = true;
+		return -128;
+	}
+	return CPad_GetCarGunUpDown(_this, bCheckVehicle, pAuto, fSpeed, bCheckInput);
+}
+
+DECL_HOOK(int16_t, CPad_GetCarGunLeftRight, uintptr_t _this, bool bCheckVehicle, bool bCheckInput)
+{
+	if (const uint8_t slot = CurrentPlayerSlot(); slot > 0 && slot < PLAYER_PED_SLOTS) {
+		const auto& rk = RemotePlayerKeys[slot];
+		if (rk.bKeys[ePadKeys::KEY_ANALOG_RIGHT] && !rk.bKeys[ePadKeys::KEY_ANALOG_LEFT]) return 128;
+		if (rk.bKeys[ePadKeys::KEY_ANALOG_LEFT] && !rk.bKeys[ePadKeys::KEY_ANALOG_RIGHT]) return -128;
+		return 0;
+	}
+	const auto& frame = TouchHud::currentFrame();
+	const bool right = frame.isKeyActive(touch_hud::SampKey::AnalogRight);
+	const bool left  = frame.isKeyActive(touch_hud::SampKey::AnalogLeft);
+	if (right && !left) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_RIGHT] = true;
+		return 128;
+	}
+	if (left && !right) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_ANALOG_LEFT] = true;
+		return -128;
+	}
+	return CPad_GetCarGunLeftRight(_this, bCheckVehicle, bCheckInput);
 }
 
 DECL_HOOK(int, CPad_GetNitroFired, uintptr_t _this)
@@ -833,8 +1032,9 @@ DECL_HOOK(int, CPad_GetNitroFired, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_FIRE];
 	}
 	else {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = CPad_GetNitroFired(_this);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE];
+		const int v = (TouchHud::currentFrame().fireHeld || CPad_GetNitroFired(_this) != 0) ? 1 : 0;
+		if (v != 0) LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = true;
+		return v;
 	}
 }
 
@@ -844,8 +1044,9 @@ DECL_HOOK(int, CPad_GetHydraulicJump, uintptr_t _this)
 		return RemotePlayerKeys[byteCurPlayer].bKeys[ePadKeys::KEY_CROUCH];
 	}
 	else {
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = CPad_GetHydraulicJump(_this);
-		return LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH];
+		const int v = (TouchHud::currentFrame().hornHeld || CPad_GetHydraulicJump(_this) != 0) ? 1 : 0;
+		if (v != 0) LocalPlayerKeys.bKeys[ePadKeys::KEY_CROUCH] = true;
+		return v;
 	}
 }
 
@@ -903,7 +1104,9 @@ DECL_HOOK(uint32_t, CPad_GetWeapon, uintptr_t _this, sa::CPed* pPed, bool bShoul
 	if (CanLocalPedUseOnFootFire(_this, pPed)) {
 		dwResult = EvaluateLocalTouchFireLevel(pLocal->GetCurrentWeapon()) ? 0xFF : 0x00;
 	}
-	LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = (dwResult != 0);
+	if (dwResult != 0) {
+		LocalPlayerKeys.bKeys[ePadKeys::KEY_FIRE] = true;
+	}
 	return dwResult;
 }
 
@@ -1001,7 +1204,7 @@ DECL_HOOK(bool, CPad_CycleWeaponLeftJustDown, uintptr_t _this)
 		return false;
 	}
 	else {
-		return CPad_CycleWeaponLeftJustDown(_this);
+		return TouchHud::consumeWeaponPrevEdge() || CPad_CycleWeaponLeftJustDown(_this);
 	}
 }
 
@@ -1011,7 +1214,7 @@ DECL_HOOK(uint32_t, CPad_CycleWeaponRightJustDown, uintptr_t _this)
 		return 0;
 	}
 	else {
-		return CPad_CycleWeaponRightJustDown(_this);
+		return (TouchHud::consumeWeaponNextEdge() || CPad_CycleWeaponRightJustDown(_this) != 0) ? 1u : 0u;
 	}
 }
 
@@ -1059,7 +1262,9 @@ DECL_HOOK(uint32_t, CCamera_IsTargetingActive, uintptr_t _this, sa::CPed* pPed)
 {
 	if (pPed == GamePool_FindPlayerPed()) {
 		const uint32_t bIsTargeting = CCamera_IsTargetingActive(_this, pPed);
-		LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = (bIsTargeting != 0);
+		if (bIsTargeting != 0) {
+			LocalPlayerKeys.bKeys[ePadKeys::KEY_HANDBRAKE] = true;
+		}
 		return bIsTargeting;
 	}
 
@@ -1130,6 +1335,15 @@ void Hooks::installPadHooks()
 	REG_HOOK(Boot, CPad_ExitVehicleJustDown, CPad_ExitVehicleJustDown, "Pad exit vehicle sync");
 	REG_HOOK(Boot, CPad_GetTurretRight, CPad_GetTurretRight, "Pad turret right sync");
 	REG_HOOK(Boot, CPad_GetTurretLeft, CPad_GetTurretLeft, "Pad turret left sync");
+	REG_HOOK(Boot, CPad_GetLookLeft, CPad_GetLookLeft, "Pad look left (Q) sync");
+	REG_HOOK(Boot, CPad_GetLookRight, CPad_GetLookRight, "Pad look right (E) sync");
+	REG_HOOK(Boot, CPad_GetLookBehindForCar, CPad_GetLookBehindForCar, "Pad car look behind (Q+E)");
+	REG_HOOK(Boot, CPad_GetLookBehindForPed, CPad_GetLookBehindForPed, "Pad ped look behind (Q+E)");
+	REG_HOOK(Boot, CPad_GetCarGunFired, CPad_GetCarGunFired, "Pad vehicle gun fired sync");
+	REG_HOOK(Boot, CPad_UseRocket, CPad_UseRocket, "Pad Hydra/Hunter missile fire");
+	REG_HOOK(Boot, CPad_FlareJustDown, CPad_FlareJustDown, "Pad Hydra white decoy flare drop");
+	REG_HOOK(Boot, CPad_GetCarGunUpDown, CPad_GetCarGunUpDown, "Pad vehicle turret/hydraulics up/down (Num8/Num2)");
+	REG_HOOK(Boot, CPad_GetCarGunLeftRight, CPad_GetCarGunLeftRight, "Pad vehicle turret/hydraulics left/right (Num4/Num6)");
 	REG_HOOK(Boot, CPad_GetHydraulicJump, CPad_GetHydraulicJump, "Pad hydraulic jump sync");
 	REG_HOOK(Boot, CPad_GetNitroFired, CPad_GetNitroFired, "Pad nitro sync");
 

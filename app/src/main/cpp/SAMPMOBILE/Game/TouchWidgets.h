@@ -17,6 +17,12 @@ extern uintptr_t* g_pWidgets;
 uintptr_t* GetTouchWidgets();
 
 sa::WidgetIDs GetWidgetTypeFromWidget(uintptr_t pWidget);
+
+// True only for GTA's non-control HUD display/map widgets (Health/Weapon/Ammo,
+// Radar tap-to-map, HelpText, Pause Map, Mission Timers, Vital Stats).
+// All stock GTA touch buttons, joysticks, and pedals are suppressed so TouchHud
+// owns 100% of gameplay touch rendering and multi-touch routing.
+bool IsNativeDisplayWidget(sa::WidgetIDs id);
+
 eWidgetState ProcessFixedWidget(uintptr_t pWidget);
-void FixTouchWidgetLayout();
-void EnsureTouchWidgetsCreated();
+void DisableAllStockTouchControls();

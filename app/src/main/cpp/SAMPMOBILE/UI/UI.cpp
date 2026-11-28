@@ -5,13 +5,13 @@
 #include "SAMPWidgets/SplashScreen.h"
 #include "SAMPWidgets/Chat.h"
 #include "SAMPWidgets/Spawn.h"
-#include "SAMPWidgets/ButtonPanel.h"
 #include "SAMPWidgets/VoiceButton.h"
 #include "SAMPWidgets/Scoreboard.h"
 #include "SAMPWidgets/DebugLabels.h"
 #include "SAMPWidgets/DeathWindow.h"
 #include "SAMPWidgets/DownloadOverlay.h"
 #include "SAMPWidgets/NetStats.h"
+#include "TouchHud/TouchHud.h"
 #include "../Client.h"
 #include "../ClientSubsystems.h"
 #include "../InputArbiter.h"
@@ -21,7 +21,6 @@
 #include "../Net/NetGame.h"
 #include "../Net/MenuPool.h"
 #include "../Net/PlayerBubblePool.h"
-#include "../Net/TextDrawPool.h"
 #include "../Net/TextLabelPool.h"
 
 float UI::GetFontSize()
@@ -73,16 +72,6 @@ bool UI::initialize()
 	m_chat->setItemSize(UISettings::chatItemSize());
 	m_chat->setVisible(false);
 
-	m_buttonPanel = new ButtonPanel();
-	this->addChild(m_buttonPanel);
-	m_buttonPanel->setVisible(false);
-
-	auto passengerButton = new ButtonPanel::PassengerButton();
-	this->addChild(passengerButton);
-	passengerButton->setFixedSize(UISettings::buttonVoiceSize());
-	passengerButton->setPosition(UISettings::buttonVoicePos() + ImVec2(ScaleX(150.0f), 0.0f));
-	passengerButton->setVisible(true);
-
 	m_voiceButton = new VoiceButton();
 	this->addChild(m_voiceButton);
 	m_voiceButton->setFixedSize(UISettings::buttonVoiceSize());
@@ -106,6 +95,8 @@ bool UI::initialize()
 	m_scoreboard->setSize(UISettings::scoreboardSize());
 	m_scoreboard->setPosition(ImVec2(((displaySize().x - UISettings::scoreboardSize().x) / 2), ((displaySize().y - UISettings::scoreboardSize().y) / 2)));
 	m_scoreboard->setVisible(false);
+
+	TouchHud::initialize(displaySize().x, displaySize().y);
 
 	/*auto copyright = new Label(OBFUSCATE("SAMPMOBILE"), ImColor(1.0f, 1.0f, 1.0f), true, UISettings::fontSize() / 3);
 	this->addChild(copyright);
@@ -217,26 +208,35 @@ void UI::processPendingTouchEvents()
 void UI::updateTouchSnapshot()
 {
 	InputArbiter::publishGameMainState();
+	TouchHud::setScreenSize(size().x, size().y);
+
+	auto snapWidget = [](Widget* w) -> OverlayRectSnap {
+		if (!w || !w->visible() || w->width() <= 0.0f || w->height() <= 0.0f) {
+			return {};
+		}
+		return {true, w->absolutePosition(), w->size()};
+	};
 
 	std::lock_guard<std::mutex> lock(m_touchMutex);
 	m_snapDisplaySize = size();
-	if (m_buttonPanel && m_buttonPanel->visible()) {
-		m_snapButtonPanelVisible = true;
-		m_snapButtonPanelPos = m_buttonPanel->absolutePosition();
-		m_snapButtonPanelSize = m_buttonPanel->size();
-	}
-	else {
-		m_snapButtonPanelVisible = false;
-	}
+	m_snapChat       = snapWidget(m_chat);
+	m_snapVoice      = snapWidget(m_voiceButton);
+	m_snapSpawn      = snapWidget(m_spawn);
+	m_snapKeyboard   = snapWidget(m_keyboard);
+	m_snapScoreboard = snapWidget(m_scoreboard);
 }
 
-bool UI::isButtonPanelHitSnapshot(const ImVec2& pos) const
+bool UI::isInteractiveOverlayHitSnapshot(const ImVec2& pos) const
 {
+	auto hit = [&](const OverlayRectSnap& s) -> bool {
+		if (!s.visible) return false;
+		const float dx = pos.x - s.pos.x;
+		const float dy = pos.y - s.pos.y;
+		return dx >= 0.0f && dy >= 0.0f && dx < s.size.x && dy < s.size.y;
+	};
 	std::lock_guard<std::mutex> lock(m_touchMutex);
-	if (!m_snapButtonPanelVisible) return false;
-	const float dx = pos.x - m_snapButtonPanelPos.x;
-	const float dy = pos.y - m_snapButtonPanelPos.y;
-	return dx >= 0.0f && dy >= 0.0f && dx < m_snapButtonPanelSize.x && dy < m_snapButtonPanelSize.y;
+	return hit(m_snapKeyboard) || hit(m_snapScoreboard) || hit(m_snapSpawn)
+		|| hit(m_snapVoice) || hit(m_snapChat);
 }
 
 ImVec2 UI::displaySizeSnapshot() const
@@ -259,7 +259,6 @@ void UI::drawList()
 		if (pPlayerTags && Settings::showNameTags()) pPlayerTags->Render(renderer());
 		if (pNetGame && pNetGame->GetTextLabelPool()) pNetGame->GetTextLabelPool()->Render(renderer());
 		if (pNetGame && pNetGame->GetPlayerBubblePool()) pNetGame->GetPlayerBubblePool()->Render(renderer());
-		if (pNetGame && pNetGame->GetTextDrawPool()) pNetGame->GetTextDrawPool()->DrawImGui(renderer());
 		if (pNetGame && pNetGame->GetObjectPool()) pNetGame->GetObjectPool()->DrawSelectOverlay(renderer());
 		if (pNetGame && pNetGame->GetMenuPool()) pNetGame->GetMenuPool()->Render(renderer());
 		if (pGame) pGame->DrawImGuiGameText(renderer());
@@ -303,9 +302,7 @@ void UI::drawList()
 	const bool hideVoiceSpeakers = (scoreboard() && scoreboard()->visible()) || (keyboard() && keyboard()->visible());
 	ClientSubsystems::onUiRender(renderer(), displaySize().x, displaySize().y, pNetGame != nullptr, hideVoiceSpeakers);
 
-	if (m_buttonPanel && !m_buttonPanel->visible()) {
-		m_buttonPanel->applyHeldKeys();
-	}
+	TouchHud::render(renderer());
 
 	draw(renderer());
 }

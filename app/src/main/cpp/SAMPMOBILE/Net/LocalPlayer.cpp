@@ -419,8 +419,17 @@ bool CLocalPlayer::Process()
 				m_pPlayerPed->Add();
 			}
 
-			// FOR ENTERING PASSENGER DRIVEBY MODE
-			const bool bToggleDriveBy = LocalPlayerKeys.bKeys[ePadKeys::KEY_CTRL_BACK] || ConsumePassengerDriveByToggle();
+			// FOR ENTERING PASSENGER DRIVEBY MODE (edge-detect KEY_CTRL_BACK so 110ms pulse latch never flickers)
+			static bool s_prevDriveByHKey = false;
+			static uint32_t s_lastDriveByToggleMs = 0;
+			const bool curHKey = LocalPlayerKeys.bKeys[ePadKeys::KEY_CTRL_BACK];
+			const bool hRisingEdge = curHKey && !s_prevDriveByHKey;
+			s_prevDriveByHKey = curHKey;
+			const bool wantsToggle = hRisingEdge || ConsumePassengerDriveByToggle();
+			const bool bToggleDriveBy = wantsToggle && (dwThisTick - s_lastDriveByToggleMs >= 300);
+			if (bToggleDriveBy) {
+				s_lastDriveByToggleMs = dwThisTick;
+			}
 			if (!m_bPassengerDriveByMode && bToggleDriveBy) {
 				if (m_pPlayerPed->StartPassengerDriveByMode()) {
 					m_bPassengerDriveByMode = true;
@@ -562,11 +571,11 @@ bool CLocalPlayer::Spawn()
 	DisableSurfing();
 
 	uintptr_t* widgets = GetTouchWidgets();
-	if (!widgets || !widgets[sa::WidgetIDs::WIDGET_PED_MOVE] || !widgets[sa::WidgetIDs::WIDGET_ATTACK]) {
+	if (!widgets || !widgets[sa::WidgetIDs::WIDGET_PLAYER_INFO]) {
 		spdlog::info("Widgets not inited, calling Menu_SwitchOffToGame");
 		eng::fn::Menu_SwitchOffToGame();
 	}
-	EnsureTouchWidgetsCreated();
+	DisableAllStockTouchControls();
 
 	pGame->GetCamera()->Restore();
 	pGame->GetCamera()->SetBehindPlayer();

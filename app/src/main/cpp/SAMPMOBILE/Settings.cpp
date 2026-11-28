@@ -132,6 +132,7 @@ int Settings::m_fontsizeoffset = 0;  // -3..5 (/fontsize)
 bool Settings::m_audiomsg = true;    // /audiomsg
 bool Settings::m_logurls = false;    // /logurls
 bool Settings::m_shownametagstatus = true; // /nametagstatus
+int Settings::m_themehue = 38;       // Launcher theme accent hue (0..360, default 38 = GTA Gold)
 
 char* Settings::ip()
 {
@@ -335,6 +336,7 @@ void Settings::initialize()
 	m_gtasubtitles = readBoolOpt("gta_subtitles", true);
 	m_chatshadow = readBoolOpt("chat_shadow", true);
 	m_screenshotmode = readEnumOpt("screenshot_mode", settings_contract::parseScreenshotMode, settings_contract::parseScreenshotModeLegacyInt, 0);
+	m_themehue = readIntOpt("launcher_theme_hue", 38, 0, 360);
 
 	ClientSubsystems::onSettingsLoaded();
 
@@ -505,13 +507,7 @@ void Settings::applyToGtaEngine(bool bInGameReady)
 	ClientSubsystems::onSettingsApplied();
 
 	if (bInGameReady) {
-		uintptr_t* widgets = GetTouchWidgets();
-		if (widgets && widgets[sa::WidgetIDs::WIDGET_PED_MOVE] && widgets[sa::WidgetIDs::WIDGET_ATTACK]) {
-			EnsureTouchWidgetsCreated();
-			eng::fn::CTouchInterface_SetupLayoutObjects();
-			eng::fn::CTouchInterface_SetupSteeringMode();
-			EnsureTouchWidgetsCreated();
-		}
+		DisableAllStockTouchControls();
 		eng::fn::Menu_ApplyAudioSettings();
 		sa::getTheCamera().m_nPedZoom = std::max(1, std::min(3, m_pedcamzoom));
 	}
